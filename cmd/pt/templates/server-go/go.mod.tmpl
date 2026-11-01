@@ -1,0 +1,8 @@
+module [[.Name]]/server
+
+go 1.24
+
+require github.com/Yanghsuanming/play-together/sdk-go v0.0.0
+
+// 玩聚 Go SDK 放在專案裡（pt sdk update 會更新）
+replace github.com/Yanghsuanming/play-together/sdk-go => ./third_party/playtogether-sdk-go

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>[[.Name]]</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="playtogether-sdk.iife.js"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <main>
+    <h1>[[.Name]]</h1>
+    <p id="status">連線中…</p>
+    <button id="start" type="button" hidden>開始一局（10 秒）</button>
+    <button id="tap" type="button" hidden>按我！</button>
+    <p id="timer"></p>
+    <ol id="players"></ol>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>

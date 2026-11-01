@@ -1,0 +1,135 @@
+// [[.Name]] 的遊戲伺服器（pt new 從範本「一起按」產生，Node.js 版）：兌換啟動碼、由伺服器決定分數與勝負、回報一局給玩聚。
+// 只用 Node 內建模組與玩聚伺服器 SDK（playtogether-server.mjs，pt sdk update 會更新），不需要 npm install。
+//
+// 本機開發：在專案根目錄執行 pt dev（模擬模式，不需要連玩聚）。
+// 接上玩聚（正式部署）：
+//   PT_API_URL=（平台網址） PT_KEY_ID=（伺服器金鑰 ID） PT_KEY_FILE=../keys/server.key \
+//   ALLOW_ORIGINS='https://*.games.（平台網域）' ADDR=0.0.0.0:8090 node main.mjs
+import { createPrivateKey, randomBytes } from 'node:crypto';
+import { readFileSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { extname, join as joinPath, normalize } from 'node:path';
+import { PlatformApiError, createServerClient } from './playtogether-server.mjs';
+
+const ROUND_MS = 10_000;
+const env = (k, d) => process.env[k] || d;
+const [host, port] = env('ADDR', '127.0.0.1:8090').split(':');
+const mock = process.env.PT_MOCK === '1';
+let privateKey;
+if (!mock) {
+  // pt keygen 產生的檔案是一行 base64 種子，包成 PKCS#8 後交給 node:crypto
+  const seed = Buffer.from(readFileSync(env('PT_KEY_FILE', '../keys/server.key'), 'utf8').trim(), 'base64');
+  privateKey = createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]), format: 'der', type: 'pkcs8' });
+}
+const pt = createServerClient({ baseUrl: env('PT_API_URL', ''), keyId: env('PT_KEY_ID', ''), privateKey, mock });
+
+const rooms = new Map(); // 房號 → { epoch, players: Map(玩家 ID → 玩家), endsAt, roundId, winner }
+const tokens = new Map(); // 連線 token → { roomId, playerId }
+const newToken = () => randomBytes(16).toString('hex');
+
+// join：前端把平台給的一次性啟動碼交給伺服器；伺服器向玩聚兌換，才知道是誰、在哪個房間
+async function join(code) {
+  const ex = await pt.exchangeLaunchCode(code);
+  let room = rooms.get(ex.roomId);
+  if (!room || ex.epoch > room.epoch) { // 房主在平台按「重新開始」：局數加一，清空這個房間
+    room = { epoch: ex.epoch, players: new Map(), endsAt: 0, roundId: '', winner: '' };
+    rooms.set(ex.roomId, room);
+  }
+  let p = room.players.get(ex.playerId);
+  if (!p) {
+    p = { id: ex.playerId, name: ex.name, taps: 0, token: '' };
+    room.players.set(ex.playerId, p);
+  }
+  tokens.delete(p.token); // 重新整理或換裝置：舊連線失效，分數保留
+  p.token = newToken();
+  tokens.set(p.token, { roomId: ex.roomId, playerId: ex.playerId });
+  return { token: p.token, playerId: p.id, name: p.name };
+}
+
+function state(room) {
+  const players = [...room.players.values()].map(({ id, name, taps }) => ({ id, name, taps }))
+    .sort((a, b) => b.taps - a.taps || a.name.localeCompare(b.name));
+  const left = room.endsAt ? (room.endsAt - Date.now()) / 1000 : 0;
+  return { players, playing: left > 0, secondsLeft: Math.max(0, left), winner: room.winner };
+}
+
+// 時間到就結束這一局、判定勝負，並回報給玩聚（成效分析用，失敗不影響遊戲）
+setInterval(() => {
+  for (const [roomId, room] of rooms) {
+    if (!room.endsAt || Date.now() < room.endsAt) continue;
+    let best = 0;
+    for (const p of room.players.values()) if (p.taps > best) { best = p.taps; room.winner = p.name; }
+    room.endsAt = 0;
+    pt.reportRoundEnd(roomId, room.epoch, room.roundId, 'completed').catch((e) => console.warn('回報一局結束失敗（不影響遊戲）：', e.message));
+  }
+}, 200);
+
+function start(room, roomId) {
+  room.roundId = newToken();
+  room.winner = '';
+  room.endsAt = Date.now() + ROUND_MS;
+  for (const p of room.players.values()) p.taps = 0;
+  pt.reportRoundStart(roomId, room.epoch, room.roundId, [...room.players.keys()]).catch((e) => console.warn('回報一局開始失敗（不影響遊戲）：', e.message));
+}
+
+// 上傳到玩聚託管後，前端在 https://<版本>.games.（平台網域），要允許跨來源請求；支援 https://*.games.example.com 這種萬用字元
+const allowed = env('ALLOW_ORIGINS', '').split(',').map((s) => s.trim()).filter(Boolean);
+const originAllowed = (o) => allowed.some((a) => {
+  if (a === o) return true;
+  const i = a.indexOf('://*.');
+  return i > 0 && o.startsWith(a.slice(0, i) + '://') && o.endsWith('.' + a.slice(i + 5));
+});
+
+const webDir = env('WEB_DIR', '../web');
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.wasm': 'application/wasm' };
+const readBody = (req) => new Promise((resolve) => {
+  let data = '';
+  req.on('data', (c) => { data += c; if (data.length > 1024) req.destroy(); });
+  req.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+});
+const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+
+createServer(async (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && originAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Vary', 'Origin');
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  }
+  if (req.method === 'POST' && req.url === '/join') {
+    const body = await readBody(req);
+    if (!body?.launchCode) return send(res, 400, { error: 'bad_request' });
+    try {
+      return send(res, 200, await join(body.launchCode));
+    } catch (e) {
+      if (e instanceof PlatformApiError) return send(res, 403, { error: e.code }); // 啟動碼無效、過期或已用過
+      console.error('兌換啟動碼失敗：', e);
+      return send(res, 502, { error: 'unavailable' });
+    }
+  }
+  // 其他操作都帶 join 拿到的 token；玩家只能送「操作」，分數與勝負由伺服器決定
+  if (req.method === 'POST' && req.url === '/action') {
+    const body = await readBody(req);
+    const t = body && tokens.get(body.token);
+    const room = t && rooms.get(t.roomId);
+    const me = room?.players.get(t.playerId);
+    if (!me) return send(res, 401, { error: 'session_expired' });
+    if (body.action === 'start' && !room.endsAt) start(room, t.roomId);
+    if (body.action === 'tap' && room.endsAt && Date.now() < room.endsAt) me.taps++;
+    return send(res, 200, state(room));
+  }
+  // 本機開發時直接提供前端（同一個來源）；上傳到玩聚託管後，前端由玩聚提供
+  if (req.method === 'GET') {
+    const path = normalize(decodeURIComponent((req.url || '/').split('?')[0])).replace(/^(\.\.[/\\])+/, '');
+    let file = joinPath(webDir, path === '/' ? 'index.html' : path);
+    try {
+      if (statSync(file).isDirectory()) file = joinPath(file, 'index.html');
+      res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' });
+      return res.end(readFileSync(file));
+    } catch {
+      res.writeHead(404); return res.end('not found');
+    }
+  }
+  res.writeHead(405); res.end();
+}).listen(Number(port), host, () => console.log(`[[.Name]]：http://${host}:${port}（模擬模式：${mock}）`));

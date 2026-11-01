@@ -1,0 +1,269 @@
+// [[.Name]] 的遊戲伺服器（pt new 從範本「一起按」產生）：兌換啟動碼、由伺服器決定分數與勝負、回報一局給玩聚。
+//
+// 本機開發：在專案根目錄執行 pt dev（模擬模式，不需要連玩聚）。
+//
+// 接上玩聚（正式部署）：
+//
+//	PT_API_URL=（平台網址） PT_KEY_ID=（伺服器金鑰 ID） PT_KEY_FILE=../keys/server.key \
+//	ALLOW_ORIGINS='https://*.games.（平台網域）' ADDR=0.0.0.0:8090 go run .
+package main
+
+import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"os"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	playtogether "github.com/Yanghsuanming/play-together/sdk-go" // 在 third_party/playtogether-sdk-go（pt sdk update 更新）
+)
+
+const roundLength = 10 * time.Second
+
+type player struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Taps  int    `json:"taps"`
+	token string
+}
+
+type room struct {
+	epoch   int
+	players map[string]*player // 玩家假名 ID → 玩家
+	endsAt  time.Time          // 進行中的一局何時結束；零值表示還沒開始
+	roundID string
+	winner  string
+}
+
+type server struct {
+	pt     *playtogether.Client
+	mu     sync.Mutex
+	rooms  map[string]*room
+	tokens map[string][2]string // 連線 token → [房號, 玩家 ID]
+}
+
+func token() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// join：前端把平台給的一次性啟動碼交給伺服器；伺服器向玩聚兌換，才知道是誰、在哪個房間。
+func (s *server) join(ctx context.Context, code string) (map[string]any, error) {
+	ex, err := s.pt.ExchangeLaunchCode(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.rooms[ex.RoomID]
+	if r == nil || ex.Epoch > r.epoch { // 房主在平台按「重新開始」：局數加一，清空這個房間
+		r = &room{epoch: ex.Epoch, players: map[string]*player{}}
+		s.rooms[ex.RoomID] = r
+	}
+	p := r.players[ex.PlayerID]
+	if p == nil {
+		p = &player{ID: ex.PlayerID, Name: ex.Name}
+		r.players[ex.PlayerID] = p
+	}
+	delete(s.tokens, p.token) // 重新整理或換裝置：舊連線失效，分數保留
+	p.token = token()
+	s.tokens[p.token] = [2]string{ex.RoomID, ex.PlayerID}
+	return map[string]any{"token": p.token, "playerId": p.ID, "name": p.Name}, nil
+}
+
+func (s *server) lookup(tok string) (*room, *player, string) {
+	t, ok := s.tokens[tok]
+	if !ok {
+		return nil, nil, ""
+	}
+	r := s.rooms[t[0]]
+	if r == nil {
+		return nil, nil, ""
+	}
+	return r, r.players[t[1]], t[0]
+}
+
+func (s *server) state(r *room) map[string]any {
+	list := make([]*player, 0, len(r.players))
+	for _, p := range r.players {
+		list = append(list, p)
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].Taps > list[j].Taps || (list[i].Taps == list[j].Taps && list[i].Name < list[j].Name) })
+	left := 0.0
+	if !r.endsAt.IsZero() {
+		left = time.Until(r.endsAt).Seconds()
+	}
+	return map[string]any{"players": list, "playing": left > 0, "secondsLeft": left, "winner": r.winner}
+}
+
+// tick：時間到就結束這一局、判定勝負，並回報給玩聚（成效分析用，失敗不影響遊戲）。
+func (s *server) tick() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, r := range s.rooms {
+		if r.endsAt.IsZero() || time.Now().Before(r.endsAt) {
+			continue
+		}
+		best := 0
+		for _, p := range r.players {
+			if p.Taps > best {
+				best, r.winner = p.Taps, p.Name
+			}
+		}
+		r.endsAt = time.Time{}
+		roomID, epoch, roundID := id, r.epoch, r.roundID
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := s.pt.ReportRoundEnd(ctx, roomID, epoch, roundID, playtogether.RoundCompleted); err != nil {
+				log.Printf("回報一局結束失敗（不影響遊戲）：%v", err)
+			}
+		}()
+	}
+}
+
+func (s *server) start(r *room, roomID string) {
+	r.roundID, r.winner = token(), ""
+	r.endsAt = time.Now().Add(roundLength)
+	ids := []string{}
+	for _, p := range r.players {
+		p.Taps = 0
+		ids = append(ids, p.ID)
+	}
+	epoch, roundID := r.epoch, r.roundID
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.pt.ReportRoundStart(ctx, roomID, epoch, roundID, ids); err != nil {
+			log.Printf("回報一局開始失敗（不影響遊戲）：%v", err)
+		}
+	}()
+}
+
+func main() {
+	addr := envOr("ADDR", "127.0.0.1:8090")
+	pt := &playtogether.Client{BaseURL: os.Getenv("PT_API_URL"), KeyID: os.Getenv("PT_KEY_ID"), Mock: os.Getenv("PT_MOCK") == "1"}
+	if !pt.Mock {
+		raw, err := os.ReadFile(envOr("PT_KEY_FILE", "../keys/server.key")) // pt keygen 產生的檔案：一行 base64 種子
+		if err != nil {
+			log.Fatalf("讀不到伺服器私鑰（PT_KEY_FILE）：%v", err)
+		}
+		seed, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
+		if err != nil || len(seed) != ed25519.SeedSize {
+			log.Fatal("伺服器私鑰格式錯誤：請用 pt keygen 產生")
+		}
+		pt.PrivateKey = ed25519.NewKeyFromSeed(seed)
+	}
+	s := &server{pt: pt, rooms: map[string]*room{}, tokens: map[string][2]string{}}
+	go func() {
+		for range time.Tick(200 * time.Millisecond) {
+			s.tick()
+		}
+	}()
+
+	mux := http.NewServeMux()
+	// 本機開發時直接提供前端（同一個來源）；上傳到玩聚託管後，前端由玩聚提供、只呼叫下面的 API
+	mux.Handle("GET /", http.FileServer(http.Dir(envOr("WEB_DIR", "../web"))))
+	mux.HandleFunc("POST /join", func(w http.ResponseWriter, r *http.Request) {
+		var in struct{ LaunchCode string }
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in) != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		out, err := s.join(r.Context(), in.LaunchCode)
+		var apiErr *playtogether.APIError
+		if errors.As(err, &apiErr) {
+			http.Error(w, apiErr.Code, http.StatusForbidden) // 啟動碼無效、過期或已用過
+			return
+		} else if err != nil {
+			log.Printf("兌換啟動碼失敗：%v", err)
+			http.Error(w, "unavailable", http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, out)
+	})
+	// 其他操作都帶 join 拿到的 token；玩家只能送「操作」，分數與勝負由伺服器決定
+	mux.HandleFunc("POST /action", func(w http.ResponseWriter, r *http.Request) {
+		var in struct{ Token, Action string }
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in) != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		rm, p, roomID := s.lookup(in.Token)
+		if p == nil {
+			http.Error(w, "session expired", http.StatusUnauthorized)
+			return
+		}
+		switch in.Action {
+		case "start":
+			if rm.endsAt.IsZero() {
+				s.start(rm, roomID)
+			}
+		case "tap":
+			if !rm.endsAt.IsZero() && time.Now().Before(rm.endsAt) {
+				p.Taps++
+			}
+		}
+		writeJSON(w, s.state(rm))
+	})
+
+	allowed := strings.Split(os.Getenv("ALLOW_ORIGINS"), ",")
+	log.Printf("[[.Name]]：http://%s（模擬模式：%v）", addr, pt.Mock)
+	log.Fatal(http.ListenAndServe(addr, cors(allowed, mux)))
+}
+
+// cors：上傳到玩聚託管後，前端在 https://<版本>.games.（平台網域），和遊戲伺服器不同來源，要允許跨來源請求。
+// 支援 https://*.games.example.com 這種萬用字元（每個版本的網址都不同）。
+func cors(allowed []string, next http.Handler) http.Handler {
+	match := func(origin string) bool {
+		for _, a := range allowed {
+			a = strings.TrimSpace(a)
+			if a == "" {
+				continue
+			}
+			if a == origin {
+				return true
+			}
+			if scheme, rest, ok := strings.Cut(a, "://*."); ok && strings.HasPrefix(origin, scheme+"://") && strings.HasSuffix(origin, "."+rest) {
+				return true
+			}
+		}
+		return false
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if o := r.Header.Get("Origin"); o != "" && match(o) {
+			w.Header().Set("Access-Control-Allow-Origin", o)
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Vary", "Origin")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}

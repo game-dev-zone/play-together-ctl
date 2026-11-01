@@ -1,0 +1,63 @@
+# pt：玩聚開發者工具
+
+`pt` 是玩聚 PlayTogether（台灣的瀏覽器多人派對遊戲平台）給第三方開發者的指令列工具：一個指令建立已接好玩聚 SDK 的遊戲專案、在本機用模擬模式開發、上傳前檢查、產生金鑰、上傳版本。完整文件在玩聚開發者文件站 `/docs/pt`。
+
+*`pt` is the command-line tool for third-party developers building games for PlayTogether (玩聚), a browser party-game platform in Taiwan: scaffold a project wired to the PlayTogether SDK, develop locally in mock mode, check and upload builds.*
+
+## 安裝
+
+**下載執行檔**（建議）：到 [Releases](https://github.com/Yanghsuanming/play-together-ctl/releases) 下載對應系統的檔案，改名成 `pt` 放進 PATH。
+
+```sh
+# macOS（Apple 晶片），其他系統換成 pt-darwin-amd64、pt-linux-amd64、pt-linux-arm64、pt-windows-amd64.exe
+curl -fLo pt https://github.com/Yanghsuanming/play-together-ctl/releases/latest/download/pt-darwin-arm64
+chmod +x pt && sudo mv pt /usr/local/bin/
+pt version
+```
+
+每個版本都附 `SHA256SUMS`，可以用 `shasum -a 256 -c SHA256SUMS --ignore-missing` 檢查。
+
+**用 Go 安裝**（Go 1.24 以上）：
+
+```sh
+go install github.com/Yanghsuanming/play-together-ctl/cmd/pt@latest
+```
+
+## 五分鐘開始
+
+```sh
+pt new my-party-game             # 範本 web-go：網頁＋Go 伺服器（Node.js 用 -template web-node）
+cd my-party-game
+pt dev                           # 本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
+```
+
+不需要金鑰、不需要連線到玩聚：直接開啟時 SDK 自動進入模擬模式。
+
+## 指令
+
+| 指令 | 說明 |
+| --- | --- |
+| `pt new [-template web-go\|web-node] [-platform 平台網址] <名稱>` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定） |
+| `pt dev [-addr 127.0.0.1:8090] [-players 2]` | 本機模擬模式 |
+| `pt check [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器網址設定 |
+| `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；公鑰交給玩聚登記，私鑰只在你手上 |
+| `pt upload -version <版本> [-notes 說明]` | 上傳版本（設定從 `playtogether.json` 讀；上傳前自動檢查） |
+| `pt sdk update` | 把專案裡的 SDK 更新成這個 `pt` 內嵌的版本 |
+| `pt version` | 顯示 `pt` 與內嵌 SDK 的版本 |
+
+## 這個 repo 裡有什麼
+
+| 路徑 | 內容 |
+| --- | --- |
+| `cmd/pt/` | `pt` 的原始碼（只用 Go 標準函式庫） |
+| `cmd/pt/templates/` | `pt new` 的專案範本 |
+| `cmd/pt/assets/sdk/` | 內嵌的玩聚 SDK（瀏覽器、Node.js、Go），由玩聚從 SDK 原始碼同步，請不要直接修改 |
+| `internal/playtogether/` | `pt` 自己用的 Go SDK（上傳時的請求簽章），同樣由玩聚同步 |
+
+## 回報問題
+
+使用上的問題或建議請開 [Issue](https://github.com/Yanghsuanming/play-together-ctl/issues)。**資安問題請不要公開開 Issue**，見 [SECURITY.md](SECURITY.md)。
+
+## 授權
+
+[MIT](LICENSE)

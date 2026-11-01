@@ -1,0 +1,45 @@
+# 推送 v* 標籤時：測試、編譯五個平台的 pt、產生 SHA256SUMS、建立 GitHub Release。
+# Actions 以 commit 雜湊固定版本；只有這個流程有寫入權限（建立 Release）。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: stable
+          cache: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - name: 測試
+        run: go test ./...
+      - name: 編譯
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          for t in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64; do
+            os=${t%/*}; arch=${t#*/}; ext=; [ "$os" = windows ] && ext=.exe
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o dist/pt-$os-$arch$ext ./cmd/pt
+          done
+          cd dist && sha256sum pt-* > SHA256SUMS
+      - name: 建立 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          sdk=$(cat cmd/pt/assets/sdk/VERSION)
+          gh release create "$VERSION" dist/* --title "pt $VERSION" \
+            --notes "內嵌玩聚 SDK $sdk。下載對應系統的檔案改名成 pt 放進 PATH；用 SHA256SUMS 檢查檔案。"
