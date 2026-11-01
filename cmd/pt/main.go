@@ -89,6 +89,7 @@ func usage() {
   pt keygen -purpose upload|server [-out 檔案]   產生金鑰；在專案裡預設寫到 keys/<用途>.key
   pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定從 playtogether.json 讀
   pt sdk update                                 把專案裡的 SDK 更新成這個 pt 內嵌的版本
+  pt sdk export <資料夾>                        把 SDK 檔案寫到資料夾（接到既有專案用）
   pt version
 
 文件：玩聚開發者文件站 /docs/pt　原始碼與下載：https://github.com/Yanghsuanming/play-together-ctl

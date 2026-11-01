@@ -60,6 +60,7 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；公鑰交給玩聚登記，私鑰只在你手上 |
 | `pt upload -version <版本> [-notes 說明] [-no-build]` | 上傳版本（設定從 `playtogether.json` 讀；Godot 專案先匯出；上傳前自動檢查） |
 | `pt sdk update` | 把專案裡的 SDK 更新成這個 `pt` 內嵌的版本 |
+| `pt sdk export <資料夾>` | 把 SDK 檔案（瀏覽器、Godot、Go、Node.js）寫到資料夾，接到不是 `pt new` 建立的既有專案 |
 | `pt version` | 顯示 `pt` 與內嵌 SDK 的版本 |
 
 ## 這個 repo 裡有什麼

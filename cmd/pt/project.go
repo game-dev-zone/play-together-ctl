@@ -290,8 +290,11 @@ func reorder(args []string) []string {
 // ---------- pt sdk update ----------
 
 func cmdSDK(args []string) error {
+	if len(args) == 2 && args[0] == "export" {
+		return exportSDK(args[1])
+	}
 	if len(args) != 1 || args[0] != "update" {
-		return errors.New("用法：pt sdk update")
+		return errors.New("用法：pt sdk update（在 pt new 建立的專案裡）或 pt sdk export <資料夾>（把 SDK 檔案寫到資料夾，給既有專案用）")
 	}
 	p, err := findProject()
 	if err != nil {
@@ -575,4 +578,62 @@ func printFindings(fs []finding) bool {
 		fmt.Println("✓ 沒有錯誤（有提醒，請確認）")
 	}
 	return bad
+}
+
+// exportSDK 把內嵌的 SDK 全部寫到 dir（不是 pt new 建立的既有專案用）：
+// browser/、godot/、go/、node/ 與 VERSION。資料夾已經有東西時拒絕，避免覆蓋開發者的檔案。
+func exportSDK(dir string) error {
+	if err := requireAssets(); err != nil {
+		return err
+	}
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
+		return fmt.Errorf("%s 已經有檔案：請指定新的或空的資料夾", dir)
+	}
+	files := map[string][]byte{}
+	read := func(src, dst string) error {
+		b, err := embedded.ReadFile("assets/sdk/" + src)
+		if err != nil {
+			return err
+		}
+		files[dst] = b
+		return nil
+	}
+	for src, dst := range map[string]string{
+		"playtogether-sdk.iife.js":       "browser/playtogether-sdk.iife.js",
+		"playtogether-sdk.js":            "browser/playtogether-sdk.js",
+		"playtogether-sdk-godot.iife.js": "godot/playtogether-sdk-godot.iife.js",
+		"playtogether-server.mjs":        "node/playtogether-server.mjs",
+		"VERSION":                        "VERSION",
+	} {
+		if err := read(src, dst); err != nil {
+			return err
+		}
+	}
+	if err := fs2Walk("assets/sdk/godot/addons", func(rel string, content []byte) error {
+		files["godot/addons/"+rel] = content
+		return nil
+	}); err != nil {
+		return err
+	}
+	if err := fs2Walk("assets/sdk/go", func(rel string, content []byte) error {
+		files["go/"+strings.TrimSuffix(rel, ".txt")] = content
+		return nil
+	}); err != nil {
+		return err
+	}
+	for rel, content := range files {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			return err
+		}
+	}
+	fmt.Printf("SDK %s 已寫到 %s（%d 個檔案）\n", sdkVersion(), dir, len(files))
+	fmt.Println("  browser/  網頁遊戲：<script src=\"playtogether-sdk.iife.js\">，或 ES module playtogether-sdk.js")
+	fmt.Println("  godot/    Godot：addons/playtogether 複製到專案，playtogether-sdk-godot.iife.js 放在匯出的 index.html 旁")
+	fmt.Println("  go/       Go 遊戲伺服器：go.mod 加 replace github.com/Yanghsuanming/play-together/sdk-go => <這個資料夾>/go")
+	fmt.Println("  node/     Node.js 遊戲伺服器：直接 import playtogether-server.mjs")
+	return nil
 }

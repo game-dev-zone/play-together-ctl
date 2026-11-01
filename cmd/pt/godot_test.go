@@ -126,3 +126,19 @@ func TestGodotBuild(t *testing.T) {
 		t.Fatal("index.html 要載入 SDK 轉接檔")
 	}
 }
+
+func TestSDKExport(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "sdk")
+	if err := exportSDK(dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"browser/playtogether-sdk.iife.js", "browser/playtogether-sdk.js", "godot/playtogether-sdk-godot.iife.js", "godot/addons/playtogether/plugin.cfg", "go/go.mod", "go/client.go", "node/playtogether-server.mjs", "VERSION"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			t.Errorf("缺少 %s", f)
+		}
+	}
+	// 已有檔案的資料夾要拒絕，避免覆蓋
+	if err := exportSDK(dir); err == nil {
+		t.Fatal("非空資料夾應該拒絕")
+	}
+}
