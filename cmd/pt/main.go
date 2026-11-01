@@ -30,6 +30,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -38,8 +39,14 @@ import (
 	playtogether "github.com/Yanghsuanming/play-together-ctl/internal/playtogether"
 )
 
-// version 由發佈流程用 -ldflags "-X main.version=v1.2.3" 設定
+// version 由發佈流程用 -ldflags "-X main.version=v1.2.3" 設定；用 go install 安裝時改讀模組版本
 var version = "dev"
+
+func init() {
+	if info, ok := debug.ReadBuildInfo(); ok && version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		version = info.Main.Version
+	}
+}
 
 func main() {
 	if len(os.Args) < 2 {
