@@ -60,6 +60,8 @@ func main() {
 		err = cmdDev(os.Args[2:])
 	case "check":
 		err = cmdCheck(os.Args[2:])
+	case "build":
+		err = cmdBuild(os.Args[2:])
 	case "sdk":
 		err = cmdSDK(os.Args[2:])
 	case "keygen":
@@ -80,8 +82,9 @@ func main() {
 func usage() {
 	fmt.Fprint(os.Stderr, `pt：玩聚開發者工具
 
-  pt new [-template web-go|web-node] <名稱>   建立新專案（前端＋遊戲伺服器，已接好 SDK）
+  pt new [-client web|godot] [-server go|node] <名稱>   建立新專案（畫面＋遊戲伺服器，已接好 SDK）
   pt dev [-addr 127.0.0.1:8090]                本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
+  pt build                                      Godot 專案：用 Godot 無頭模式匯出網頁版到 build/
   pt check [建置資料夾]                         上傳前檢查（對照審核準則）
   pt keygen -purpose upload|server [-out 檔案]   產生金鑰；在專案裡預設寫到 keys/<用途>.key
   pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定從 playtogether.json 讀
@@ -151,6 +154,7 @@ func upload(args []string) error {
 	connect := fs.String("connect", "", "遊戲會連線的外部來源，逗號分隔（或 PT_CONNECT_ORIGINS）")
 	wait := fs.Duration("wait", 5*time.Minute, "等待檢查結果的時間（0 表示不等）")
 	skipCheck := fs.Bool("skip-check", false, "不執行上傳前檢查（不建議）")
+	noBuild := fs.Bool("no-build", false, "Godot 專案：不重新匯出，直接上傳現有的 build/")
 	_ = fs.Parse(reorder(args))
 	p, err := findProject()
 	if err != nil {
@@ -183,6 +187,11 @@ func upload(args []string) error {
 	kfile := env(*keyFile, "PT_UPLOAD_KEY_FILE")
 	if base == "" || kid == "" || kfile == "" {
 		return errors.New("需要平台網址、上傳金鑰 ID、上傳私鑰檔案：用 -api、-key-id、-key-file，或填在 playtogether.json（platform、uploadKeyId、uploadKeyFile）")
+	}
+	if p != nil && p.Client == "godot" && !*noBuild && fs.Arg(0) == "" {
+		if err := buildGodot(p); err != nil {
+			return err
+		}
 	}
 	if !*skipCheck {
 		fmt.Println("上傳前檢查：")

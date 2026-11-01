@@ -32,3 +32,40 @@ jobs:
         run: go test -v ./...
       - name: 漏洞掃描
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  # Godot 範本：安裝 Godot（官方 SHA-512 驗證）與網頁匯出範本，實際匯出並在瀏覽器裡用模擬模式握手
+  godot:
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.7.2
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: stable
+          cache: false
+      - name: 安裝 Godot 與網頁匯出範本
+        run: |
+          base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          zip=Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          curl -fsSLO "$base/$zip"
+          curl -fsSL "$base/SHA512-SUMS.txt" | grep " $zip\$" | sha512sum -c -
+          unzip -q "$zip" && sudo mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dir"
+          python3 -I scripts/fetch-godot-web-templates.py "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" "$dir" \
+            templates/web_nothreads_release.zip templates/web_nothreads_debug.zip templates/version.txt
+          godot --version
+      - name: 匯出測試
+        run: go test -v -run 'TestGodot|TestNewGodot|TestCheckGodot' ./cmd/pt
+      - name: 瀏覽器握手（pt new → pt dev → 模擬模式兌換）
+        run: |
+          go build -o /tmp/pt ./cmd/pt
+          cd "$(mktemp -d)"
+          /tmp/pt new ci-godot -client godot -server go
+          cd ci-godot
+          /tmp/pt dev -players 0 &
+          for i in $(seq 1 120); do curl -fs -o /dev/null http://127.0.0.1:8090/ && break; sleep 1; done
+          node "$GITHUB_WORKSPACE/scripts/e2e-godot.mjs" http://127.0.0.1:8090/

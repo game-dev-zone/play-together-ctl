@@ -1,0 +1,7 @@
+## 部署設定：pt check 會檢查這裡和 playtogether.json 是否一致
+extends RefCounted
+
+## 玩聚平台的網址（SDK 只接受這個來源的訊息）
+const PLATFORM_ORIGINS: PackedStringArray = ["[[.Platform]]"]
+## 遊戲伺服器網址；空白表示和遊戲畫面同一個來源（只適用本機 pt dev）。上傳前要改成你的遊戲伺服器網址
+const SERVER_URL := ""

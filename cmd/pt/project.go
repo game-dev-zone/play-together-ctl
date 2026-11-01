@@ -22,8 +22,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
-	"text/template"
+	texttemplate "text/template"
 	"time"
 )
 
@@ -32,17 +33,22 @@ var embedded embed.FS
 
 const projectFile = "playtogether.json"
 
-// templates：範本名稱 → 伺服器範本資料夾
-var templates = map[string]string{
-	"web-go":   "server-go",
-	"web-node": "server-node",
-}
+// 畫面（client）與伺服器（server）的組合；舊的 -template 名稱對應到這裡
+var (
+	clients   = []string{"web", "godot"}
+	servers   = []string{"go", "node"}
+	templates = map[string][2]string{
+		"web-go": {"web", "go"}, "web-node": {"web", "node"}, "godot-go": {"godot", "go"}, "godot-node": {"godot", "node"},
+	}
+)
 
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,38}[a-z0-9]$`)
 
 // project 是 playtogether.json：pt 的指令都從這裡讀設定，參數可以覆蓋。
 type project struct {
 	Name          string `json:"name"`
+	Client        string `json:"client"` // web 或 godot
+	Server        string `json:"server"` // go 或 node
 	Template      string `json:"template"`
 	SDKVersion    string `json:"sdkVersion"`
 	Platform      string `json:"platform"`
@@ -76,6 +82,11 @@ func findProject() (*project, error) {
 			}
 			if p.DevAddr == "" {
 				p.DevAddr = "127.0.0.1:8090"
+			}
+			if p.Client == "" || p.Server == "" { // v0.1 建立的專案只有 template
+				if cs, ok := templates[p.Template]; ok {
+					p.Client, p.Server = cs[0], cs[1]
+				}
 			}
 			return &p, nil
 		}
@@ -113,19 +124,30 @@ func requireAssets() error {
 
 func cmdNew(args []string) error {
 	fs := flag.NewFlagSet("new", flag.ExitOnError)
-	tmpl := fs.String("template", "web-go", "範本：web-go（網頁＋Go 伺服器）或 web-node（網頁＋Node.js 伺服器）")
+	client := fs.String("client", "web", "畫面：web（網頁）或 godot（Godot 4）")
+	server := fs.String("server", "go", "遊戲伺服器：go 或 node")
+	tmpl := fs.String("template", "", "舊的寫法：web-go、web-node、godot-go、godot-node（等於 -client 加 -server）")
 	platform := fs.String("platform", "https://（平台網址）", "玩聚平台網址（之後可以在 playtogether.json 修改）")
 	_ = fs.Parse(reorder(args))
 	if fs.NArg() != 1 {
-		return errors.New("用法：pt new [-template web-go|web-node] <專案名稱>")
+		return errors.New("用法：pt new [-client web|godot] [-server go|node] <專案名稱>")
 	}
 	name := fs.Arg(0)
 	if !namePattern.MatchString(name) {
 		return errors.New("專案名稱只能用小寫英文、數字與連字號（3–40 字，英文開頭），例如 my-party-game")
 	}
-	server, ok := templates[*tmpl]
-	if !ok {
-		return fmt.Errorf("沒有範本 %q：可用 web-go、web-node", *tmpl)
+	if *tmpl != "" {
+		cs, ok := templates[*tmpl]
+		if !ok {
+			return fmt.Errorf("沒有範本 %q：可用 web-go、web-node、godot-go、godot-node", *tmpl)
+		}
+		*client, *server = cs[0], cs[1]
+	}
+	if !slices.Contains(clients, *client) {
+		return fmt.Errorf("-client 只能是 web 或 godot（目前是 %q）", *client)
+	}
+	if !slices.Contains(servers, *server) {
+		return fmt.Errorf("-server 只能是 go 或 node（目前是 %q）", *server)
 	}
 	if err := requireAssets(); err != nil {
 		return err
@@ -133,13 +155,14 @@ func cmdNew(args []string) error {
 	if _, err := os.Stat(name); err == nil {
 		return fmt.Errorf("資料夾 %s 已經存在", name)
 	}
-	data := map[string]string{"Name": name, "Template": *tmpl, "Platform": *platform, "SDKVersion": sdkVersion()}
+	template := *client + "-" + *server
+	data := map[string]string{"Name": name, "Client": *client, "Server": *server, "Template": template, "Platform": *platform, "SDKVersion": sdkVersion()}
 	files := map[string][]byte{}
 	render := func(src, dst string) error {
 		return fs2Walk("templates/"+src, func(rel string, content []byte) error {
 			out := path.Join(dst, strings.TrimSuffix(rel, ".tmpl"))
 			if strings.HasSuffix(rel, ".tmpl") {
-				t, err := template.New(rel).Delims("[[", "]]").Option("missingkey=error").Parse(string(content))
+				t, err := texttemplate.New(rel).Delims("[[", "]]").Option("missingkey=error").Parse(string(content))
 				if err != nil {
 					return fmt.Errorf("範本 %s：%w", rel, err)
 				}
@@ -153,18 +176,15 @@ func cmdNew(args []string) error {
 			return nil
 		})
 	}
-	if err := render("project", ""); err != nil {
-		return err
-	}
-	if err := render("web", "web"); err != nil {
-		return err
-	}
-	if err := render(server, "server"); err != nil {
-		return err
+	clientDir := map[string]string{"web": "web", "godot": "game"}[*client]
+	for _, r := range [][2]string{{"project", ""}, {"client-" + *client, clientDir}, {"server-" + *server, "server"}} {
+		if err := render(r[0], r[1]); err != nil {
+			return err
+		}
 	}
 	files[".gitignore"] = files["gitignore"]
 	delete(files, "gitignore")
-	sdk, err := sdkFiles(*tmpl)
+	sdk, err := sdkFiles(*client, *server)
 	if err != nil {
 		return err
 	}
@@ -183,36 +203,58 @@ func cmdNew(args []string) error {
 	if err := os.MkdirAll(filepath.Join(name, "keys"), 0o700); err != nil {
 		return err
 	}
-	fmt.Printf("已建立 %s（範本 %s、SDK %s）\n\n", name, *tmpl, sdkVersion())
+	fmt.Printf("已建立 %s（畫面 %s、伺服器 %s、SDK %s）\n\n", name, *client, *server, sdkVersion())
 	fmt.Println("下一步：")
 	fmt.Printf("  cd %s\n", name)
-	fmt.Println("  pt dev        # 本機模擬模式，打開兩個玩家分頁")
+	if *client == "godot" {
+		fmt.Println("  pt dev        # 匯出 Godot 網頁版並用本機模擬模式打開兩個玩家分頁（需要 Godot 4.3 以上與網頁匯出範本）")
+		fmt.Println("  用 Godot 編輯器打開 game/ 修改遊戲")
+	} else {
+		fmt.Println("  pt dev        # 本機模擬模式，打開兩個玩家分頁")
+	}
 	fmt.Println("接上玩聚的步驟見 README.md。")
 	return nil
 }
 
-// sdkFiles：範本需要的 SDK 檔案（相對專案根目錄的路徑 → 內容）。pt new 與 pt sdk update 共用。
-func sdkFiles(tmpl string) (map[string][]byte, error) {
+// sdkFiles：專案需要的 SDK 檔案（相對專案根目錄的路徑 → 內容）。pt new 與 pt sdk update 共用。
+func sdkFiles(client, server string) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	iife, err := embedded.ReadFile("assets/sdk/playtogether-sdk.iife.js")
-	if err != nil {
-		return nil, err
+	switch client {
+	case "web":
+		iife, err := embedded.ReadFile("assets/sdk/playtogether-sdk.iife.js")
+		if err != nil {
+			return nil, err
+		}
+		out["web/playtogether-sdk.iife.js"] = iife
+	case "godot":
+		// 外掛放在 game/addons；轉接檔匯出時才複製到 build/（pt build）
+		if err := fs2Walk("assets/sdk/godot/addons", func(rel string, content []byte) error {
+			out["game/addons/"+rel] = content
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("不認得的畫面類型 %q", client)
 	}
-	out["web/playtogether-sdk.iife.js"] = iife
-	switch tmpl {
-	case "web-go":
-		err = fs2Walk("assets/sdk/go", func(rel string, content []byte) error {
+	switch server {
+	case "go":
+		if err := fs2Walk("assets/sdk/go", func(rel string, content []byte) error {
 			out["server/third_party/playtogether-sdk-go/"+strings.TrimSuffix(rel, ".txt")] = content
 			return nil
-		})
-	case "web-node":
-		var mjs []byte
-		mjs, err = embedded.ReadFile("assets/sdk/playtogether-server.mjs")
+		}); err != nil {
+			return nil, err
+		}
+	case "node":
+		mjs, err := embedded.ReadFile("assets/sdk/playtogether-server.mjs")
+		if err != nil {
+			return nil, err
+		}
 		out["server/playtogether-server.mjs"] = mjs
 	default:
-		err = fmt.Errorf("不認得的範本 %q", tmpl)
+		return nil, fmt.Errorf("不認得的伺服器 %q", server)
 	}
-	return out, err
+	return out, nil
 }
 
 func fs2Walk(root string, fn func(rel string, content []byte) error) error {
@@ -261,7 +303,7 @@ func cmdSDK(args []string) error {
 	if err := requireAssets(); err != nil {
 		return err
 	}
-	files, err := sdkFiles(p.Template)
+	files, err := sdkFiles(p.Client, p.Server)
 	if err != nil {
 		return err
 	}
@@ -312,14 +354,19 @@ func cmdDev(args []string) error {
 	} else {
 		ln.Close()
 	}
+	if p.Client == "godot" {
+		if err := buildGodot(p); err != nil {
+			return err
+		}
+	}
 	var cmd *exec.Cmd
-	switch p.Template {
-	case "web-go":
+	switch p.Server {
+	case "go":
 		cmd = exec.Command("go", "run", ".")
-	case "web-node":
+	case "node":
 		cmd = exec.Command("node", "main.mjs")
 	default:
-		return fmt.Errorf("pt dev 只支援 web-go、web-node 範本（目前是 %q）", p.Template)
+		return fmt.Errorf("pt dev 只支援 go、node 伺服器（目前是 %q）", p.Server)
 	}
 	cmd.Dir = p.path("server")
 	// 模擬模式：不需要金鑰、不連玩聚；前端由遊戲伺服器直接提供（同一個來源）
@@ -397,7 +444,11 @@ func checkProject(p *project, webDir string) []finding {
 
 	index, err := os.ReadFile(filepath.Join(webDir, "index.html"))
 	if err != nil {
-		add("error", "%s 根目錄沒有 index.html", webDir)
+		if p != nil && p.Client == "godot" {
+			add("error", "還沒有匯出網頁版：先執行 pt build（pt upload 會自動執行）")
+		} else {
+			add("error", "%s 根目錄沒有 index.html", webDir)
+		}
 	} else {
 		html := string(index)
 		if !strings.Contains(html, "playtogether-sdk") {
@@ -457,6 +508,9 @@ func checkProject(p *project, webDir string) []finding {
 
 	if p == nil {
 		return out
+	}
+	if p.Client == "godot" {
+		checkGodot(p, add)
 	}
 	if !strings.HasPrefix(p.Platform, "http") || strings.Contains(p.Platform, "（") {
 		add("error", "playtogether.json 的 platform 還沒填（玩聚建立遊戲後會給你平台網址）")

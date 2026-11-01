@@ -26,10 +26,26 @@ go install github.com/Yanghsuanming/play-together-ctl/cmd/pt@latest
 ## 五分鐘開始
 
 ```sh
-pt new my-party-game             # 範本 web-go：網頁＋Go 伺服器（Node.js 用 -template web-node）
+pt new my-party-game             # 預設：網頁（HTML／JS）前端＋Go 遊戲伺服器
 cd my-party-game
 pt dev                           # 本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
 ```
+
+用 Godot 開發：
+
+```sh
+pt new -client godot -server go my-godot-game   # 遊戲伺服器也可以用 -server node
+cd my-godot-game
+pt dev                           # 先用 Godot 無頭模式匯出網頁版，再啟動模擬模式
+```
+
+Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → 編輯器 → 管理匯出範本）。`pt` 依序找環境變數 `GODOT`、PATH 裡的 `godot`、macOS 的 `/Applications/Godot.app`。範本已設定好網頁匯出（關閉執行緒支援、載入 SDK）、玩聚外掛，並附上 Noto Sans TC 常用字子集（SIL OFL 1.1），中文不會變成方框。
+
+| 選項 | 可用值 | 說明 |
+| --- | --- | --- |
+| `-client` | `web`（預設）、`godot` | 遊戲前端。`web` 產生 `web/`；`godot` 產生 Godot 專案 `game/`，匯出到 `build/` |
+| `-server` | `go`（預設）、`node` | 遊戲伺服器（兌換啟動碼、判定勝負）|
+| `-template` | `web-go`、`web-node`、`godot-go`、`godot-node` | 舊寫法，等於同時指定上面兩個 |
 
 不需要金鑰、不需要連線到玩聚：直接開啟時 SDK 自動進入模擬模式。
 
@@ -37,11 +53,12 @@ pt dev                           # 本機模擬模式：啟動遊戲伺服器、
 
 | 指令 | 說明 |
 | --- | --- |
-| `pt new [-template web-go\|web-node] [-platform 平台網址] <名稱>` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定） |
-| `pt dev [-addr 127.0.0.1:8090] [-players 2]` | 本機模擬模式 |
+| `pt new [-client web\|godot] [-server go\|node] [-platform 平台網址] <名稱>` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定） |
+| `pt dev [-addr 127.0.0.1:8090] [-players 2]` | 本機模擬模式（Godot 專案會先匯出） |
+| `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
 | `pt check [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器網址設定 |
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；公鑰交給玩聚登記，私鑰只在你手上 |
-| `pt upload -version <版本> [-notes 說明]` | 上傳版本（設定從 `playtogether.json` 讀；上傳前自動檢查） |
+| `pt upload -version <版本> [-notes 說明] [-no-build]` | 上傳版本（設定從 `playtogether.json` 讀；Godot 專案先匯出；上傳前自動檢查） |
 | `pt sdk update` | 把專案裡的 SDK 更新成這個 `pt` 內嵌的版本 |
 | `pt version` | 顯示 `pt` 與內嵌 SDK 的版本 |
 
@@ -52,6 +69,7 @@ pt dev                           # 本機模擬模式：啟動遊戲伺服器、
 | `cmd/pt/` | `pt` 的原始碼（只用 Go 標準函式庫） |
 | `cmd/pt/templates/` | `pt new` 的專案範本 |
 | `cmd/pt/assets/sdk/` | 內嵌的玩聚 SDK（瀏覽器、Node.js、Go），由玩聚從 SDK 原始碼同步，請不要直接修改 |
+| `scripts/` | CI 用：只下載 Godot 網頁匯出範本、在瀏覽器測 Godot 範本握手 |
 | `internal/playtogether/` | `pt` 自己用的 Go SDK（上傳時的請求簽章），同樣由玩聚同步 |
 
 ## 回報問題

@@ -1,0 +1,32 @@
+; [[.Name]]：用 pt new -client godot 建立的玩聚遊戲（Godot 4）
+config_version=5
+
+[application]
+
+config/name="[[.Name]]"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[autoload]
+
+PlayTogether="*res://addons/playtogether/playtogether.gd"
+
+[display]
+
+window/size/viewport_width=390
+window/size/viewport_height=844
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/playtogether/plugin.cfg")
+
+[gui]
+
+theme/custom_font="res://fonts/NotoSansTC-Common.otf"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

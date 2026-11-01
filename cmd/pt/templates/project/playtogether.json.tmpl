@@ -1,5 +1,7 @@
 {
   "name": "[[.Name]]",
+  "client": "[[.Client]]",
+  "server": "[[.Server]]",
   "template": "[[.Template]]",
   "sdkVersion": "[[.SDKVersion]]",
   "platform": "[[.Platform]]",
@@ -8,6 +10,6 @@
   "serverKeyId": "",
   "serverKeyFile": "keys/server.key",
   "serverUrl": "",
-  "web": "web",
+  "web": "[[if eq .Client "godot"]]build[[else]]web[[end]]",
   "devAddr": "127.0.0.1:8090"
 }

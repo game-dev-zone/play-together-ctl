@@ -1,3 +1,4 @@
 /dist/
 *.key
 .DS_Store
+/cmd/pt/pt
