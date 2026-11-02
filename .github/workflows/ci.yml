@@ -69,3 +69,14 @@ jobs:
           /tmp/pt dev -players 0 &
           for i in $(seq 1 120); do curl -fs -o /dev/null http://127.0.0.1:8090/ && break; sleep 1; done
           node "$GITHUB_WORKSPACE/scripts/e2e-godot.mjs" http://127.0.0.1:8090/
+      - name: Claude Code Game Studios 範本（實際下載並逐檔驗證、匯出、握手）
+        run: |
+          cd "$(mktemp -d)"
+          /tmp/pt new -client godot -ai studios ci-studio </dev/null
+          cd ci-studio
+          test -f project.godot && test -f .claude/rules/playtogether.md && grep -q '@PLAYTOGETHER.md' CLAUDE.md
+          grep -q '^!export_presets.cfg' .gitignore
+          /tmp/pt dev -players 0 -addr 127.0.0.1:8091 &
+          for i in $(seq 1 120); do curl -fs -o /dev/null http://127.0.0.1:8091/ && break; sleep 1; done
+          node "$GITHUB_WORKSPACE/scripts/e2e-godot.mjs" http://127.0.0.1:8091/
+          if strings build/index.pck | grep -qE 'res://(server|design|docs|production)/'; then echo "匯出包含不該有的資料夾"; exit 1; fi

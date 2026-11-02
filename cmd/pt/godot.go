@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -81,7 +83,7 @@ func exportTemplatesDir(version string) string {
 	}
 }
 
-// buildGodot 用 Godot 無頭模式把 game/ 匯出成網頁版到 build/，並放上 SDK 轉接檔。
+// buildGodot 用 Godot 無頭模式把 Godot 專案（預設 game/）匯出成網頁版到 build/，並放上 SDK 轉接檔。
 func buildGodot(p *project) error {
 	godot, err := findGodot()
 	if err != nil {
@@ -95,12 +97,17 @@ func buildGodot(p *project) error {
 	if _, err := os.Stat(tpl); err != nil {
 		return fmt.Errorf("沒有 Godot %s 的網頁匯出範本（%s）：請在 Godot 編輯器 → 編輯器 → 管理匯出範本 → 下載並安裝", version, tpl)
 	}
-	game := p.path("game")
+	game := p.path(p.godotDir())
 	out := p.path(p.Web)
 	if err := os.RemoveAll(out); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(out, 0o755); err != nil {
+		return err
+	}
+	// 匯出資料夾在 Godot 專案裡面時（Godot 專案在根目錄），讓 Godot 忽略它，否則下次匯出會把自己打包進去。
+	// 隱藏檔不會被 pt upload 上傳。
+	if err := os.WriteFile(filepath.Join(out, ".gdignore"), nil, 0o644); err != nil {
 		return err
 	}
 	// 第一次（還沒有 .godot/）要先匯入資源：字型等資源還沒匯入時，Godot 啟動載入專案佈景會出錯
@@ -189,10 +196,11 @@ func cmdBuild(args []string) error {
 
 // checkGodot：Godot 專案專屬的檢查（匯出設定、GDScript）。
 func checkGodot(p *project, add func(level, format string, a ...any)) {
-	game := p.path("game")
+	gdir := p.godotDir()
+	game := p.path(gdir)
 	preset, err := os.ReadFile(filepath.Join(game, "export_presets.cfg"))
 	if err != nil {
-		add("error", "找不到 game/export_presets.cfg（網頁匯出設定）")
+		add("error", "找不到 %s（網頁匯出設定）", path.Join(gdir, "export_presets.cfg"))
 	} else {
 		cfg := string(preset)
 		if !strings.Contains(cfg, "variant/thread_support=false") {
@@ -207,7 +215,7 @@ func checkGodot(p *project, add func(level, format string, a ...any)) {
 	}
 	_ = filepath.WalkDir(game, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			if d != nil && d.IsDir() && (d.Name() == ".godot" || d.Name() == "addons") {
+			if d != nil && d.IsDir() && path != game && (strings.HasPrefix(d.Name(), ".") || slices.Contains([]string{"addons", "server", "node_modules", "keys", "build", "design", "docs", "production"}, d.Name())) {
 				return filepath.SkipDir
 			}
 			return err
@@ -216,19 +224,22 @@ func checkGodot(p *project, add func(level, format string, a ...any)) {
 			return nil
 		}
 		raw, err := os.ReadFile(path)
+		rel, _ := filepath.Rel(p.dir, path)
 		if err == nil && strings.Contains(string(raw), "JavaScriptBridge.eval") {
-			rel, _ := filepath.Rel(p.dir, path)
 			add("error", "%s 使用 JavaScriptBridge.eval：需要 unsafe-eval，請改用 JavaScriptBridge.get_interface", rel)
+		}
+		if err == nil && strings.Contains(string(raw), "WebRTC") {
+			add("error", "%s 使用 WebRTC（WebRTCPeerConnection／WebRTCMultiplayerPeer）：玩聚不允許遊戲自己建立點對點連線，請透過遊戲伺服器", rel)
 		}
 		return nil
 	})
 	if raw, err := os.ReadFile(filepath.Join(game, "config.gd")); err == nil {
 		cfg := string(raw)
 		if p.ServerURL != "" && !strings.Contains(cfg, strings.TrimRight(p.ServerURL, "/")) {
-			add("error", "game/config.gd 的 SERVER_URL 不是 %s：上傳後遊戲會找不到遊戲伺服器", p.ServerURL)
+			add("error", "%s 的 SERVER_URL 不是 %s：上傳後遊戲會找不到遊戲伺服器", path.Join(gdir, "config.gd"), p.ServerURL)
 		}
 		if strings.HasPrefix(p.Platform, "http") && !strings.Contains(cfg, strings.TrimRight(p.Platform, "/")) {
-			add("error", "game/config.gd 的 PLATFORM_ORIGINS 沒有 %s：SDK 會拒絕平台的訊息", p.Platform)
+			add("error", "%s 的 PLATFORM_ORIGINS 沒有 %s：SDK 會拒絕平台的訊息", path.Join(gdir, "config.gd"), p.Platform)
 		}
 	}
 	web := p.path(p.Web)

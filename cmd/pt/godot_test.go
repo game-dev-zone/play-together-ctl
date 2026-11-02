@@ -86,9 +86,11 @@ func TestCheckGodot(t *testing.T) {
 	must(t, os.WriteFile(preset, []byte(strings.Replace(string(raw), "variant/thread_support=false", "variant/thread_support=true", 1)), 0o644))
 	must(t, os.WriteFile(filepath.Join(root, "game/bad.gd"), []byte(`extends Node
 func _ready(): JavaScriptBridge.eval("1")`), 0o644))
+	must(t, os.WriteFile(filepath.Join(root, "game/p2p.gd"), []byte(`extends Node
+var peer := WebRTCPeerConnection.new()`), 0o644))
 	fs = checkProject(p, filepath.Join(root, "build"))
-	if !has(fs, "執行緒") || !has(fs, "JavaScriptBridge.eval") {
-		t.Fatalf("要擋下執行緒支援與 eval：%+v", fs)
+	if !has(fs, "執行緒") || !has(fs, "JavaScriptBridge.eval") || !has(fs, "p2p.gd 使用 WebRTC") {
+		t.Fatalf("要擋下執行緒支援、eval 與 WebRTC：%+v", fs)
 	}
 }
 
@@ -140,5 +142,26 @@ func TestSDKExport(t *testing.T) {
 	// 已有檔案的資料夾要拒絕，避免覆蓋
 	if err := exportSDK(dir); err == nil {
 		t.Fatal("非空資料夾應該拒絕")
+	}
+}
+
+// Godot 引擎檔內建 WebRTC 程式碼不能擋上傳；GDScript 真的用到 WebRTC 才擋
+func TestGodotEngineWebRTC(t *testing.T) {
+	dir := t.TempDir()
+	must(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte(`<script src="playtogether-sdk-godot.iife.js"></script>`), 0o644))
+	must(t, os.WriteFile(filepath.Join(dir, "index.js"), []byte("var Engine=1;function GodotRTCPeerConnection(){new RTCPeerConnection()}"), 0o644))
+	must(t, os.WriteFile(filepath.Join(dir, "index.wasm"), []byte("x"), 0o644))
+	must(t, os.WriteFile(filepath.Join(dir, "game.js"), []byte("new RTCPeerConnection()"), 0o644))
+	var engine, other string
+	for _, f := range checkProject(nil, dir) {
+		if strings.Contains(f.msg, "index.js") {
+			engine = f.level
+		}
+		if strings.Contains(f.msg, "game.js") && strings.Contains(f.msg, "WebRTC") {
+			other = f.level
+		}
+	}
+	if engine != "info" || other != "error" {
+		t.Fatalf("引擎檔應是 info、其他檔案仍是 error：%q %q", engine, other)
 	}
 }

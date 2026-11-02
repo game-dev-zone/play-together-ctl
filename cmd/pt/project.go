@@ -59,8 +59,19 @@ type project struct {
 	ServerURL     string `json:"serverUrl"`
 	Web           string `json:"web"`
 	DevAddr       string `json:"devAddr"`
+	// Godot 專案的資料夾（client 為 godot）：預設 game；搭配 Claude Code Game Studios 時是 .（專案根目錄）
+	Godot string `json:"godot,omitempty"`
+	AI    string `json:"ai,omitempty"` // studios：已加入 Claude Code Game Studios
 
 	dir string // playtogether.json 所在的資料夾
+}
+
+// godotDir 是 Godot 專案相對於專案根目錄的位置
+func (p *project) godotDir() string {
+	if p.Godot == "" {
+		return "game"
+	}
+	return p.Godot
 }
 
 // findProject 從目前資料夾往上找 playtogether.json；找不到回 nil（不是錯誤）。
@@ -128,6 +139,7 @@ func cmdNew(args []string) error {
 	server := fs.String("server", "go", "遊戲伺服器：go 或 node")
 	tmpl := fs.String("template", "", "舊的寫法：web-go、web-node、godot-go、godot-node（等於 -client 加 -server）")
 	platform := fs.String("platform", "https://（平台網址）", "玩聚平台網址（之後可以在 playtogether.json 修改）")
+	ai := fs.String("ai", "", "AI 開發範本：studios（加入 Claude Code Game Studios，只限 Godot）或 none；Godot 專案沒指定時會詢問")
 	_ = fs.Parse(reorder(args))
 	if fs.NArg() != 1 {
 		return errors.New("用法：pt new [-client web|godot] [-server go|node] <專案名稱>")
@@ -149,14 +161,44 @@ func cmdNew(args []string) error {
 	if !slices.Contains(servers, *server) {
 		return fmt.Errorf("-server 只能是 go 或 node（目前是 %q）", *server)
 	}
+	if *ai != "" && *ai != "studios" && *ai != "none" {
+		return fmt.Errorf("-ai 只能是 studios 或 none（目前是 %q）", *ai)
+	}
+	if *ai == "studios" && *client != "godot" {
+		return errors.New("Claude Code Game Studios 是遊戲引擎專用的範本，目前只搭配 Godot：請加上 -client godot（網頁專案已經附上給 AI 助手的 CLAUDE.md、AGENTS.md）")
+	}
 	if err := requireAssets(); err != nil {
 		return err
 	}
 	if _, err := os.Stat(name); err == nil {
 		return fmt.Errorf("資料夾 %s 已經存在", name)
 	}
+	ccgs, err := loadCCGS()
+	if err != nil {
+		return err
+	}
+	if *ai == "" && *client == "godot" {
+		fmt.Printf("要加入 %s 嗎？用 Claude Code 開發時提供企劃、美術、程式、QA 等 AI 角色與流程（MIT 授權，%s 版，約 4 MB）。\n", ccgs.Name, ccgs.Version)
+		if askYesNo("加入後 Godot 專案會放在專案根目錄，並加上玩聚規則。") {
+			*ai = "studios"
+		}
+	}
+	studios := *ai == "studios"
+	godotDir := "game"
+	if studios {
+		godotDir = "." // Claude Code Game Studios 的工具假設 project.godot 在根目錄
+	}
+	godotPrefix := godotDir + "/"
+	if godotDir == "." {
+		godotPrefix = ""
+	}
+	godotPath := godotPrefix
+	if godotPath == "" {
+		godotPath = "./"
+	}
 	template := *client + "-" + *server
-	data := map[string]string{"Name": name, "Client": *client, "Server": *server, "Template": template, "Platform": *platform, "SDKVersion": sdkVersion()}
+	data := map[string]string{"Name": name, "Client": *client, "Server": *server, "Template": template, "Platform": *platform, "SDKVersion": sdkVersion(),
+		"GodotDir": godotDir, "GodotPrefix": godotPrefix, "GodotPath": godotPath, "AI": map[bool]string{true: "studios", false: ""}[studios]}
 	files := map[string][]byte{}
 	render := func(src, dst string) error {
 		return fs2Walk("templates/"+src, func(rel string, content []byte) error {
@@ -176,20 +218,31 @@ func cmdNew(args []string) error {
 			return nil
 		})
 	}
-	clientDir := map[string]string{"web": "web", "godot": "game"}[*client]
-	for _, r := range [][2]string{{"project", ""}, {"client-" + *client, clientDir}, {"server-" + *server, "server"}} {
+	clientDir := map[string]string{"web": "web", "godot": godotDir}[*client]
+	for _, r := range [][2]string{{"project", ""}, {"ai", ""}, {"client-" + *client, clientDir}, {"server-" + *server, "server"}} {
 		if err := render(r[0], r[1]); err != nil {
 			return err
 		}
 	}
 	files[".gitignore"] = files["gitignore"]
 	delete(files, "gitignore")
-	sdk, err := sdkFiles(*client, *server)
+	sdk, err := sdkFiles(*client, *server, godotDir)
 	if err != nil {
 		return err
 	}
 	for k, v := range sdk {
 		files[k] = v
+	}
+	if studios {
+		// 先下載並驗證完，才開始寫入檔案（失敗時不留下半個專案）
+		fmt.Printf("下載 %s %s（commit %s）並驗證每個檔案…\n", ccgs.Name, ccgs.Version, ccgs.Commit[:7])
+		studio, err := fetchCCGS(ccgs)
+		if err != nil {
+			return err
+		}
+		if err := addStudiosFiles(files, ccgs, studio); err != nil {
+			return err
+		}
 	}
 	for rel, content := range files {
 		dst := filepath.Join(name, filepath.FromSlash(rel))
@@ -208,16 +261,27 @@ func cmdNew(args []string) error {
 	fmt.Printf("  cd %s\n", name)
 	if *client == "godot" {
 		fmt.Println("  pt dev        # 匯出 Godot 網頁版並用本機模擬模式打開兩個玩家分頁（需要 Godot 4.3 以上與網頁匯出範本）")
-		fmt.Println("  用 Godot 編輯器打開 game/ 修改遊戲")
+		if studios {
+			fmt.Println("  用 Godot 編輯器打開專案根目錄修改遊戲")
+			fmt.Printf("  claude        # 在專案根目錄啟動 Claude Code，執行 /start 開始（%s 已加入，玩聚規則在 PLAYTOGETHER.md）\n", ccgs.Name)
+		} else {
+			fmt.Println("  用 Godot 編輯器打開 game/ 修改遊戲")
+		}
 	} else {
 		fmt.Println("  pt dev        # 本機模擬模式，打開兩個玩家分頁")
 	}
 	fmt.Println("接上玩聚的步驟見 README.md。")
+	if !studios {
+		fmt.Println("用 AI 助手開發：專案附有 CLAUDE.md、AGENTS.md，平台規則在 PLAYTOGETHER.md。")
+		if *client == "godot" {
+			fmt.Printf("想用 %s（AI 遊戲開發團隊範本）：建立專案時加上 -ai studios。\n", ccgs.Name)
+		}
+	}
 	return nil
 }
 
 // sdkFiles：專案需要的 SDK 檔案（相對專案根目錄的路徑 → 內容）。pt new 與 pt sdk update 共用。
-func sdkFiles(client, server string) (map[string][]byte, error) {
+func sdkFiles(client, server, godotDir string) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	switch client {
 	case "web":
@@ -227,9 +291,9 @@ func sdkFiles(client, server string) (map[string][]byte, error) {
 		}
 		out["web/playtogether-sdk.iife.js"] = iife
 	case "godot":
-		// 外掛放在 game/addons；轉接檔匯出時才複製到 build/（pt build）
+		// 外掛放在 Godot 專案的 addons/；轉接檔匯出時才複製到 build/（pt build）
 		if err := fs2Walk("assets/sdk/godot/addons", func(rel string, content []byte) error {
-			out["game/addons/"+rel] = content
+			out[path.Join(godotDir, "addons", rel)] = content
 			return nil
 		}); err != nil {
 			return nil, err
@@ -306,7 +370,7 @@ func cmdSDK(args []string) error {
 	if err := requireAssets(); err != nil {
 		return err
 	}
-	files, err := sdkFiles(p.Client, p.Server)
+	files, err := sdkFiles(p.Client, p.Server, p.godotDir())
 	if err != nil {
 		return err
 	}
@@ -495,7 +559,12 @@ func checkProject(p *project, webDir string) []finding {
 			}
 		}
 		if strings.Contains(s, "RTCPeerConnection") {
-			add("error", "%s 使用 WebRTC（RTCPeerConnection），玩聚不允許遊戲自己建立點對點連線", rel)
+			if isGodotEngineJS(webDir, rel, s) {
+				// Godot 的網頁引擎檔本身就含 WebRTC 支援；遊戲有沒有用到改在 GDScript 檢查（checkGodot）
+				add("info", "%s 是 Godot 引擎檔，內含 WebRTC 支援程式碼（不影響審核；遊戲本身不要使用 WebRTC）", rel)
+			} else {
+				add("error", "%s 使用 WebRTC（RTCPeerConnection），玩聚不允許遊戲自己建立點對點連線", rel)
+			}
 		}
 		if strings.Contains(s, "SharedWorker") {
 			add("error", "%s 使用 SharedWorker，玩聚不允許", rel)
@@ -564,15 +633,18 @@ func cmdCheck(args []string) error {
 
 // printFindings 印出結果，回傳是否有錯誤。
 func printFindings(fs []finding) bool {
-	bad := false
+	bad, warned := false, false
 	for _, f := range fs {
-		mark := "！"
-		if f.level == "error" {
+		mark := "・" // info：說明，不需要處理
+		switch f.level {
+		case "error":
 			mark, bad = "✗", true
+		case "warn":
+			mark, warned = "！", true
 		}
 		fmt.Println(mark, f.msg)
 	}
-	if len(fs) == 0 {
+	if !bad && !warned {
 		fmt.Println("✓ 檢查通過")
 	} else if !bad {
 		fmt.Println("✓ 沒有錯誤（有提醒，請確認）")
@@ -636,4 +708,15 @@ func exportSDK(dir string) error {
 	fmt.Println("  go/       Go 遊戲伺服器：go.mod 加 replace github.com/Yanghsuanming/play-together/sdk-go => <這個資料夾>/go")
 	fmt.Println("  node/     Node.js 遊戲伺服器：直接 import playtogether-server.mjs")
 	return nil
+}
+
+// isGodotEngineJS：Godot 網頁匯出的引擎載入檔（和 .wasm 同名、內容是 Godot 引擎）
+func isGodotEngineJS(webDir, rel, content string) bool {
+	if !strings.HasSuffix(rel, ".js") || strings.ContainsAny(rel, `/\`) {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(webDir, strings.TrimSuffix(rel, ".js")+".wasm")); err != nil {
+		return false
+	}
+	return strings.Contains(content, "GodotRTCPeerConnection") && strings.Contains(content, "Engine")
 }

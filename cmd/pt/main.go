@@ -83,6 +83,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `pt：玩聚開發者工具
 
   pt new [-client web|godot] [-server go|node] <名稱>   建立新專案（畫面＋遊戲伺服器，已接好 SDK）
+         [-ai studios|none]                     Godot 專案加入 Claude Code Game Studios（AI 開發範本）
   pt dev [-addr 127.0.0.1:8090]                本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
   pt build                                      Godot 專案：用 Godot 無頭模式匯出網頁版到 build/
   pt check [建置資料夾]                         上傳前檢查（對照審核準則）

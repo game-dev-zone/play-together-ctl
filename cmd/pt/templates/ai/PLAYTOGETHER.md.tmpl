@@ -1,0 +1,72 @@
+# 玩聚平台規則（[[.Name]]）
+
+這個專案是在**玩聚 PlayTogether** 上架的多人派對遊戲：直播主貼出房間連結，觀眾用手機登入後進房一起玩。
+人和 AI 助手（Claude Code、Codex 等）開發時都要遵守這份規則；和其他文件或 AI 範本的建議衝突時，**以這份為準**。
+
+## 專案結構
+
+| 路徑 | 內容 |
+| --- | --- |
+[[- if eq .Client "godot"]]
+| `[[.GodotPath]]` | Godot 4 專案（[[if eq .GodotDir "."]]專案根目錄；[[end]]`project.godot`、網頁匯出設定 `export_presets.cfg`、玩聚外掛 `addons/playtogether`、中文字型 `fonts/`、平台與伺服器網址 `config.gd`） |
+| `build/` | `pt build` 匯出的網頁版，上傳的就是它（不進版控） |
+[[- else]]
+| `web/` | 遊戲畫面（HTML／JS），上傳的就是這個資料夾；`config.js` 放平台與遊戲伺服器網址 |
+[[- end]]
+| `server/` | 遊戲伺服器（[[if eq .Server "go"]]Go[[else]]Node.js[[end]]）：兌換啟動碼、判定分數與勝負、回報一局 |
+| `playtogether.json` | `pt` 的專案設定 |
+| `keys/` | 私鑰，**不得進版控、不得放進前端** |
+
+## 常用指令
+
+| 指令 | 用途 |
+| --- | --- |
+| `pt dev` | 本機模擬模式（不需要金鑰、不連玩聚），打開兩個玩家分頁[[if eq .Client "godot"]]；會先匯出 Godot 網頁版[[end]] |
+[[- if eq .Client "godot"]]
+| `pt build` | 用 Godot 無頭模式匯出網頁版到 `build/` |
+[[- end]]
+| `pt check` | 上傳前檢查（審核準則的自動檢查） |
+| `pt upload -version <版本>` | 上傳版本（上傳前自動 `pt check`） |
+| `pt sdk update` | 更新專案裡的玩聚 SDK |
+
+改完程式後至少跑 `pt check`，並用 `pt dev` 實際開兩個分頁玩一次。
+
+## 架構原則（不能改）
+
+1. **伺服器決定遊戲狀態**：分數、勝負、回合流程都在 `server/` 判定；畫面端只送「操作」，不送結果。
+2. **玩家身分只來自平台**：畫面端從 SDK 拿到一次性的啟動碼，交給遊戲伺服器用伺服器 SDK 兌換成玩家 ID、暱稱、房號。不要自己做登入、帳號、配對或房間系統，也不要向玩家要任何個人資料。
+3. **畫面端回報的資料不得用於玩家權益**（排名、獎勵、解鎖），一律以伺服器判定為準。
+4. **每一局要回報**：開始與結束時由遊戲伺服器呼叫回報一局（`reportRoundStart`／`reportRoundEnd`），平台用它統計成效。
+5. **語音由平台處理**：遊戲不得使用麥克風、相機、WebRTC；發言規則由遊戲伺服器送給平台。
+6. **私鑰只在遊戲伺服器**：不得出現在畫面端、版控或上傳的檔案裡。
+
+## 執行環境（遊戲在玩聚的 iframe 裡）
+
+- iframe 只允許 `allow-scripts allow-same-origin`：不能開新分頁或彈出視窗、不能用 `alert`／`confirm`／`prompt`、不能導向上層頁面、不能送出表單。
+- 不能使用 WebRTC、SharedWorker、麥克風、相機、付款。
+- 不要用 `eval` 或 `new Function`（平台的內容安全政策會擋）。
+- 檢舉、離開、靜音等按鈕由平台放在畫面上方，遊戲不用做。
+- **手機優先**：先在 iOS Safari、Android Chrome 能玩；觸控目標要夠大，直式畫面也要能玩。
+[[- if eq .Client "godot"]]
+- **Godot 網頁匯出**：`export_presets.cfg` 的 `variant/thread_support` 必須是 `false`（iframe 裡沒有跨來源隔離）；行動裝置 VRAM 壓縮保持關閉；Head Include 要載入 `playtogether-sdk-godot.iife.js`。這些已經設定好，不要改。
+- **不要用 `JavaScriptBridge.eval`**；呼叫 SDK 一律透過 `PlayTogether` autoload（`addons/playtogether`）。
+- `HTTPRequest` 要用**完整網址**（`config.gd` 的 `SERVER_URL`），不能用相對路徑。
+- 中文字要用專案附的字型（`fonts/NotoSansTC-Common.otf`），網頁版讀不到系統字型；需要更多字時換成完整字型或自己的子集。
+[[- end]]
+
+## 上架審核會擋的內容
+
+- **廣告、追蹤、分析工具**（Google Analytics、Tag Manager、Facebook Pixel、Hotjar、A/B 測試服務等）一律不可以；成效數據由平台提供。
+- **賭博或博弈元素**：下注、押注、可兌換現金或財物的獎勵、付費抽獎或轉蛋都不可以；文案也不要出現賭博、博弈字眼。
+- 分級上限是**輔導十五級**，不收限制級；不要有色情、血腥暴力。
+- 不要從外部網址載入程式；上傳的檔案總大小請控制在 50 MB 內[[if eq .Client "godot"]]（Godot 引擎本身壓縮後約 10 MB）[[end]]。
+
+## 給 AI 助手
+
+- 新功能先想清楚「哪些在伺服器、哪些在畫面端」，再寫程式。
+- 規劃數據分析時：不要在遊戲裡加任何追蹤或分析 SDK；需要的統計請用伺服器端記錄或平台的一局回報。
+- 規劃經濟、營運活動時：不要設計可兌換現金或財物的東西、付費抽獎或機率型付費內容。
+- 規劃網路連線時：使用玩聚的房間與啟動碼，不要自建配對、帳號或房間系統。
+- 不要修改 `playtogether.json` 的金鑰設定、`keys/` 裡的檔案，也不要把私鑰內容讀出或印出。
+
+文件：玩聚開發者文件站（平台網址 `/docs`）：快速開始、瀏覽器 SDK、伺服器 SDK、[[if eq .Client "godot"]]Godot 外掛、[[end]]審核準則。
