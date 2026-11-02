@@ -135,7 +135,7 @@ func TestNewStudios(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := cmdNew([]string{"web-studio", "-ai", "studios"}); err == nil || !strings.Contains(err.Error(), "Godot") {
+	if err := cmdNew([]string{"web-studio", "-client", "web", "-ai", "studios"}); err == nil || !strings.Contains(err.Error(), "Godot") {
 		t.Fatalf("網頁專案不能加 studios：%v", err)
 	}
 	must(t, cmdNew([]string{"party-ai", "-client", "godot", "-ai", "studios", "-platform", "https://pt.example"}))

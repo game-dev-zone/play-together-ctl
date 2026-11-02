@@ -11,7 +11,6 @@ package main
 
 import (
 	"archive/tar"
-	"bufio"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -167,19 +166,4 @@ func addStudiosFiles(files map[string][]byte, m ccgsManifest, studio map[string]
 		files[path.Join(dir, ".gdignore")] = nil
 	}
 	return nil
-}
-
-// askYesNo 只在互動式終端機詢問；不是終端機（CI、腳本）時回傳 false。
-func askYesNo(question string) bool {
-	st, err := os.Stdin.Stat()
-	if err != nil || st.Mode()&os.ModeCharDevice == 0 {
-		return false
-	}
-	fmt.Print(question + " [y/N] ")
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes", "是", "好":
-		return true
-	}
-	return false
 }

@@ -26,7 +26,7 @@ go install github.com/Yanghsuanming/play-together-ctl/cmd/pt@latest
 ## 五分鐘開始
 
 ```sh
-pt new my-party-game             # 預設：網頁（HTML／JS）前端＋Go 遊戲伺服器
+pt new                           # 逐步選擇名稱、畫面（網頁或 Godot）、伺服器、AI 開發方式
 cd my-party-game
 pt dev                           # 本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
 ```
@@ -48,7 +48,8 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 Godot 專案可以加入 [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios)（MIT）：一套用 Claude Code 開發遊戲的 AI 角色與流程範本。
 
 ```sh
-pt new -client godot -ai studios my-godot-game   # 沒加 -ai 時，Godot 專案會詢問；-ai none 不詢問
+pt new                                            # 畫面選 Godot 4，AI 開發方式選 Claude Code Game Studios
+# 或直接指定：pt new -client godot -ai studios my-godot-game
 cd my-godot-game
 claude                                            # 第一次執行 /start
 ```
@@ -63,7 +64,10 @@ claude                                            # 第一次執行 /start
 | `-client` | `web`（預設）、`godot` | 遊戲前端。`web` 產生 `web/`；`godot` 產生 Godot 專案 `game/`，匯出到 `build/` |
 | `-server` | `go`（預設）、`node` | 遊戲伺服器（兌換啟動碼、判定勝負）|
 | `-template` | `web-go`、`web-node`、`godot-go`、`godot-node` | 舊寫法，等於同時指定上面兩個 |
-| `-ai` | `studios`、`none` | 加入 Claude Code Game Studios（只限 Godot）；Godot 專案沒指定時會詢問 |
+| `-ai` | `studios`、`none` | 加入 Claude Code Game Studios（只限 Godot；只指定它時自動用 Godot） |
+| `-y` | | 不詢問，沒指定的項目用預設值 |
+
+在終端機執行 `pt new` 時，沒用參數指定的項目（名稱、畫面、伺服器、AI 開發方式）會逐步詢問，最後顯示對應的完整指令。CI 或腳本裡（不是終端機）不會詢問。
 
 不需要金鑰、不需要連線到玩聚：直接開啟時 SDK 自動進入模擬模式。
 
@@ -71,7 +75,7 @@ claude                                            # 第一次執行 /start
 
 | 指令 | 說明 |
 | --- | --- |
-| `pt new [-client web\|godot] [-server go\|node] [-ai studios\|none] [-platform 平台網址] <名稱>` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定） |
+| `pt new [-client web\|godot] [-server go\|node] [-ai studios\|none] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定） |
 | `pt dev [-addr 127.0.0.1:8090] [-players 2]` | 本機模擬模式（Godot 專案會先匯出） |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
 | `pt check [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器網址設定 |

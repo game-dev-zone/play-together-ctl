@@ -139,14 +139,22 @@ func cmdNew(args []string) error {
 	server := fs.String("server", "go", "遊戲伺服器：go 或 node")
 	tmpl := fs.String("template", "", "舊的寫法：web-go、web-node、godot-go、godot-node（等於 -client 加 -server）")
 	platform := fs.String("platform", "https://（平台網址）", "玩聚平台網址（之後可以在 playtogether.json 修改）")
-	ai := fs.String("ai", "", "AI 開發範本：studios（加入 Claude Code Game Studios，只限 Godot）或 none；Godot 專案沒指定時會詢問")
+	ai := fs.String("ai", "", "AI 開發範本：studios（加入 Claude Code Game Studios，只限 Godot）或 none；在終端機執行且沒指定時會詢問")
+	yes := fs.Bool("y", false, "不詢問，沒指定的項目用預設值")
 	_ = fs.Parse(reorder(args))
-	if fs.NArg() != 1 {
-		return errors.New("用法：pt new [-client web|godot] [-server go|node] <專案名稱>")
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if fs.NArg() > 1 {
+		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-ai studios|none] <專案名稱>")
 	}
-	name := fs.Arg(0)
-	if !namePattern.MatchString(name) {
-		return errors.New("專案名稱只能用小寫英文、數字與連字號（3–40 字，英文開頭），例如 my-party-game")
+	checkName := func(name string) error {
+		if !namePattern.MatchString(name) {
+			return errors.New("專案名稱只能用小寫英文、數字與連字號（3–40 字，英文開頭），例如 my-party-game")
+		}
+		if _, err := os.Stat(name); err == nil {
+			return fmt.Errorf("資料夾 %s 已經存在", name)
+		}
+		return nil
 	}
 	if *tmpl != "" {
 		cs, ok := templates[*tmpl]
@@ -154,6 +162,7 @@ func cmdNew(args []string) error {
 			return fmt.Errorf("沒有範本 %q：可用 web-go、web-node、godot-go、godot-node", *tmpl)
 		}
 		*client, *server = cs[0], cs[1]
+		set["client"], set["server"] = true, true
 	}
 	if !slices.Contains(clients, *client) {
 		return fmt.Errorf("-client 只能是 web 或 godot（目前是 %q）", *client)
@@ -165,23 +174,40 @@ func cmdNew(args []string) error {
 		return fmt.Errorf("-ai 只能是 studios 或 none（目前是 %q）", *ai)
 	}
 	if *ai == "studios" && *client != "godot" {
-		return errors.New("Claude Code Game Studios 是遊戲引擎專用的範本，目前只搭配 Godot：請加上 -client godot（網頁專案已經附上給 AI 助手的 CLAUDE.md、AGENTS.md）")
+		if set["client"] {
+			return errors.New("Claude Code Game Studios 是遊戲引擎專用的範本，目前只搭配 Godot：請加上 -client godot（網頁專案已經附上給 AI 助手的 CLAUDE.md、AGENTS.md）")
+		}
+		*client, set["client"] = "godot", true // 只指定 -ai studios：一定是 Godot
 	}
 	if err := requireAssets(); err != nil {
 		return err
-	}
-	if _, err := os.Stat(name); err == nil {
-		return fmt.Errorf("資料夾 %s 已經存在", name)
 	}
 	ccgs, err := loadCCGS()
 	if err != nil {
 		return err
 	}
-	if *ai == "" && *client == "godot" {
-		fmt.Printf("要加入 %s 嗎？用 Claude Code 開發時提供企劃、美術、程式、QA 等 AI 角色與流程（MIT 授權，%s 版，約 4 MB）。\n", ccgs.Name, ccgs.Version)
-		if askYesNo("加入後 Godot 專案會放在專案根目錄，並加上玩聚規則。") {
-			*ai = "studios"
+
+	// 終端機裡逐步詢問沒用參數指定的項目
+	name := fs.Arg(0)
+	if name != "" {
+		if err := checkName(name); err != nil {
+			return err
 		}
+	}
+	if !*yes && interactive() && (name == "" || !set["client"] || !set["server"] || !set["ai"]) {
+		if name, err = newWizard(name, client, server, ai, set, ccgs, checkName); err != nil {
+			if errors.Is(err, errCanceled) {
+				fmt.Println("\n已取消，沒有建立任何檔案。")
+				return nil
+			}
+			return err
+		}
+		if name == "" {
+			return nil
+		}
+	}
+	if name == "" {
+		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-ai studios|none] <專案名稱>（在終端機執行 pt new 會逐步詢問）")
 	}
 	studios := *ai == "studios"
 	godotDir := "game"
@@ -274,10 +300,65 @@ func cmdNew(args []string) error {
 	if !studios {
 		fmt.Println("用 AI 助手開發：專案附有 CLAUDE.md、AGENTS.md，平台規則在 PLAYTOGETHER.md。")
 		if *client == "godot" {
-			fmt.Printf("想用 %s（AI 遊戲開發團隊範本）：建立專案時加上 -ai studios。\n", ccgs.Name)
+			fmt.Printf("想用 %s（AI 遊戲開發團隊範本）：建立專案時選擇它，或加上 -ai studios。\n", ccgs.Name)
 		}
 	}
 	return nil
+}
+
+// newWizard 逐步詢問專案名稱、畫面、伺服器、AI 開發範本，最後確認。回傳空名稱表示開發者選擇不建立。
+func newWizard(name string, client, server, ai *string, set map[string]bool, ccgs ccgsManifest, checkName func(string) error) (string, error) {
+	var err error
+	fmt.Println("建立玩聚遊戲專案（直接按 Enter 用預設值，Ctrl-C 取消）")
+	fmt.Println()
+	if name == "" {
+		if name, err = askText("專案名稱（小寫英文、數字、連字號，例如 my-party-game）", checkName); err != nil {
+			return "", err
+		}
+		fmt.Println()
+	}
+	if !set["client"] {
+		if *client, err = choose("遊戲畫面要用什麼做？", []option{
+			{"web", "網頁（HTML／JavaScript）", "直接用瀏覽器開發，適合 2D、介面為主的派對遊戲"},
+			{"godot", "Godot 4", "用 Godot 編輯器開發，匯出網頁版；需要 Godot 4.3 以上"},
+		}, "web"); err != nil {
+			return "", err
+		}
+	}
+	if !set["server"] {
+		if *server, err = choose("遊戲伺服器（兌換玩家身分、判定勝負）要用哪種語言？", []option{
+			{"go", "Go", ""},
+			{"node", "Node.js", ""},
+		}, "go"); err != nil {
+			return "", err
+		}
+	}
+	if !set["ai"] {
+		if *client == "godot" {
+			if *ai, err = choose("要用哪種方式搭配 AI 開發？", []option{
+				{"none", "一般專案", "附上給 AI 助手的規則（PLAYTOGETHER.md、CLAUDE.md、AGENTS.md），Claude Code、Codex 等都適用；Godot 專案在 game/"},
+				{"studios", ccgs.Name, fmt.Sprintf("用 Claude Code 當遊戲開發團隊：企劃、美術、程式、QA 等 AI 角色與流程（MIT，%s 版）。\n     從 GitHub 下載並逐檔驗證，加上玩聚規則；Godot 專案放在根目錄", ccgs.Version)},
+			}, ""); err != nil {
+				return "", err
+			}
+		} else {
+			*ai = "none"
+			fmt.Printf("AI 開發：專案會附上給 AI 助手的規則（PLAYTOGETHER.md、CLAUDE.md、AGENTS.md）。%s 目前只搭配 Godot。\n\n", ccgs.Name)
+		}
+	}
+	cmd := fmt.Sprintf("pt new -client %s -server %s -ai %s %s", *client, *server, *ai, name)
+	fmt.Printf("即將建立 %s：畫面 %s、伺服器 %s、AI 範本 %s\n", name, *client, *server, map[string]string{"studios": ccgs.Name, "none": "一般"}[*ai])
+	fmt.Printf("（下次可以直接執行：%s）\n", cmd)
+	ok, err := confirm("確定建立？", true)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		fmt.Println("沒有建立任何檔案。")
+		return "", nil
+	}
+	fmt.Println()
+	return name, nil
 }
 
 // sdkFiles：專案需要的 SDK 檔案（相對專案根目錄的路徑 → 內容）。pt new 與 pt sdk update 共用。
