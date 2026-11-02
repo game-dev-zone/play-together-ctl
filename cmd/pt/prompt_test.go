@@ -74,7 +74,9 @@ func TestNewWizard(t *testing.T) {
 	// 輸入中斷（Ctrl-D）視為取消
 	typeIn(t, "wiz-eof", "2")
 	promptIn = bufio.NewReader(strings.NewReader("wiz-eof\n2\n"))
-	must(t, cmdNew(nil))
+	if err := cmdNew(nil); err == nil {
+		t.Fatal("取消時要回傳錯誤（腳本才知道沒有建立）")
+	}
 	if _, err := os.Stat(filepath.Join(dir, "wiz-eof")); err == nil {
 		t.Fatal("取消時不能留下資料夾")
 	}

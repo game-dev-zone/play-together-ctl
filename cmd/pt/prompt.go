@@ -16,7 +16,14 @@ import (
 var (
 	interactive = func() bool {
 		st, err := os.Stdin.Stat()
-		return err == nil && st.Mode()&os.ModeCharDevice != 0
+		if err != nil || st.Mode()&os.ModeCharDevice == 0 {
+			return false
+		}
+		// </dev/null 也是字元裝置，但不是終端機
+		if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(st, null) {
+			return false
+		}
+		return true
 	}
 	promptIn = bufio.NewReader(os.Stdin)
 )

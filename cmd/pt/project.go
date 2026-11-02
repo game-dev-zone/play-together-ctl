@@ -197,8 +197,8 @@ func cmdNew(args []string) error {
 	if !*yes && interactive() && (name == "" || !set["client"] || !set["server"] || !set["ai"]) {
 		if name, err = newWizard(name, client, server, ai, set, ccgs, checkName); err != nil {
 			if errors.Is(err, errCanceled) {
-				fmt.Println("\n已取消，沒有建立任何檔案。")
-				return nil
+				fmt.Println()
+				return errors.New("已取消，沒有建立任何檔案")
 			}
 			return err
 		}
