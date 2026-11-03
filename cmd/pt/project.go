@@ -440,8 +440,20 @@ func cmdSDK(args []string) error {
 	if len(args) == 2 && args[0] == "export" {
 		return exportSDK(args[1])
 	}
-	if len(args) != 1 || args[0] != "update" {
-		return errors.New("用法：pt sdk update（在 pt new 建立的專案裡）或 pt sdk export <資料夾>（把 SDK 檔案寫到資料夾，給既有專案用）")
+	if len(args) == 0 || (len(args) == 1 && args[0] == "status") {
+		if err := requireAssets(); err != nil {
+			return err
+		}
+		p, err := findProject()
+		if err != nil {
+			return err
+		}
+		fmt.Print(sdkStatus(p, true))
+		return nil
+	}
+	force := len(args) == 2 && args[0] == "update" && args[1] == "-force"
+	if !force && (len(args) != 1 || args[0] != "update") {
+		return errors.New("用法：pt sdk status（檢查有沒有新版）、pt sdk update（在 pt new 建立的專案裡）或 pt sdk export <資料夾>（把 SDK 檔案寫到資料夾，給既有專案用）")
 	}
 	p, err := findProject()
 	if err != nil {
@@ -452,6 +464,10 @@ func cmdSDK(args []string) error {
 	}
 	if err := requireAssets(); err != nil {
 		return err
+	}
+	// 不要用舊的 pt 把專案的 SDK 降版
+	if c, ok := compareSDK(p.SDKVersion, sdkVersion()); ok && c > 0 && !force {
+		return fmt.Errorf("專案的 SDK %s 比這個 pt 內嵌的 %s 新，不會降版：請先更新 pt（go install %s@latest）；確定要降版請加 -force", p.SDKVersion, sdkVersion(), installPath)
 	}
 	files, err := sdkFiles(p.Client, p.Server, p.godotDir())
 	if err != nil {
@@ -514,6 +530,7 @@ func cmdDev(args []string) error {
 	} else {
 		ln.Close()
 	}
+	printSDKNotice(p)
 	if p.Client == "godot" {
 		if err := buildGodot(p); err != nil {
 			return err
@@ -756,6 +773,9 @@ func checkProject(p *project, webDir string) []finding {
 	}
 	if p.Client == "godot" {
 		checkGodot(p, add)
+	}
+	if msg := sdkNotice(p); msg != "" {
+		add("warn", "%s", msg)
 	}
 	if !strings.HasPrefix(p.Platform, "http") || strings.Contains(p.Platform, "（") {
 		add("error", "playtogether.json 的 platform 還沒填（玩聚建立遊戲後會給你平台網址）")

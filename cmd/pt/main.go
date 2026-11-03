@@ -97,7 +97,8 @@ func usage() {
   pt check [-local] [建置資料夾]                上傳前檢查（對照審核準則）；-local：platform、serverUrl 還沒填不算錯誤
   pt keygen -purpose upload|server [-out 檔案]   產生金鑰；在專案裡預設寫到 keys/<用途>.key
   pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定從 playtogether.json 讀
-  pt sdk update                                 把專案裡的 SDK 更新成這個 pt 內嵌的版本
+  pt sdk status                                 檢查專案的 SDK、這個 pt 內嵌的 SDK、最新版 pt 的 SDK
+  pt sdk update [-force]                        把專案裡的 SDK 更新成這個 pt 內嵌的版本（不會降版，除非 -force）
   pt sdk export <資料夾>                        把 SDK 檔案寫到資料夾（接到既有專案用）
   pt version                                    顯示版本並檢查有沒有新版
 

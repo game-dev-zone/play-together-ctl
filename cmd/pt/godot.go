@@ -133,9 +133,6 @@ func buildGodot(p *project) error {
 	if err := os.WriteFile(filepath.Join(out, "playtogether-sdk-godot.iife.js"), iife, 0o644); err != nil {
 		return err
 	}
-	if p.SDKVersion != "" && p.SDKVersion != sdkVersion() {
-		fmt.Printf("！專案的 SDK 是 %s，這個 pt 內嵌 %s：建議執行 pt sdk update\n", p.SDKVersion, sdkVersion())
-	}
 	return nil
 }
 
@@ -183,6 +180,7 @@ func cmdBuild(args []string) error {
 	if p == nil {
 		return errors.New("找不到 playtogether.json：請在用 pt new 建立的專案裡執行")
 	}
+	printSDKNotice(p)
 	if p.Client != "godot" {
 		fmt.Println("網頁專案不需要建置：web/ 就是要上傳的檔案")
 		return nil
