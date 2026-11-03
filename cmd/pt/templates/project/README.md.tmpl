@@ -48,7 +48,7 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 [[- else]]
 | `web/` | 遊戲畫面（上傳到玩聚託管的就是這個資料夾） |
 [[- end]]
-| `server/` | 遊戲伺服器：兌換啟動碼、判定分數與勝負、回報一局 |
+| `server/` | 遊戲伺服器：兌換啟動碼、判定分數與勝負、回報一局。遊戲規則在 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]`；斷線重連骨架在 `[[if eq .Server "go"]]session.go[[else]]session.mjs[[end]]`（座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間），通常不需要修改 |
 | `playtogether.json` | 專案設定（pt 指令都從這裡讀） |
 | `Makefile` | 常用指令（見上方） |
 | `keys/` | 私鑰（不進版控） |

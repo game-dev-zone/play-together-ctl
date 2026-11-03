@@ -1,15 +1,18 @@
 // [[.Name]] 的遊戲伺服器（pt new 從範本「一起按」產生，Node.js 版）：兌換啟動碼、由伺服器決定分數與勝負、回報一局給玩聚。
+// 這個檔案是遊戲規則與 HTTP API；斷線重連（座位、token、離線、向玩聚查房間）在 session.mjs，通常不需要修改。
 // 只用 Node 內建模組與玩聚伺服器 SDK（playtogether-server.mjs，pt sdk update 會更新），不需要 npm install。
 //
 // 本機開發：在專案根目錄執行 pt dev（模擬模式，不需要連玩聚）。
 // 接上玩聚（正式部署）：
 //   PT_API_URL=（平台網址） PT_KEY_ID=（伺服器金鑰 ID） PT_KEY_FILE=../keys/server.key \
 //   ALLOW_ORIGINS='https://*.games.（平台網域）' ADDR=0.0.0.0:8090 node main.mjs
-import { createPrivateKey, randomBytes } from 'node:crypto';
+// 選填：SEAT_HOLD（離線多久讓出座位，預設 60s）、ROOM_SYNC（多久向玩聚查一次房間，預設 10s）。
+import { createPrivateKey } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join as joinPath, normalize } from 'node:path';
 import { PlatformApiError, createServerClient } from './playtogether-server.mjs';
+import { SessionError, createHub, newToken } from './session.mjs';
 
 const ROUND_MS = 10_000;
 const env = (k, d) => process.env[k] || d;
@@ -23,53 +26,59 @@ if (!mock) {
 }
 const pt = createServerClient({ baseUrl: env('PT_API_URL', ''), keyId: env('PT_KEY_ID', ''), privateKey, mock });
 
-const rooms = new Map(); // 房號 → { epoch, players: Map(玩家 ID → 玩家), endsAt, roundId, winner }
-const tokens = new Map(); // 連線 token → { roomId, playerId }
-const newToken = () => randomBytes(16).toString('hex');
-
-// join：前端把平台給的一次性啟動碼交給伺服器；伺服器向玩聚兌換，才知道是誰、在哪個房間
-async function join(code) {
-  const ex = await pt.exchangeLaunchCode(code);
-  let room = rooms.get(ex.roomId);
-  if (!room || ex.epoch > room.epoch) { // 房主在平台按「重新開始」：局數加一，清空這個房間
-    room = { epoch: ex.epoch, players: new Map(), endsAt: 0, roundId: '', winner: '' };
-    rooms.set(ex.roomId, room);
-  }
-  let p = room.players.get(ex.playerId);
-  if (!p) {
-    p = { id: ex.playerId, name: ex.name, taps: 0, token: '' };
-    room.players.set(ex.playerId, p);
-  }
-  tokens.delete(p.token); // 重新整理或換裝置：舊連線失效，分數保留
-  p.token = newToken();
-  tokens.set(p.token, { roomId: ex.roomId, playerId: ex.playerId });
-  return { token: p.token, playerId: p.id, name: p.name };
+// 斷線重連（座位、token、離線、向玩聚查房間）在 session.mjs；這裡只有遊戲規則
+// game 是一個房間的遊戲狀態（「一起按」：10 秒內比誰按得多）。換成你的玩法時改這裡。
+function newGame() {
+  return {
+    taps: new Map(), // 玩家 ID → 按了幾下
+    endsAt: 0, // 進行中的一局何時結束；0 表示沒有在玩
+    roundId: '',
+    winner: '',
+    playing() { return this.endsAt > 0 && Date.now() < this.endsAt; },
+    // 離線太久的人能不能讓出座位：一局進行中先保留，讓他有機會回來
+    canFree() { return !this.endsAt; },
+    // 玩家讓出座位或被房主踢出
+    leave(playerId) { this.taps.delete(playerId); },
+    // 房間結束（房主重新開始、關房）時呼叫；有進行中的一局就回傳它的 ID，骨架會回報「中止」
+    abort() {
+      if (!this.endsAt) return '';
+      this.endsAt = 0;
+      return this.roundId;
+    },
+    // 給某一位玩家看的完整狀態（重新連線後也是送這個）。只放這位玩家可以看的資料
+    view(room, viewer) {
+      const players = [...room.seats.values()].map((s) => ({ id: s.playerId, name: s.name, taps: this.taps.get(s.playerId) || 0, online: hub.online(s) }))
+        .sort((a, b) => b.taps - a.taps || a.name.localeCompare(b.name));
+      const left = this.playing() ? (this.endsAt - Date.now()) / 1000 : 0;
+      return { me: viewer, players, playing: left > 0, secondsLeft: left, winner: this.winner };
+    },
+  };
 }
 
-function state(room) {
-  const players = [...room.players.values()].map(({ id, name, taps }) => ({ id, name, taps }))
-    .sort((a, b) => b.taps - a.taps || a.name.localeCompare(b.name));
-  const left = room.endsAt ? (room.endsAt - Date.now()) / 1000 : 0;
-  return { players, playing: left > 0, secondsLeft: Math.max(0, left), winner: room.winner };
-}
+const hub = createHub({ pt, newGame });
 
 // 時間到就結束這一局、判定勝負，並回報給玩聚（成效分析用，失敗不影響遊戲）
 setInterval(() => {
-  for (const [roomId, room] of rooms) {
-    if (!room.endsAt || Date.now() < room.endsAt) continue;
+  for (const room of hub.rooms.values()) {
+    const g = room.game;
+    if (!g.endsAt || Date.now() < g.endsAt) continue;
     let best = 0;
-    for (const p of room.players.values()) if (p.taps > best) { best = p.taps; room.winner = p.name; }
-    room.endsAt = 0;
-    pt.reportRoundEnd(roomId, room.epoch, room.roundId, 'completed').catch((e) => console.warn('回報一局結束失敗（不影響遊戲）：', e.message));
+    for (const s of room.seats.values()) {
+      const n = g.taps.get(s.playerId) || 0;
+      if (n > best) { best = n; g.winner = s.name; }
+    }
+    g.endsAt = 0;
+    pt.reportRoundEnd(room.id, room.epoch, g.roundId, 'completed').catch((e) => console.warn('回報一局結束失敗（不影響遊戲）：', e.message));
   }
 }, 200);
 
-function start(room, roomId) {
-  room.roundId = newToken();
-  room.winner = '';
-  room.endsAt = Date.now() + ROUND_MS;
-  for (const p of room.players.values()) p.taps = 0;
-  pt.reportRoundStart(roomId, room.epoch, room.roundId, [...room.players.keys()]).catch((e) => console.warn('回報一局開始失敗（不影響遊戲）：', e.message));
+function start(room) {
+  const g = room.game;
+  g.roundId = newToken();
+  g.winner = '';
+  g.endsAt = Date.now() + ROUND_MS;
+  for (const id of room.seats.keys()) g.taps.set(id, 0);
+  pt.reportRoundStart(room.id, room.epoch, g.roundId, [...room.seats.keys()]).catch((e) => console.warn('回報一局開始失敗（不影響遊戲）：', e.message));
 }
 
 // 上傳到玩聚託管後，前端在 https://<版本>.games.（平台網域），要允許跨來源請求；支援 https://*.games.example.com 這種萬用字元
@@ -97,13 +106,15 @@ createServer(async (req, res) => {
     res.setHeader('Vary', 'Origin');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
   }
+  // 第一次進入、重新整理、網路恢復後都走這裡：用新的啟動碼回到原座位
   if (req.method === 'POST' && req.url === '/join') {
     const body = await readBody(req);
     if (!body?.launchCode) return send(res, 400, { error: 'bad_request' });
     try {
-      return send(res, 200, await join(body.launchCode));
+      return send(res, 200, await hub.join(body.launchCode));
     } catch (e) {
-      if (e instanceof PlatformApiError) return send(res, 403, { error: e.code }); // 啟動碼無效、過期或已用過
+      if (e instanceof PlatformApiError) return send(res, 403, { error: e.code }); // 啟動碼無效、過期、已用過，或被房主踢出
+      if (e instanceof SessionError) return send(res, e.status, { error: e.code }); // 舊局的啟動碼、暫時查不到玩聚
       console.error('兌換啟動碼失敗：', e);
       return send(res, 502, { error: 'unavailable' });
     }
@@ -111,13 +122,16 @@ createServer(async (req, res) => {
   // 其他操作都帶 join 拿到的 token；玩家只能送「操作」，分數與勝負由伺服器決定
   if (req.method === 'POST' && req.url === '/action') {
     const body = await readBody(req);
-    const t = body && tokens.get(body.token);
-    const room = t && rooms.get(t.roomId);
-    const me = room?.players.get(t.playerId);
-    if (!me) return send(res, 401, { error: 'session_expired' });
-    if (body.action === 'start' && !room.endsAt) start(room, t.roomId);
-    if (body.action === 'tap' && room.endsAt && Date.now() < room.endsAt) me.taps++;
-    return send(res, 200, state(room));
+    let room, seat;
+    try {
+      ({ room, seat } = hub.lookup(body?.token));
+    } catch (e) {
+      return send(res, e.status || 401, { error: e.code || 'session_expired' }); // 換了分頁或裝置、被踢、房間已結束
+    }
+    const g = room.game;
+    if (body.action === 'start' && !g.endsAt) start(room);
+    if (body.action === 'tap' && g.playing()) g.taps.set(seat.playerId, (g.taps.get(seat.playerId) || 0) + 1);
+    return send(res, 200, g.view(room, seat.playerId));
   }
   // 本機開發時直接提供前端（同一個來源）；上傳到玩聚託管後，前端由玩聚提供
   if (req.method === 'GET') {

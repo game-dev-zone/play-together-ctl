@@ -1,0 +1,142 @@
+// 斷線重連骨架（pt new 產生）：管「連線的生命週期」，不管遊戲規則。通常不需要修改。
+//
+// - 座位綁定玩聚的玩家 ID：重新整理、換裝置、網路恢復後，用新的啟動碼回到原座位。
+// - 重新加入時換一個新 token，舊 token 立即失效（回 401 session_expired），同一個人不能兩個分頁同時操作。
+// - 多久沒收到請求算離線；離線超過 SEAT_HOLD 而且遊戲同意（canFree）時讓出座位。
+// - 每 ROOM_SYNC 向玩聚查一次房間：被踢的人立即失效；房主重新開始（局數增加）或房間關閉時結束這個房間。
+// - 連續查不到玩聚超過 6 次查詢的時間（預設 60 秒）：拒絕新加入（已在房間的人繼續玩），不無限期放行舊狀態。
+//
+// 遊戲規則在 main.mjs，透過 createHub 的 newGame 接上；遊戲物件要有 view、canFree、leave、abort。
+// 平台的分工見玩聚開發者文件站 /docs/reconnect：平台管誰能進房間，遊戲伺服器管座位與遊戲狀態。
+import { randomBytes } from 'node:crypto';
+import { PlatformApiError } from './playtogether-server.mjs';
+
+const duration = (name, fallbackMs) => {
+  const v = process.env[name];
+  if (!v) return fallbackMs;
+  const m = /^(\d+(?:\.\d+)?)(ms|s|m)$/.exec(v);
+  if (m) return Number(m[1]) * { ms: 1, s: 1000, m: 60_000 }[m[2]];
+  console.warn(`${name} 格式錯誤（例如 10s、1m），改用預設 ${fallbackMs}ms`);
+  return fallbackMs;
+};
+
+export const OFFLINE_AFTER_MS = 5_000; // 多久沒收到請求算離線（前端每 0.5 秒輪詢）
+const SEAT_HOLD_MS = duration('SEAT_HOLD', 60_000); // 離線多久讓出座位
+const ROOM_SYNC_MS = duration('ROOM_SYNC', 10_000); // 多久向玩聚查一次房間
+const PLATFORM_STALE_MS = 6 * ROOM_SYNC_MS; // 連續查不到玩聚多久後拒絕新加入
+const IDLE_ROOM_MS = 30 * 60_000; // 沒有人的房間多久後清掉
+
+export class SessionError extends Error {
+  constructor(code, status) {
+    super(code);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+export const newToken = () => randomBytes(16).toString('hex');
+
+export function createHub({ pt, newGame }) {
+  const rooms = new Map(); // 房號 → { id, epoch, seats: Map(玩家 ID → 座位), game, emptyAt }
+  const tokens = new Map(); // 連線 token → { roomId, playerId }
+  let syncFailingSince = 0; // 向玩聚查房間開始失敗的時間；0 表示最近一次成功
+
+  const online = (seat, now = Date.now()) => now - seat.lastSeen < OFFLINE_AFTER_MS;
+
+  function removeSeat(room, playerId) {
+    const seat = room.seats.get(playerId);
+    if (!seat) return;
+    tokens.delete(seat.token);
+    room.seats.delete(playerId);
+    room.game.leave(playerId);
+    if (room.seats.size === 0) room.emptyAt = Date.now();
+  }
+
+  // 結束房間：所有連線失效；有進行中的一局就回報中止
+  function endRoom(room) {
+    for (const seat of room.seats.values()) tokens.delete(seat.token);
+    rooms.delete(room.id);
+    const roundId = room.game.abort();
+    if (roundId) pt.reportRoundEnd(room.id, room.epoch, roundId, 'aborted').catch((e) => console.warn('回報一局中止失敗（不影響遊戲）：', e.message));
+  }
+
+  // 兌換一次性啟動碼，把玩家放回原座位（或給新座位），回傳新的連線 token 與目前狀態
+  async function join(code) {
+    if (syncFailingSince && Date.now() - syncFailingSince > PLATFORM_STALE_MS) throw new SessionError('platform_unavailable', 503);
+    const ex = await pt.exchangeLaunchCode(code);
+    let room = rooms.get(ex.roomId);
+    if (room && ex.epoch < room.epoch) throw new SessionError('stale_epoch', 409); // 房主已重新開始，這是舊局的啟動碼
+    if (!room || ex.epoch > room.epoch) {
+      if (room) endRoom(room); // 房主在平台按了「重新開始」：舊局結束，所有舊連線失效
+      room = { id: ex.roomId, epoch: ex.epoch, seats: new Map(), game: newGame(), emptyAt: 0 };
+      rooms.set(room.id, room);
+    }
+    let seat = room.seats.get(ex.playerId);
+    if (!seat) {
+      seat = { playerId: ex.playerId, name: ex.name, token: '', lastSeen: 0 };
+      room.seats.set(seat.playerId, seat);
+    }
+    tokens.delete(seat.token); // 舊分頁、舊裝置的連線立即失效
+    seat.token = newToken();
+    seat.lastSeen = Date.now();
+    tokens.set(seat.token, { roomId: room.id, playerId: seat.playerId });
+    return { token: seat.token, playerId: seat.playerId, name: seat.name, state: room.game.view(room, seat.playerId) };
+  }
+
+  // 用 token 找到房間與座位，並記錄「剛剛還在」；失效時丟出 session_expired
+  function lookup(token) {
+    const t = token && tokens.get(token);
+    const room = t && rooms.get(t.roomId);
+    const seat = room?.seats.get(t.playerId);
+    if (!seat || seat.token !== token) throw new SessionError('session_expired', 401);
+    seat.lastSeen = Date.now();
+    return { room, seat };
+  }
+
+  // 離線太久而且遊戲同意的人讓出座位；沒有人的房間過一段時間清掉
+  function sweep() {
+    const now = Date.now();
+    for (const room of [...rooms.values()]) {
+      for (const [id, seat] of [...room.seats]) {
+        if (now - seat.lastSeen > SEAT_HOLD_MS && room.game.canFree(id)) removeSeat(room, id);
+      }
+      if (room.seats.size === 0 && room.emptyAt && now - room.emptyAt > IDLE_ROOM_MS) endRoom(room);
+    }
+  }
+
+  // 向玩聚查每個房間（被踢、重新開始、關房）。平台無法替遊戲伺服器斷線，所以要自己查
+  async function syncRooms() {
+    for (const { id, epoch } of [...rooms.values()].map((r) => ({ id: r.id, epoch: r.epoch }))) {
+      let m = null;
+      let gone = false;
+      try {
+        m = await pt.getRoomMembers(id);
+      } catch (e) {
+        gone = e instanceof PlatformApiError && e.status === 404; // 房間已不存在
+        if (!gone) {
+          console.warn('查詢房間失敗（下次再試）：', e.message);
+          if (!syncFailingSince) syncFailingSince = Date.now();
+          continue;
+        }
+      }
+      syncFailingSince = 0;
+      const room = rooms.get(id);
+      if (!room || room.epoch !== epoch) continue; // 查詢期間房間已經換了一局，下次再查
+      if (gone || !m.open || m.epoch > room.epoch) {
+        endRoom(room); // 關房，或房主重新開始：玩家的頁面會重新載入，用新的啟動碼開新局
+        continue;
+      }
+      for (const mem of m.members || []) if (mem.kicked) removeSeat(room, mem.playerId);
+    }
+  }
+
+  setInterval(sweep, 1000);
+  let syncing = false;
+  setInterval(async () => {
+    if (syncing) return;
+    syncing = true;
+    try { await syncRooms(); } finally { syncing = false; }
+  }, ROOM_SYNC_MS);
+
+  return { rooms, join, lookup, online };
+}

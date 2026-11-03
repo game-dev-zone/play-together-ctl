@@ -13,7 +13,7 @@
 [[- else]]
 | `web/` | 遊戲畫面（HTML／JS），上傳的就是這個資料夾；`config.js` 放平台與遊戲伺服器網址 |
 [[- end]]
-| `server/` | 遊戲伺服器（[[if eq .Server "go"]]Go[[else]]Node.js[[end]]）：兌換啟動碼、判定分數與勝負、回報一局 |
+| `server/` | 遊戲伺服器（[[if eq .Server "go"]]Go[[else]]Node.js[[end]]）：兌換啟動碼、判定分數與勝負、回報一局。`[[if eq .Server "go"]]session.go[[else]]session.mjs[[end]]` 是斷線重連骨架（座位、token、離線、向玩聚查房間）：換玩法時改 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]` 的遊戲物件（`view`、`canFree`、`leave`、`abort`），不要拿掉骨架；`view` 只能放這位玩家看得到的資料 |
 | `playtogether.json` | `pt` 的專案設定 |
 | `keys/` | 私鑰，**不得進版控、不得放進前端** |
 
