@@ -126,7 +126,7 @@ func sdkVersion() string {
 
 func requireAssets() error {
 	if sdkVersion() == "" {
-		return errors.New("這個 pt 沒有內嵌 SDK：請從 https://github.com/Yanghsuanming/play-together-ctl/releases 下載 pt")
+		return errors.New("這個 pt 沒有內嵌 SDK：請從 https://github.com/game-dev-zone/play-together-ctl/releases 下載 pt")
 	}
 	return nil
 }

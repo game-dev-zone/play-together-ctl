@@ -36,7 +36,7 @@ import (
 	"strings"
 	"time"
 
-	playtogether "github.com/Yanghsuanming/play-together-ctl/internal/playtogether"
+	playtogether "github.com/game-dev-zone/play-together-ctl/internal/playtogether"
 )
 
 // version 由發佈流程用 -ldflags "-X main.version=v1.2.3" 設定；用 go install 安裝時改讀模組版本
@@ -94,7 +94,7 @@ func usage() {
   pt sdk export <資料夾>                        把 SDK 檔案寫到資料夾（接到既有專案用）
   pt version
 
-文件：玩聚開發者文件站 /docs/pt　原始碼與下載：https://github.com/Yanghsuanming/play-together-ctl
+文件：玩聚開發者文件站 /docs/pt　原始碼與下載：https://github.com/game-dev-zone/play-together-ctl
 `)
 	os.Exit(2)
 }

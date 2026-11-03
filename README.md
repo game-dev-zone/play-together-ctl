@@ -6,11 +6,11 @@
 
 ## 安裝
 
-**下載執行檔**（建議）：到 [Releases](https://github.com/Yanghsuanming/play-together-ctl/releases) 下載對應系統的檔案，改名成 `pt` 放進 PATH。
+**下載執行檔**（建議）：到 [Releases](https://github.com/game-dev-zone/play-together-ctl/releases) 下載對應系統的檔案，改名成 `pt` 放進 PATH。
 
 ```sh
 # macOS（Apple 晶片），其他系統換成 pt-darwin-amd64、pt-linux-amd64、pt-linux-arm64、pt-windows-amd64.exe
-curl -fLo pt https://github.com/Yanghsuanming/play-together-ctl/releases/latest/download/pt-darwin-arm64
+curl -fLo pt https://github.com/game-dev-zone/play-together-ctl/releases/latest/download/pt-darwin-arm64
 chmod +x pt && sudo mv pt /usr/local/bin/
 pt version
 ```
@@ -20,7 +20,7 @@ pt version
 **用 Go 安裝**（Go 1.24 以上）：
 
 ```sh
-go install github.com/Yanghsuanming/play-together-ctl/cmd/pt@latest
+go install github.com/game-dev-zone/play-together-ctl/cmd/pt@latest
 ```
 
 ## 五分鐘開始
@@ -97,7 +97,7 @@ claude                                            # 第一次執行 /start
 
 ## 回報問題
 
-使用上的問題或建議請開 [Issue](https://github.com/Yanghsuanming/play-together-ctl/issues)。**資安問題請不要公開開 Issue**，見 [SECURITY.md](SECURITY.md)。
+使用上的問題或建議請開 [Issue](https://github.com/game-dev-zone/play-together-ctl/issues)。**資安問題請不要公開開 Issue**，見 [SECURITY.md](SECURITY.md)。
 
 ## 授權
 
