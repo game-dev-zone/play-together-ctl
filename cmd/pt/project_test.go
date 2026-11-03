@@ -250,3 +250,83 @@ func TestReorder(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestNewMakefile(t *testing.T) {
+	requireEmbeddedSDK(t)
+	for _, tc := range []struct {
+		tmpl  string
+		godot bool
+	}{{"web-go", false}, {"godot-node", true}} {
+		root := newProject(t, tc.tmpl)
+		raw, err := os.ReadFile(filepath.Join(root, "Makefile"))
+		if err != nil {
+			t.Fatalf("%s 沒有 Makefile", tc.tmpl)
+		}
+		mk := string(raw)
+		for _, target := range []string{"help:", "dev:", "server:", "test:", "check:", "verify:", "keys:", "upload:"} {
+			if !strings.Contains(mk, "\n"+target) {
+				t.Fatalf("%s 的 Makefile 少了 %s", tc.tmpl, target)
+			}
+		}
+		if strings.Contains(mk, "\nbuild:") != tc.godot || strings.Contains(mk, "\nclean:") != tc.godot {
+			t.Fatalf("%s：只有 Godot 專案要有 build、clean", tc.tmpl)
+		}
+		if !strings.Contains(mk, "\t$(PT) dev -smoke") || !strings.Contains(mk, "\t$(PT) check -local") {
+			t.Fatalf("make verify 要跑啟動驗證與部署前檢查：%s", mk)
+		}
+		if _, err := exec.LookPath("make"); err == nil {
+			for _, args := range [][]string{{"-n", "verify"}, {"-s", "help"}} {
+				c := exec.Command("make", args...)
+				c.Dir = root
+				if out, err := c.CombinedOutput(); err != nil {
+					t.Fatalf("%s：make %v 失敗：%v\n%s", tc.tmpl, args, err, out)
+				}
+			}
+			c := exec.Command("make", "upload")
+			c.Dir = root
+			if out, err := c.CombinedOutput(); err == nil || !strings.Contains(string(out), "請指定版本") {
+				t.Fatalf("沒有 VERSION 時 make upload 要擋下：%s", out)
+			}
+		}
+	}
+}
+
+func TestCheckLocal(t *testing.T) {
+	requireEmbeddedSDK(t)
+	root := newProject(t, "web-go")
+	t.Chdir(root)
+	if err := cmdCheck(nil); err == nil {
+		t.Fatal("新專案沒填 platform、serverUrl，pt check 要失敗")
+	}
+	if err := cmdCheck([]string{"-local"}); err != nil {
+		t.Fatalf("pt check -local 不該因為還沒部署而失敗：%v", err)
+	}
+	// -local 只放寬「還沒填」：私鑰放進上傳資料夾仍然是錯誤
+	if err := os.WriteFile(filepath.Join(root, "web", "server.key"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdCheck([]string{"-local"}); err == nil {
+		t.Fatal("pt check -local 仍要擋下私鑰")
+	}
+}
+
+func TestDevSmoke(t *testing.T) {
+	requireEmbeddedSDK(t)
+	t.Setenv("GOWORK", "off")
+	t.Setenv("GOFLAGS", "-mod=mod")
+	t.Setenv("GOPROXY", "off")
+	root := newProject(t, "web-go")
+	t.Chdir(root)
+	if err := cmdDev([]string{"-smoke"}); err != nil {
+		t.Fatalf("pt dev -smoke 應通過：%v", err)
+	}
+	// 首頁沒有載入 SDK：要失敗
+	idx := filepath.Join(root, "web", "index.html")
+	raw, _ := os.ReadFile(idx)
+	if err := os.WriteFile(idx, []byte(strings.ReplaceAll(string(raw), "playtogether-sdk", "other")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdDev([]string{"-smoke"}); err == nil || !strings.Contains(err.Error(), "SDK") {
+		t.Fatalf("首頁沒有 SDK 時 pt dev -smoke 要失敗：%v", err)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -296,6 +297,7 @@ func cmdNew(args []string) error {
 	} else {
 		fmt.Println("  pt dev        # 本機模擬模式，打開兩個玩家分頁")
 	}
+	fmt.Println("  make verify   # 啟動驗證：伺服器測試、檢查要上傳的檔案、在模擬模式實際啟動一次（make 列出所有指令）")
 	fmt.Println("接上玩聚的步驟見 README.md。")
 	if !studios {
 		fmt.Println("用 AI 助手開發：專案附有 CLAUDE.md、AGENTS.md，平台規則在 PLAYTOGETHER.md。")
@@ -486,6 +488,7 @@ func cmdDev(args []string) error {
 	fs := flag.NewFlagSet("dev", flag.ExitOnError)
 	addr := fs.String("addr", "", "本機位址（預設 playtogether.json 的 devAddr）")
 	players := fs.Int("players", 2, "要打開幾個玩家分頁（0 表示不開瀏覽器）")
+	smoke := fs.Bool("smoke", false, "啟動驗證：啟動遊戲伺服器、確認首頁與 SDK 載入得到，然後結束（不開瀏覽器）")
 	_ = fs.Parse(args)
 	p, err := findProject()
 	if err != nil {
@@ -493,6 +496,15 @@ func cmdDev(args []string) error {
 	}
 	if p == nil {
 		return errors.New("找不到 playtogether.json：請在用 pt new 建立的專案裡執行")
+	}
+	if *addr == "" && *smoke {
+		// 啟動驗證用隨機的空埠，不和正在跑的 pt dev 搶
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return err
+		}
+		*addr = ln.Addr().String()
+		ln.Close()
 	}
 	if *addr == "" {
 		*addr = p.DevAddr
@@ -511,6 +523,25 @@ func cmdDev(args []string) error {
 	switch p.Server {
 	case "go":
 		cmd = exec.Command("go", "run", ".")
+		if *smoke {
+			// 先編譯再直接執行：go run 不會把結束訊號轉給伺服器
+			tmp, err := os.MkdirTemp("", "pt-smoke-")
+			if err != nil {
+				return err
+			}
+			defer os.RemoveAll(tmp)
+			bin := filepath.Join(tmp, "server")
+			if runtime.GOOS == "windows" {
+				bin += ".exe"
+			}
+			build := exec.Command("go", "build", "-o", bin, ".")
+			build.Dir = p.path("server")
+			build.Stdout, build.Stderr = os.Stdout, os.Stderr
+			if err := build.Run(); err != nil {
+				return fmt.Errorf("遊戲伺服器編譯失敗：%w", err)
+			}
+			cmd = exec.Command(bin)
+		}
 	case "node":
 		cmd = exec.Command("node", "main.mjs")
 	default:
@@ -545,6 +576,16 @@ func cmdDev(args []string) error {
 		_ = cmd.Process.Kill()
 		return errors.New("遊戲伺服器 60 秒內沒有啟動")
 	}
+	if *smoke {
+		err := smokeCheck(site)
+		stopServer(cmd)
+		<-done
+		if err != nil {
+			return fmt.Errorf("啟動驗證沒有通過：%w", err)
+		}
+		fmt.Println("✓ 啟動驗證通過：遊戲伺服器在模擬模式啟動，首頁與玩聚 SDK 都載入得到")
+		return nil
+	}
 	fmt.Printf("\n本機模擬模式：%s（每開一個分頁就是一位玩家；Ctrl-C 結束）\n", site)
 	for i := 0; i < *players; i++ {
 		openBrowser(site)
@@ -556,6 +597,57 @@ func cmdDev(args []string) error {
 		return nil
 	case err := <-done:
 		return err
+	}
+}
+
+// smokeCheck 確認首頁回 200、有載入玩聚 SDK，而且 SDK 檔案本身也拿得到。
+func smokeCheck(site string) error {
+	get := func(u string) (string, error) {
+		res, err := http.Get(u)
+		if err != nil {
+			return "", err
+		}
+		defer res.Body.Close()
+		b, err := io.ReadAll(io.LimitReader(res.Body, 4<<20))
+		if err != nil {
+			return "", err
+		}
+		if res.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("%s 回應 %d", u, res.StatusCode)
+		}
+		return string(b), nil
+	}
+	html, err := get(site)
+	if err != nil {
+		return err
+	}
+	sdk := ""
+	for _, m := range scriptSrc.FindAllStringSubmatch(html, -1) {
+		if strings.Contains(m[1], "playtogether-sdk") {
+			sdk = m[1]
+		}
+	}
+	if sdk == "" {
+		return errors.New("首頁沒有載入玩聚 SDK（playtogether-sdk.iife.js 或 playtogether-sdk-godot.iife.js）")
+	}
+	u, err := url.Parse(site)
+	if err != nil {
+		return err
+	}
+	ref, err := url.Parse(sdk)
+	if err != nil {
+		return err
+	}
+	if _, err := get(u.ResolveReference(ref).String()); err != nil {
+		return fmt.Errorf("玩聚 SDK 載入失敗：%w", err)
+	}
+	return nil
+}
+
+// stopServer：先請伺服器自己結束（Windows 不支援送 Ctrl-C，直接結束）。
+func stopServer(cmd *exec.Cmd) {
+	if runtime.GOOS == "windows" || cmd.Process.Signal(os.Interrupt) != nil {
+		_ = cmd.Process.Kill()
 	}
 }
 
@@ -694,7 +786,8 @@ func isLocal(host string) bool {
 
 func cmdCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	_ = fs.Parse(args)
+	local := fs.Bool("local", false, "本機開發：platform、serverUrl 還沒填只提醒，不算錯誤（上傳前仍要填）")
+	_ = fs.Parse(reorder(args))
 	p, err := findProject()
 	if err != nil {
 		return err
@@ -706,7 +799,15 @@ func cmdCheck(args []string) error {
 		}
 		webDir = p.path(p.Web)
 	}
-	if printFindings(checkProject(p, webDir)) {
+	fs2 := checkProject(p, webDir)
+	if *local {
+		for i, f := range fs2 {
+			if f.level == "error" && strings.Contains(f.msg, "還沒填") {
+				fs2[i].level = "info"
+			}
+		}
+	}
+	if printFindings(fs2) {
 		return errors.New("檢查沒有通過")
 	}
 	return nil

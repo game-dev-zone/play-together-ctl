@@ -29,7 +29,10 @@ go install github.com/game-dev-zone/play-together-ctl/cmd/pt@latest
 pt new                           # 逐步選擇名稱、畫面（網頁或 Godot）、伺服器、AI 開發方式
 cd my-party-game
 pt dev                           # 本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
+make verify                      # 啟動驗證：伺服器測試、在模擬模式實際啟動一次、檢查要上傳的檔案
 ```
+
+新專案附有 `Makefile`（`make` 列出所有指令：`dev`、`server`、`verify`、`check`、`keys`、`upload`，Godot 另有 `build`、`clean`），每個指令都只是包裝 `pt`。
 
 用 Godot 開發：
 
@@ -76,9 +79,9 @@ claude                                            # 第一次執行 /start
 | 指令 | 說明 |
 | --- | --- |
 | `pt new [-client web\|godot] [-server go\|node] [-ai studios\|none] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定） |
-| `pt dev [-addr 127.0.0.1:8090] [-players 2]` | 本機模擬模式（Godot 專案會先匯出） |
+| `pt dev [-addr 127.0.0.1:8090] [-players 2] [-smoke]` | 本機模擬模式（Godot 專案會先匯出）；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
-| `pt check [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器網址設定 |
+| `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器網址設定；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒 |
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；公鑰交給玩聚登記，私鑰只在你手上 |
 | `pt upload -version <版本> [-notes 說明] [-no-build]` | 上傳版本（設定從 `playtogether.json` 讀；Godot 專案先匯出；上傳前自動檢查） |
 | `pt sdk update` | 把專案裡的 SDK 更新成這個 `pt` 內嵌的版本 |

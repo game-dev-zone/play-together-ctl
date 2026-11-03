@@ -13,6 +13,22 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 需要 Godot 4.3 以上，並安裝**網頁匯出範本**（編輯器 → 管理匯出範本 → 下載）。`pt` 會自動找 Godot，找不到時設定環境變數 `GODOT`。[[else]]
 改了前端重新整理即可；改了伺服器重新執行 `pt dev`。[[end]]
 
+## 常用指令（Makefile）
+
+`make` 列出所有指令；每個指令都只是包裝 `pt`，沒有 make（例如 Windows）時直接執行 `pt` 指令也一樣。
+
+| 指令 | 用途 |
+| --- | --- |
+| `make dev` | 本機模擬模式（`pt dev`） |
+| `make server` | 只啟動遊戲伺服器，不開瀏覽器（`pt dev -players 0`） |
+| `make verify` | **啟動驗證，每次改完跑**：伺服器測試、[[if eq .Client "godot"]]匯出、[[end]]在模擬模式實際啟動一次並確認首頁與 SDK 載入得到（`pt dev -smoke`）、檢查要上傳的檔案（`pt check -local`）。不需要金鑰 |
+| `make check` | 上傳前的完整檢查（`pt check`；`platform`、`serverUrl` 都要填好） |
+| `make keys` | 產生還沒有的金鑰（已經有的不會覆蓋） |
+| `make upload VERSION=1.0.0 NOTES="說明"` | 上傳一個版本 |
+[[- if eq .Client "godot"]]
+| `make build`、`make clean` | 匯出 Godot 網頁版到 `build/`、刪除匯出結果 |
+[[- end]]
+
 ## 接上玩聚
 
 1. 產生金鑰，把公鑰交給玩聚登記：`pt keygen -purpose upload`、`pt keygen -purpose server`（私鑰寫在 `keys/`，不會進版控）。
@@ -34,6 +50,7 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 [[- end]]
 | `server/` | 遊戲伺服器：兌換啟動碼、判定分數與勝負、回報一局 |
 | `playtogether.json` | 專案設定（pt 指令都從這裡讀） |
+| `Makefile` | 常用指令（見上方） |
 | `keys/` | 私鑰（不進版控） |
 | `PLAYTOGETHER.md` | 玩聚平台規則（架構原則、執行環境限制、審核規則），`CLAUDE.md`、`AGENTS.md` 讓 AI 助手先讀它 |
 [[- if .AI]]
