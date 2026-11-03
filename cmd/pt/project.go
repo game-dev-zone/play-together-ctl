@@ -36,11 +36,11 @@ const projectFile = "playtogether.json"
 
 // 畫面（client）與伺服器（server）的組合；舊的 -template 名稱對應到這裡
 var (
-	clients   = []string{"web", "godot"}
-	servers   = []string{"go", "node"}
+	clients = []string{"web", "godot"}
+	servers = []string{"go", "node"}
 	// 畫面方向：portrait（直式）、landscape（橫式）、any（兩者都支援）
 	orientations = []string{"portrait", "landscape", "any"}
-	templates = map[string][2]string{
+	templates    = map[string][2]string{
 		"web-go": {"web", "go"}, "web-node": {"web", "node"}, "godot-go": {"godot", "go"}, "godot-node": {"godot", "node"},
 	}
 )
@@ -66,7 +66,7 @@ type project struct {
 	Godot string `json:"godot,omitempty"`
 	// 畫面方向：portrait、landscape、any；舊專案沒有這個欄位
 	Orientation string `json:"orientation,omitempty"`
-	AI    string `json:"ai,omitempty"` // studios：已加入 Claude Code Game Studios
+	AI          string `json:"ai,omitempty"` // studios：已加入 Claude Code Game Studios
 
 	dir string // playtogether.json 所在的資料夾
 }
