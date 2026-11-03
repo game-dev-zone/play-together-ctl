@@ -32,6 +32,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -97,7 +98,7 @@ func usage() {
   pt build                                      Godot 專案：用 Godot 無頭模式匯出網頁版到 build/
   pt check [-local] [建置資料夾]                上傳前檢查（對照審核準則）；-local：platform、serverUrl 還沒填不算錯誤
   pt keygen -purpose upload|server [-out 檔案]   產生金鑰；在專案裡預設寫到 keys/<用途>.key
-  pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定從 playtogether.json 讀
+  pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定（含畫面方向）從 playtogether.json 讀
   pt sdk status                                 檢查專案的 SDK、這個 pt 內嵌的 SDK、最新版 pt 的 SDK
   pt sdk update [-force]                        把專案裡的 SDK 更新成這個 pt 內嵌的版本（不會降版，除非 -force）
   pt sdk export <資料夾>                        把 SDK 檔案寫到資料夾（接到既有專案用）
@@ -169,6 +170,7 @@ func upload(args []string) error {
 	wait := fs.Duration("wait", 5*time.Minute, "等待檢查結果的時間（0 表示不等）")
 	skipCheck := fs.Bool("skip-check", false, "不執行上傳前檢查（不建議）")
 	noBuild := fs.Bool("no-build", false, "Godot 專案：不重新匯出，直接上傳現有的 build/")
+	orientation := fs.String("orientation", "", "畫面方向 portrait|landscape|any（在 pt new 建立的專案裡預設讀 playtogether.json）")
 	_ = fs.Parse(reorder(args))
 	p, err := findProject()
 	if err != nil {
@@ -192,6 +194,11 @@ func upload(args []string) error {
 		*keyFile = or(*keyFile, p.path(p.UploadKeyFile))
 		*connect = or(*connect, os.Getenv("PT_CONNECT_ORIGINS"))
 		*connect = or(*connect, p.ServerURL)
+		*orientation = or(*orientation, p.Orientation)
+	}
+	// 畫面方向是版本的一部分：平台依此提示玩家旋轉手機（沒有給時平台當成 portrait）
+	if *orientation != "" && !slices.Contains(orientations, *orientation) {
+		return fmt.Errorf("-orientation 必須是 %s", strings.Join(orientations, "、"))
 	}
 	if dir == "" || *version == "" || fs.NArg() > 1 {
 		return errors.New("用法：pt upload -version <版本> [-notes …] [建置資料夾]（在 pt new 建立的專案裡可以省略資料夾）")
@@ -236,9 +243,13 @@ func upload(args []string) error {
 		BuildID    string `json:"buildId"`
 		UploadPath string `json:"uploadPath"`
 	}
-	if err := c.signed("POST", "/v1/dev/builds", map[string]any{
+	reg := map[string]any{
 		"version": *version, "sha256": hex.EncodeToString(sum[:]), "size": len(data), "notes": *notes, "connectOrigins": origins,
-	}, &created); err != nil {
+	}
+	if *orientation != "" {
+		reg["orientation"] = *orientation
+	}
+	if err := c.signed("POST", "/v1/dev/builds", reg, &created); err != nil {
 		return err
 	}
 	req, _ := http.NewRequest(http.MethodPut, base+created.UploadPath, bytes.NewReader(data))
