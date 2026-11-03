@@ -53,6 +53,10 @@ func main() {
 		usage()
 	}
 	var err error
+	finish := func() {}
+	if os.Args[1] != "version" && os.Args[1] != "-version" && os.Args[1] != "--version" {
+		finish = startUpdateCheck()
+	}
 	switch os.Args[1] {
 	case "new":
 		err = cmdNew(os.Args[2:])
@@ -69,14 +73,16 @@ func main() {
 	case "upload":
 		err = upload(os.Args[2:])
 	case "version", "-version", "--version":
-		fmt.Printf("pt %s（玩聚開發者工具），內嵌 SDK %s\n", version, sdkVersion())
+		fmt.Print(versionInfo())
 	default:
 		usage()
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "錯誤：", err)
+		finish()
 		os.Exit(1)
 	}
+	finish()
 }
 
 func usage() {
@@ -93,7 +99,9 @@ func usage() {
   pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定從 playtogether.json 讀
   pt sdk update                                 把專案裡的 SDK 更新成這個 pt 內嵌的版本
   pt sdk export <資料夾>                        把 SDK 檔案寫到資料夾（接到既有專案用）
-  pt version
+  pt version                                    顯示版本並檢查有沒有新版
+
+其他指令最多一天檢查一次新版（只在終端機；PT_NO_UPDATE_CHECK=1 關閉）。
 
 文件：玩聚開發者文件站 /docs/pt　原始碼與下載：https://github.com/game-dev-zone/play-together-ctl
 `)

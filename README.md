@@ -86,7 +86,7 @@ claude                                            # 第一次執行 /start
 | `pt upload -version <版本> [-notes 說明] [-no-build]` | 上傳版本（設定從 `playtogether.json` 讀；Godot 專案先匯出；上傳前自動檢查） |
 | `pt sdk update` | 把專案裡的 SDK 更新成這個 `pt` 內嵌的版本 |
 | `pt sdk export <資料夾>` | 把 SDK 檔案（瀏覽器、Godot、Go、Node.js）寫到資料夾，接到不是 `pt new` 建立的既有專案 |
-| `pt version` | 顯示 `pt` 與內嵌 SDK 的版本 |
+| `pt version` | 顯示 `pt` 與內嵌 SDK 的版本，並檢查有沒有新版 |
 
 ## 這個 repo 裡有什麼
 
@@ -99,6 +99,10 @@ claude                                            # 第一次執行 /start
 | `internal/playtogether/` | `pt` 自己用的 Go SDK（上傳時的請求簽章），同樣由玩聚同步 |
 
 ## 回報問題
+
+### 新版提醒
+
+在終端機執行 `pt` 指令時，最多一天檢查一次 GitHub 上最新的 `pt` 版本，有新版就在指令結束後提醒一行（附更新方式）。只讀 GitHub 的「最新版本」頁面轉址，不送任何專案資料，也不會自動下載或替換執行檔。CI（有 `CI` 環境變數）、輸出不是終端機、自己編譯的版本不檢查；`PT_NO_UPDATE_CHECK=1` 可以關閉。`pt version` 會立即檢查一次。更新 `pt` 後，在專案裡執行 `pt sdk update` 把 SDK 換成新版。
 
 使用上的問題或建議請開 [Issue](https://github.com/game-dev-zone/play-together-ctl/issues)。**資安問題請不要公開開 Issue**，見 [SECURITY.md](SECURITY.md)。
 
