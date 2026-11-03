@@ -3,5 +3,7 @@ extends RefCounted
 
 ## 玩聚平台的網址（SDK 只接受這個來源的訊息）
 const PLATFORM_ORIGINS: PackedStringArray = ["[[.Platform]]"]
+## 畫面方向：portrait（直式）、landscape（橫式）、any（兩者都支援）；要和 playtogether.json 的 orientation 一致
+const ORIENTATION := "[[.Orientation]]"
 ## 遊戲伺服器網址；空白表示和遊戲畫面同一個來源（只適用本機 pt dev）。上傳前要改成你的遊戲伺服器網址
 const SERVER_URL := ""

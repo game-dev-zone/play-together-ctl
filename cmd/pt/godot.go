@@ -9,8 +9,10 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -243,5 +245,46 @@ func checkGodot(p *project, add func(level, format string, a ...any)) {
 	web := p.path(p.Web)
 	if _, err := os.Stat(filepath.Join(web, "playtogether-sdk-godot.iife.js")); err != nil {
 		add("error", "%s 裡沒有 playtogether-sdk-godot.iife.js：請用 pt build 匯出（會自動放上）", p.Web)
+	}
+}
+
+var (
+	viewportSize   = regexp.MustCompile(`(?m)^window/size/viewport_(width|height)=(\d+)`)
+	orientationVal = regexp.MustCompile(`(?:ORIENTATION\s*:?=\s*|orientation:\s*)["']([a-z]+)["']`)
+)
+
+// checkOrientation：playtogether.json 的 orientation 要和遊戲的設定一致（Godot 的畫面大小、config.gd、web/config.js）。
+func checkOrientation(p *project, webDir string, add func(level, format string, a ...any)) {
+	if p.Orientation == "" {
+		return // pt v0.8 以前建立的專案沒有這個欄位
+	}
+	if !slices.Contains(orientations, p.Orientation) {
+		add("error", "playtogether.json 的 orientation 只能是 portrait、landscape 或 any（目前是 %q）", p.Orientation)
+		return
+	}
+	declared := func(file, raw string) {
+		if m := orientationVal.FindStringSubmatch(raw); m != nil && m[1] != p.Orientation {
+			add("warn", "%s 的畫面方向是 %s，playtogether.json 是 %s：兩邊要一致", file, m[1], p.Orientation)
+		}
+	}
+	if p.Client == "godot" {
+		gdir := p.godotDir()
+		if raw, err := os.ReadFile(filepath.Join(p.path(gdir), "config.gd")); err == nil {
+			declared(path.Join(gdir, "config.gd"), string(raw))
+		}
+		if raw, err := os.ReadFile(filepath.Join(p.path(gdir), "project.godot")); err == nil {
+			size := map[string]int{}
+			for _, m := range viewportSize.FindAllStringSubmatch(string(raw), -1) {
+				size[m[1]], _ = strconv.Atoi(m[2])
+			}
+			w, h := size["width"], size["height"]
+			if (p.Orientation == "portrait" && w > h) || (p.Orientation == "landscape" && h > w) {
+				add("warn", "Godot 的畫面大小是 %d×%d，和 playtogether.json 的方向（%s）不符：專案設定 → 顯示 → 視窗", w, h, p.Orientation)
+			}
+		}
+		return
+	}
+	if raw, err := os.ReadFile(filepath.Join(webDir, "config.js")); err == nil {
+		declared("web/config.js", string(raw))
 	}
 }

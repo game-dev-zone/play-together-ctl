@@ -13,10 +13,12 @@ PlayTogether="*res://addons/playtogether/playtogether.gd"
 
 [display]
 
-window/size/viewport_width=390
-window/size/viewport_height=844
+window/size/viewport_width=[[if eq .Orientation "landscape"]]844[[else]]390[[end]]
+window/size/viewport_height=[[if eq .Orientation "landscape"]]390[[else]]844[[end]]
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+; 畫面方向（[[.OrientationLabel]]）：0 橫式、1 直式、6 跟著手機旋轉；改方向時也要改 playtogether.json 的 orientation
+window/handheld/orientation=[[if eq .Orientation "landscape"]]0[[else if eq .Orientation "portrait"]]1[[else]]6[[end]]
 
 [editor_plugins]
 

@@ -47,7 +47,9 @@
 - 不能使用 WebRTC、SharedWorker、麥克風、相機、付款。
 - 不要用 `eval` 或 `new Function`（平台的內容安全政策會擋）。
 - 檢舉、離開、靜音等按鈕由平台放在畫面上方，遊戲不用做。
-- **手機優先**：先在 iOS Safari、Android Chrome 能玩；觸控目標要夠大，直式畫面也要能玩。
+- **手機優先**：先在 iOS Safari、Android Chrome 能玩；觸控目標要夠大。
+- **畫面方向：[[.OrientationLabel]]**（`playtogether.json` 的 `orientation` 是 `[[.Orientation]]`）。[[if eq .Orientation "portrait"]]版面以手機直拿設計（約 390×844）。[[else if eq .Orientation "landscape"]]版面以手機橫拿設計（約 844×390）；直拿時要提示「請把手機轉成橫式」（範本已經做好）。iPhone 無法鎖定方向。[[else]]直拿、橫拿都要能玩，旋轉時版面要跟著調整；兩種方向都要實測。[[end]]開始時已經用 SDK 告訴平台方向（[[if eq .Client "godot"]]`PlayTogether.set_orientation`[[else]]`pt.ui.orientation`[[end]]）。要改方向時，`playtogether.json`、[[if eq .Client "godot"]]`[[.GodotPrefix]]config.gd` 的 `ORIENTATION` 與 `project.godot` 的畫面大小[[else]]`web/config.js` 的 `orientation`[[end]]要一起改（`pt check` 會檢查）。
+- 平台的浮動按鈕在畫面上方，上方要留空間（範本直式留 72、橫式留 56）。
 [[- if eq .Client "godot"]]
 - **Godot 網頁匯出**：`export_presets.cfg` 的 `variant/thread_support` 必須是 `false`（iframe 裡沒有跨來源隔離）；行動裝置 VRAM 壓縮保持關閉；Head Include 要載入 `playtogether-sdk-godot.iife.js`。這些已經設定好，不要改。
 - **不要用 `JavaScriptBridge.eval`**；呼叫 SDK 一律透過 `PlayTogether` autoload（`addons/playtogether`）。
@@ -67,7 +69,7 @@
 **圖片建議用 Codex 生成**（`codex exec`，需要先登入 Codex）。例如：
 
 ```sh
-codex exec -s workspace-write "產生一張 720×1280 的直式牌桌背景，存到 art/generated/bg_table.png。\
+codex exec -s workspace-write "產生一張 [[if eq .Orientation "landscape"]]1280×720 的橫式[[else]]720×1280 的直式[[end]]牌桌背景，存到 art/generated/bg_table.png。\
 卡通風格、明亮配色、中間留空放牌。不可以有任何文字、Logo、真實品牌、可辨識的真人；\
 不可以有籌碼、骰子、金錢、下注畫面；人物一律是成人；不可以有色情、血腥暴力、酒類。"
 ```

@@ -1,6 +1,0 @@
-* { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; background: #fffaf2; color: #1d2140; }
-main { max-width: 480px; margin: 0 auto; padding: 72px 16px 24px; text-align: center; } /* 上方留空間給平台的浮動按鈕 */
-button { width: 100%; min-height: 64px; margin: 8px 0; border: 0; border-radius: 16px; font: inherit; font-size: 1.3rem; font-weight: 800; color: #fff; background: #d93a3a; touch-action: manipulation; }
-#start { background: #1b6fdc; }
-ol { text-align: left; font-size: 1.1rem; }

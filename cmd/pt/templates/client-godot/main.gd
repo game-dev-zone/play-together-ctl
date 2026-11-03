@@ -13,6 +13,8 @@ var _greeting := ""
 var _failures := 0
 var _join_tries := 0
 var _poll: Timer
+var _box: VBoxContainer
+var _rotate: Label
 var _status: Label
 var _timer: Label
 var _players: Label
@@ -30,13 +32,11 @@ func _ready() -> void:
 
 func _build_ui() -> void:
 	var box := VBoxContainer.new()
+	_box = box
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# 上方留空間給平台的浮動按鈕
-	box.offset_top = 72
-	box.offset_left = 16
-	box.offset_right = -16
 	box.add_theme_constant_override("separation", 12)
 	add_child(box)
+	resized.connect(_layout)
 	var title := Label.new()
 	title.text = ProjectSettings.get_setting("application/config/name")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -49,6 +49,29 @@ func _build_ui() -> void:
 	_timer = _label(box, "")
 	_players = _label(box, "")
 	_players.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	# 橫式遊戲直拿時，請玩家轉成橫式（Config.ORIENTATION 是 "landscape" 才會出現）
+	_rotate = Label.new()
+	_rotate.text = "請把手機轉成橫式"
+	_rotate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_rotate.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_rotate.add_theme_font_size_override("font_size", 56)  # 直拿時整個畫面會縮小約一半
+	_rotate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color("1d2140")
+	_rotate.add_theme_stylebox_override("normal", bg)
+	_rotate.visible = false
+	add_child(_rotate)
+	_layout()
+
+
+## 版面：上方留空間給平台的浮動按鈕；寬螢幕（橫拿）時內容置中、最寬 560
+func _layout() -> void:
+	var landscape := size.x > size.y
+	var side := maxf(16.0, (size.x - 560.0) / 2.0)
+	_box.offset_top = 56 if landscape else 72
+	_box.offset_left = side
+	_box.offset_right = -side
+	_rotate.visible = Config.ORIENTATION == "landscape" and not landscape
 
 
 func _label(parent: Node, text: String) -> Label:
@@ -89,6 +112,7 @@ func _join() -> void:
 			_status.text = _greeting
 			_render(res.get("state", {}))  # 重新連線後馬上看到目前的狀態
 			PlayTogether.mark_ready()  # 平台會收起載入畫面
+			PlayTogether.set_orientation(Config.ORIENTATION)  # 告訴平台這款遊戲的畫面方向（要在 mark_ready 之後送）
 			_poll = Timer.new()
 			_poll.wait_time = 0.5
 			_poll.autostart = true

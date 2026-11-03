@@ -38,6 +38,8 @@ const projectFile = "playtogether.json"
 var (
 	clients   = []string{"web", "godot"}
 	servers   = []string{"go", "node"}
+	// 畫面方向：portrait（直式）、landscape（橫式）、any（兩者都支援）
+	orientations = []string{"portrait", "landscape", "any"}
 	templates = map[string][2]string{
 		"web-go": {"web", "go"}, "web-node": {"web", "node"}, "godot-go": {"godot", "go"}, "godot-node": {"godot", "node"},
 	}
@@ -62,6 +64,8 @@ type project struct {
 	DevAddr       string `json:"devAddr"`
 	// Godot 專案的資料夾（client 為 godot）：預設 game；搭配 Claude Code Game Studios 時是 .（專案根目錄）
 	Godot string `json:"godot,omitempty"`
+	// 畫面方向：portrait、landscape、any；舊專案沒有這個欄位
+	Orientation string `json:"orientation,omitempty"`
 	AI    string `json:"ai,omitempty"` // studios：已加入 Claude Code Game Studios
 
 	dir string // playtogether.json 所在的資料夾
@@ -141,12 +145,13 @@ func cmdNew(args []string) error {
 	tmpl := fs.String("template", "", "舊的寫法：web-go、web-node、godot-go、godot-node（等於 -client 加 -server）")
 	platform := fs.String("platform", "https://（平台網址）", "玩聚平台網址（之後可以在 playtogether.json 修改）")
 	ai := fs.String("ai", "", "AI 開發範本：studios（加入 Claude Code Game Studios，只限 Godot）或 none；在終端機執行且沒指定時會詢問")
+	orientation := fs.String("orientation", "portrait", "畫面方向：portrait（直式）、landscape（橫式）或 any（兩者都支援）")
 	yes := fs.Bool("y", false, "不詢問，沒指定的項目用預設值")
 	_ = fs.Parse(reorder(args))
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	if fs.NArg() > 1 {
-		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-ai studios|none] <專案名稱>")
+		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-ai studios|none] <專案名稱>")
 	}
 	checkName := func(name string) error {
 		if !namePattern.MatchString(name) {
@@ -170,6 +175,9 @@ func cmdNew(args []string) error {
 	}
 	if !slices.Contains(servers, *server) {
 		return fmt.Errorf("-server 只能是 go 或 node（目前是 %q）", *server)
+	}
+	if !slices.Contains(orientations, *orientation) {
+		return fmt.Errorf("-orientation 只能是 portrait（直式）、landscape（橫式）或 any（兩者都支援）（目前是 %q）", *orientation)
 	}
 	if *ai != "" && *ai != "studios" && *ai != "none" {
 		return fmt.Errorf("-ai 只能是 studios 或 none（目前是 %q）", *ai)
@@ -195,8 +203,8 @@ func cmdNew(args []string) error {
 			return err
 		}
 	}
-	if !*yes && interactive() && (name == "" || !set["client"] || !set["server"] || !set["ai"]) {
-		if name, err = newWizard(name, client, server, ai, set, ccgs, checkName); err != nil {
+	if !*yes && interactive() && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || !set["ai"]) {
+		if name, err = newWizard(name, client, server, orientation, ai, set, ccgs, checkName); err != nil {
 			if errors.Is(err, errCanceled) {
 				fmt.Println()
 				return errors.New("已取消，沒有建立任何檔案")
@@ -208,7 +216,7 @@ func cmdNew(args []string) error {
 		}
 	}
 	if name == "" {
-		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-ai studios|none] <專案名稱>（在終端機執行 pt new 會逐步詢問）")
+		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-ai studios|none] <專案名稱>（在終端機執行 pt new 會逐步詢問）")
 	}
 	studios := *ai == "studios"
 	godotDir := "game"
@@ -225,7 +233,8 @@ func cmdNew(args []string) error {
 	}
 	template := *client + "-" + *server
 	data := map[string]string{"Name": name, "Client": *client, "Server": *server, "Template": template, "Platform": *platform, "SDKVersion": sdkVersion(),
-		"GodotDir": godotDir, "GodotPrefix": godotPrefix, "GodotPath": godotPath, "AI": map[bool]string{true: "studios", false: ""}[studios]}
+		"GodotDir": godotDir, "GodotPrefix": godotPrefix, "GodotPath": godotPath, "AI": map[bool]string{true: "studios", false: ""}[studios],
+		"Orientation": *orientation, "OrientationLabel": orientationLabel[*orientation]}
 	files := map[string][]byte{}
 	render := func(src, dst string) error {
 		return fs2Walk("templates/"+src, func(rel string, content []byte) error {
@@ -287,7 +296,7 @@ func cmdNew(args []string) error {
 	if err := os.MkdirAll(filepath.Join(name, "keys"), 0o700); err != nil {
 		return err
 	}
-	fmt.Printf("已建立 %s（畫面 %s、伺服器 %s、SDK %s）\n\n", name, *client, *server, sdkVersion())
+	fmt.Printf("已建立 %s（畫面 %s、伺服器 %s、%s、SDK %s）\n\n", name, *client, *server, orientationLabel[*orientation], sdkVersion())
 	fmt.Println("下一步：")
 	fmt.Printf("  cd %s\n", name)
 	if *client == "godot" {
@@ -313,7 +322,9 @@ func cmdNew(args []string) error {
 }
 
 // newWizard 逐步詢問專案名稱、畫面、伺服器、AI 開發範本，最後確認。回傳空名稱表示開發者選擇不建立。
-func newWizard(name string, client, server, ai *string, set map[string]bool, ccgs ccgsManifest, checkName func(string) error) (string, error) {
+var orientationLabel = map[string]string{"portrait": "直式", "landscape": "橫式", "any": "直式橫式都支援"}
+
+func newWizard(name string, client, server, orientation, ai *string, set map[string]bool, ccgs ccgsManifest, checkName func(string) error) (string, error) {
 	var err error
 	fmt.Println("建立玩聚遊戲專案（直接按 Enter 用預設值，Ctrl-C 取消）")
 	fmt.Println()
@@ -339,6 +350,15 @@ func newWizard(name string, client, server, ai *string, set map[string]bool, ccg
 			return "", err
 		}
 	}
+	if !set["orientation"] {
+		if *orientation, err = choose("玩家要用直式還是橫式玩？", []option{
+			{"portrait", "直式", "手機直拿，單手就能玩；派對遊戲、答題、卡牌建議用直式"},
+			{"landscape", "橫式", "手機橫拿，畫面較寬；動作、賽車、需要大地圖的遊戲"},
+			{"any", "直式橫式都支援", "畫面要能隨手機方向調整版面，開發和測試的工作量較大"},
+		}, "portrait"); err != nil {
+			return "", err
+		}
+	}
 	if !set["ai"] {
 		if *client == "godot" {
 			if *ai, err = choose("要用哪種方式搭配 AI 開發？", []option{
@@ -352,8 +372,8 @@ func newWizard(name string, client, server, ai *string, set map[string]bool, ccg
 			fmt.Printf("AI 開發：專案會附上給 AI 助手的規則（PLAYTOGETHER.md、CLAUDE.md、AGENTS.md）。%s 目前只搭配 Godot。\n\n", ccgs.Name)
 		}
 	}
-	cmd := fmt.Sprintf("pt new -client %s -server %s -ai %s %s", *client, *server, *ai, name)
-	fmt.Printf("即將建立 %s：畫面 %s、伺服器 %s、AI 範本 %s\n", name, *client, *server, map[string]string{"studios": ccgs.Name, "none": "一般"}[*ai])
+	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s -ai %s %s", *client, *server, *orientation, *ai, name)
+	fmt.Printf("即將建立 %s：畫面 %s、伺服器 %s、%s、AI 範本 %s\n", name, *client, *server, orientationLabel[*orientation], map[string]string{"studios": ccgs.Name, "none": "一般"}[*ai])
 	fmt.Printf("（下次可以直接執行：%s）\n", cmd)
 	ok, err := confirm("確定建立？", true)
 	if err != nil {
@@ -781,6 +801,7 @@ func checkProject(p *project, webDir string) []finding {
 	if msg := sdkNotice(p); msg != "" {
 		add("warn", "%s", msg)
 	}
+	checkOrientation(p, webDir, add)
 	if !strings.HasPrefix(p.Platform, "http") || strings.Contains(p.Platform, "（") {
 		add("error", "playtogether.json 的 platform 還沒填（玩聚建立遊戲後會給你平台網址）")
 	}

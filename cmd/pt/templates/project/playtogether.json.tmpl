@@ -11,7 +11,8 @@
   "serverKeyFile": "keys/server.key",
   "serverUrl": "",
   "web": "[[if eq .Client "godot"]]build[[else]]web[[end]]",
-  "devAddr": "127.0.0.1:8090"[[if eq .Client "godot"]],
+  "devAddr": "127.0.0.1:8090",
+  "orientation": "[[.Orientation]]"[[if eq .Client "godot"]],
   "godot": "[[.GodotDir]]"[[end]][[if .AI]],
   "ai": "[[.AI]]"[[end]]
 }

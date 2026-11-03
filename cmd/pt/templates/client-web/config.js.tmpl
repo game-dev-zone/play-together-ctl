@@ -2,6 +2,8 @@
 window.GAME_CONFIG = {
   // 玩聚平台的網址（SDK 只接受這個來源的訊息）
   platformOrigins: ['[[.Platform]]'],
+  // 畫面方向：portrait（直式）、landscape（橫式）、any（兩者都支援）；要和 playtogether.json 的 orientation 一致
+  orientation: '[[.Orientation]]',
   // 遊戲伺服器網址；空白表示和前端同一個來源（只適用本機 pt dev）。上傳前要改成你的遊戲伺服器網址
   serverUrl: '',
 };

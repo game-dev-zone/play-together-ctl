@@ -81,6 +81,7 @@ async function main() {
   $('tap').onclick = () => act('tap');
   pt.on('resume', () => act('state')); // 從背景回來時立刻更新
   pt.ready(); // 平台會收起載入畫面
+  pt.ui.orientation(cfg.orientation || 'portrait'); // 告訴平台這款遊戲的畫面方向（要在 ready 之後送，之前送的會被忽略）
   poll = setInterval(() => act('state'), 500);
 }
 

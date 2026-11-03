@@ -82,7 +82,7 @@ claude                                            # 第一次執行 /start
 
 | 指令 | 說明 |
 | --- | --- |
-| `pt new [-client web\|godot] [-server go\|node] [-ai studios\|none] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定） |
+| `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-ai studios\|none] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定）；`-orientation` 選直式、橫式或兩者都支援（預設直式） |
 | `pt dev [-addr 127.0.0.1:8090] [-players 2] [-smoke]` | 本機模擬模式（Godot 專案會先匯出）；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
 | `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器網址設定；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒 |

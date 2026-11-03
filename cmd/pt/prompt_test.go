@@ -48,25 +48,25 @@ func TestNewWizard(t *testing.T) {
 	t.Chdir(dir)
 
 	// 名稱不合格會重問；AI 範本沒有預設，一定要選（亂打會重問）
-	typeIn(t, "My Game", "wiz-studio", "2", "", "", "9", "2", "")
+	typeIn(t, "My Game", "wiz-studio", "2", "", "2", "9", "2", "")
 	must(t, cmdNew(nil))
 	p := readProject(t, filepath.Join(dir, "wiz-studio"))
-	if p.Client != "godot" || p.Server != "go" || p.AI != "studios" || p.Godot != "." {
+	if p.Client != "godot" || p.Server != "go" || p.AI != "studios" || p.Godot != "." || p.Orientation != "landscape" {
 		t.Fatalf("選 Godot＋Claude Code Game Studios：%+v", p)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "wiz-studio", ".claude/rules/playtogether.md")); err != nil {
 		t.Fatal("應加入 Claude Code Game Studios")
 	}
 
-	// 參數指定的項目不再詢問：只問 AI 範本
-	typeIn(t, "1", "y")
+	// 參數指定的項目不再詢問：只問方向（預設直式）與 AI 範本
+	typeIn(t, "", "1", "y")
 	must(t, cmdNew([]string{"wiz-plain", "-client", "godot", "-server", "node"}))
-	if p := readProject(t, filepath.Join(dir, "wiz-plain")); p.Server != "node" || p.AI != "" || p.Godot != "game" {
+	if p := readProject(t, filepath.Join(dir, "wiz-plain")); p.Server != "node" || p.AI != "" || p.Godot != "game" || p.Orientation != "portrait" {
 		t.Fatalf("選一般專案：%+v", p)
 	}
 
 	// 網頁專案不問 AI 範本；最後選不建立就不留下資料夾
-	typeIn(t, "wiz-web", "", "2", "n")
+	typeIn(t, "wiz-web", "", "2", "3", "n")
 	must(t, cmdNew(nil))
 	if _, err := os.Stat(filepath.Join(dir, "wiz-web")); err == nil {
 		t.Fatal("選擇不建立時不能留下資料夾")
@@ -84,11 +84,11 @@ func TestNewWizard(t *testing.T) {
 	// -y 不詢問，用預設值
 	typeIn(t)
 	must(t, cmdNew([]string{"wiz-yes", "-y"}))
-	if p := readProject(t, filepath.Join(dir, "wiz-yes")); p.Client != "web" || p.Server != "go" {
+	if p := readProject(t, filepath.Join(dir, "wiz-yes")); p.Client != "web" || p.Server != "go" || p.Orientation != "portrait" {
 		t.Fatalf("-y 應用預設值：%+v", p)
 	}
 	// 只指定 -ai studios：一定是 Godot
-	typeIn(t, "", "")
+	typeIn(t, "", "", "")
 	must(t, cmdNew([]string{"wiz-ai", "-ai", "studios"}))
 	if p := readProject(t, filepath.Join(dir, "wiz-ai")); p.Client != "godot" || p.AI != "studios" {
 		t.Fatalf("-ai studios 應建立 Godot 專案：%+v", p)
@@ -103,5 +103,8 @@ func TestNewNonInteractive(t *testing.T) {
 	}
 	if err := cmdNew([]string{"Bad Name"}); err == nil {
 		t.Fatal("不合格的名稱應拒絕")
+	}
+	if err := cmdNew([]string{"ok-name", "-orientation", "sideways"}); err == nil || !strings.Contains(err.Error(), "-orientation") {
+		t.Fatalf("不合格的方向應拒絕：%v", err)
 	}
 }

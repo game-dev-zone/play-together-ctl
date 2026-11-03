@@ -9,6 +9,9 @@
   <script src="config.js"></script>
 </head>
 <body>
+[[- if eq .Orientation "landscape"]]
+  <div id="rotate">請把手機轉成橫式</div>
+[[- end]]
   <main>
     <h1>[[.Name]]</h1>
     <p id="status">連線中…</p>
