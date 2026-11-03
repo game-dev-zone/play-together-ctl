@@ -34,6 +34,8 @@ make verify                      # 啟動驗證：伺服器測試、在模擬模
 
 伺服器範本內建斷線重連骨架（`server/session.go`、`server/session.mjs`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入；前端範本會自動重新連線。
 
+`PLAYTOGETHER.md` 的「素材」一節建議用 Codex 生成圖片（提示詞要寫明禁止事項、看過再用），每個素材記錄在 `art/SOURCES.md`。
+
 新專案附有 `Makefile`（`make` 列出所有指令：`dev`、`server`、`verify`、`check`、`keys`、`upload`，Godot 另有 `build`、`clean`），每個指令都只是包裝 `pt`。
 
 用 Godot 開發：

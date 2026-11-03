@@ -167,6 +167,13 @@ func TestNewStudios(t *testing.T) {
 	if !strings.Contains(read("README.md"), "/start") || !strings.Contains(read("PLAYTOGETHER.md"), "Godot 網頁匯出") {
 		t.Fatal("README 與 PLAYTOGETHER.md 要說明 studios 與 Godot 規則")
 	}
+	// 素材：/asset-spec 只產生提示詞，交給 Codex；根目錄的 Godot 專案不能匯入素材原始檔
+	if pg := read("PLAYTOGETHER.md"); !strings.Contains(pg, "/asset-spec") || !strings.Contains(pg, "codex exec") || !strings.Contains(pg, "`assets/`") {
+		t.Fatalf("PLAYTOGETHER.md 要說明 studios 的素材流程：\n%s", pg)
+	}
+	if _, err := os.Stat(filepath.Join(root, "art", ".gdignore")); err != nil {
+		t.Fatal("Godot 在根目錄時 art/ 要有 .gdignore")
+	}
 	// pt check 的 Godot 檢查要找得到根目錄的設定
 	t.Chdir(root)
 	pp, _ := findProject()
@@ -210,6 +217,22 @@ func TestNewWritesAIGuide(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "web-ai", ".claude")); err == nil {
 		t.Fatal("沒選 studios 不該有 .claude/")
+	}
+	// 素材規則與來源紀錄
+	pg, _ := os.ReadFile(filepath.Join(dir, "web-ai", "PLAYTOGETHER.md"))
+	for _, want := range []string{"## 素材", "codex exec", "art/SOURCES.md", "籌碼", "放進 `web/`"} {
+		if !strings.Contains(string(pg), want) {
+			t.Fatalf("PLAYTOGETHER.md 的素材規則少了 %q", want)
+		}
+	}
+	if strings.Contains(string(pg), "/asset-spec") {
+		t.Fatal("沒選 studios 不該提到 /asset-spec")
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "web-ai", "art", "SOURCES.md")); err != nil || !strings.Contains(string(b), "| 檔案 | 來源 | 授權 |") {
+		t.Fatalf("要有素材來源紀錄 art/SOURCES.md：%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "web-ai", "art", ".gdignore")); err == nil {
+		t.Fatal("網頁專案不需要 .gdignore")
 	}
 	if err := cmdNew([]string{"bad-ai", "-ai", "copilot"}); err == nil {
 		t.Fatal("未知的 -ai 應拒絕")

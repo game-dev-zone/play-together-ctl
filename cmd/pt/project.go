@@ -253,6 +253,10 @@ func cmdNew(args []string) error {
 	}
 	files[".gitignore"] = files["gitignore"]
 	delete(files, "gitignore")
+	if *client == "godot" && godotDir == "." {
+		// Godot 專案在根目錄時，素材原始檔不要被匯入、匯出（會變成上傳的一部分）
+		files["art/.gdignore"] = []byte{}
+	}
 	sdk, err := sdkFiles(*client, *server, godotDir)
 	if err != nil {
 		return err
