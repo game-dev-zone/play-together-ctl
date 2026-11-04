@@ -55,31 +55,28 @@ func TestNewWizard(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	// 名稱不合格會重問；AI 範本沒有預設，一定要選（亂打會重問）；遊戲開發 skill 預設加入完整版
-	typeIn(t, "My Game", "wiz-studio", "2", "", "2", "9", "2", "", "")
+	// 名稱不合格會重問；精靈不問 AI 範本（-ai studios 是進階參數）；遊戲開發 skill 亂打會重問，預設加入完整版
+	typeIn(t, "My Game", "wiz-godot", "2", "", "2", "9", "", "")
 	must(t, cmdNew(nil))
-	p := readProject(t, filepath.Join(dir, "wiz-studio"))
-	if p.Client != "godot" || p.Server != "go" || p.AI != "studios" || p.Godot != "." || p.Orientation != "landscape" {
-		t.Fatalf("選 Godot＋Claude Code Game Studios：%+v", p)
+	p := readProject(t, filepath.Join(dir, "wiz-godot"))
+	if p.Client != "godot" || p.Server != "go" || p.AI != "" || p.Godot != "game" || p.Orientation != "landscape" || p.Skills != "full" {
+		t.Fatalf("選 Godot＋遊戲開發 skill：%+v", p)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "wiz-studio", ".claude/rules/playtogether.md")); err != nil {
-		t.Fatal("應加入 Claude Code Game Studios")
-	}
-	if p.Skills != "full" {
-		t.Fatalf("遊戲開發 skill 預設是 full：%q", p.Skills)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "wiz-studio", ".agents/skills/godot-audio/SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "wiz-godot", ".agents/skills/godot-audio/SKILL.md")); err != nil {
 		t.Fatal("應加入 Godot 的遊戲開發 skill")
 	}
+	if _, err := os.Stat(filepath.Join(dir, "wiz-godot", ".claude/rules/playtogether.md")); err == nil {
+		t.Fatal("精靈不該加入 Claude Code Game Studios")
+	}
 
-	// 參數指定的項目不再詢問：只問方向（預設直式）與 AI 範本
-	typeIn(t, "", "1", "3", "y")
+	// 參數指定的項目不再詢問：只問方向（預設直式）與遊戲開發 skill
+	typeIn(t, "", "3", "y")
 	must(t, cmdNew([]string{"wiz-plain", "-client", "godot", "-server", "node"}))
 	if p := readProject(t, filepath.Join(dir, "wiz-plain")); p.Server != "node" || p.AI != "" || p.Godot != "game" || p.Orientation != "portrait" || p.Skills != "" {
 		t.Fatalf("選一般專案：%+v", p)
 	}
 
-	// 網頁專案不問 AI 範本；最後選不建立就不留下資料夾
+	// 最後選不建立就不留下資料夾
 	typeIn(t, "wiz-web", "", "2", "3", "3", "n")
 	must(t, cmdNew(nil))
 	if _, err := os.Stat(filepath.Join(dir, "wiz-web")); err == nil {

@@ -147,7 +147,7 @@ func cmdNew(args []string) error {
 	server := fs.String("server", "go", "遊戲伺服器：go 或 node")
 	tmpl := fs.String("template", "", "舊的寫法：web-go、web-node、godot-go、godot-node（等於 -client 加 -server）")
 	platform := fs.String("platform", "https://（平台網址）", "玩聚平台網址（之後可以在 playtogether.json 修改）")
-	ai := fs.String("ai", "", "AI 開發範本：studios（加入 Claude Code Game Studios，只限 Godot）或 none；在終端機執行且沒指定時會詢問")
+	ai := fs.String("ai", "", "進階：studios 加入 Claude Code Game Studios（只限 Godot、只支援 Claude Code，Godot 專案改放根目錄）；預設 none，精靈不詢問")
 	skills := fs.String("skills", "", "AI 遊戲開發 skill（awesome-gamedev-agent-skills 精選）：core（手感、手機介面、輸入、音效、素材、效能）、full（core 加上畫面引擎的 skill）或 none；在終端機執行且沒指定時會詢問")
 	orientation := fs.String("orientation", "portrait", "畫面方向：portrait（直式）、landscape（橫式）或 any（兩者都支援）")
 	yes := fs.Bool("y", false, "不詢問，沒指定的項目用預設值")
@@ -214,7 +214,7 @@ func cmdNew(args []string) error {
 			return err
 		}
 	}
-	if !*yes && interactive() && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || !set["ai"] || !set["skills"]) {
+	if !*yes && interactive() && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || !set["skills"]) {
 		if name, err = newWizard(name, client, server, orientation, ai, skills, set, ccgs, gds, checkName); err != nil {
 			if errors.Is(err, errCanceled) {
 				fmt.Println()
@@ -344,14 +344,11 @@ func cmdNew(args []string) error {
 	}
 	if !studios {
 		fmt.Println("用 AI 助手開發：專案附有 CLAUDE.md、AGENTS.md，平台規則在 PLAYTOGETHER.md。")
-		if *client == "godot" {
-			fmt.Printf("想用 %s（AI 遊戲開發團隊範本）：建立專案時選擇它，或加上 -ai studios。\n", ccgs.Name)
-		}
 	}
 	return nil
 }
 
-// newWizard 逐步詢問專案名稱、畫面、伺服器、AI 開發範本，最後確認。回傳空名稱表示開發者選擇不建立。
+// newWizard 逐步詢問專案名稱、畫面、伺服器、方向、遊戲開發 skill，最後確認。回傳空名稱表示開發者選擇不建立。
 var orientationLabel = map[string]string{"portrait": "直式", "landscape": "橫式", "any": "直式橫式都支援"}
 
 func newWizard(name string, client, server, orientation, ai, skills *string, set map[string]bool, ccgs, gds ccgsManifest, checkName func(string) error) (string, error) {
@@ -389,18 +386,8 @@ func newWizard(name string, client, server, orientation, ai, skills *string, set
 			return "", err
 		}
 	}
-	if !set["ai"] {
-		if *client == "godot" {
-			if *ai, err = choose("要用哪種方式搭配 AI 開發？", []option{
-				{"none", "一般專案", "附上給 AI 助手的規則（PLAYTOGETHER.md、CLAUDE.md、AGENTS.md），Claude Code、Codex 等都適用；Godot 專案在 game/"},
-				{"studios", ccgs.Name, fmt.Sprintf("用 Claude Code 當遊戲開發團隊：企劃、美術、程式、QA 等 AI 角色與流程（MIT，%s 版）。\n     從 GitHub 下載並逐檔驗證，加上玩聚規則；Godot 專案放在根目錄", ccgs.Version)},
-			}, ""); err != nil {
-				return "", err
-			}
-		} else {
-			*ai = "none"
-			fmt.Printf("AI 開發：專案會附上給 AI 助手的規則（PLAYTOGETHER.md、CLAUDE.md、AGENTS.md）。%s 目前只搭配 Godot。\n\n", ccgs.Name)
-		}
+	if *ai == "" {
+		*ai = "none" // Claude Code Game Studios 只用參數指定（-ai studios，進階），精靈不詢問
 	}
 	if !set["skills"] {
 		engine := map[string]string{"web": "Phaser、PixiJS、three.js", "godot": "Godot 4.7"}[*client]
@@ -412,8 +399,12 @@ func newWizard(name string, client, server, orientation, ai, skills *string, set
 			return "", err
 		}
 	}
-	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s -ai %s -skills %s %s", *client, *server, *orientation, *ai, *skills, name)
-	fmt.Printf("即將建立 %s：畫面 %s、伺服器 %s、%s、AI 範本 %s、遊戲開發 skill %s\n", name, *client, *server, orientationLabel[*orientation], map[string]string{"studios": ccgs.Name, "none": "一般"}[*ai], map[string]string{"full": "完整", "core": "通用", "none": "不加入"}[*skills])
+	aiFlag, aiLabel := "", ""
+	if *ai == "studios" {
+		aiFlag, aiLabel = " -ai studios", "、"+ccgs.Name
+	}
+	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s%s -skills %s %s", *client, *server, *orientation, aiFlag, *skills, name)
+	fmt.Printf("即將建立 %s：畫面 %s、伺服器 %s、%s、遊戲開發 skill %s%s\n", name, *client, *server, orientationLabel[*orientation], map[string]string{"full": "完整", "core": "通用", "none": "不加入"}[*skills], aiLabel)
 	fmt.Printf("（下次可以直接執行：%s）\n", cmd)
 	ok, err := confirm("確定建立？", true)
 	if err != nil {

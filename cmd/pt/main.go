@@ -94,8 +94,8 @@ func usage() {
   pt new [名稱]                                 建立新專案（畫面＋遊戲伺服器，已接好 SDK）；在終端機會逐步詢問
          [-client web|godot] [-server go|node]  直接指定，不再詢問
          [-orientation portrait|landscape|any]  畫面方向：直式（預設）、橫式、兩者都支援
-         [-ai studios|none] [-y]                Godot 專案加入 Claude Code Game Studios；-y 不詢問、用預設值
-         [-skills none|core|full]               加入遊戲開發 skill（awesome-gamedev-agent-skills 精選）
+         [-skills none|core|full] [-y]          加入遊戲開發 skill（awesome-gamedev-agent-skills 精選）；-y 不詢問、用預設值
+         [-ai studios]                          進階：Godot 專案加入 Claude Code Game Studios（精靈不詢問）
   pt dev [-addr 127.0.0.1:8090]                本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
          [-smoke]                               啟動驗證：啟動、確認首頁與 SDK 載入得到後結束（不開瀏覽器）
   pt build                                      Godot 專案：用 Godot 無頭模式匯出網頁版到 build/
