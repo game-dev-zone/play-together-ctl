@@ -20,10 +20,20 @@ var _timer: Label
 var _players: Label
 var _start: Button
 var _tap: Button
+var _sfx := {}  # 音效名稱 → AudioStreamWAV
+var _players_pool: Array[AudioStreamPlayer] = []
+var _was_playing := false
+var _muted := false
+var _last_second := 0
 
 
 func _ready() -> void:
 	_build_ui()
+	_build_sfx()
+	# 平台的「遊戲聲音」開關：靜音整個 Master 匯流排（之後加的背景音樂也會一起靜音），音效也直接不播
+	PlayTogether.mute_changed.connect(func(muted):
+		_muted = muted
+		AudioServer.set_bus_mute(0, muted))
 	PlayTogether.initialized.connect(_on_initialized)
 	PlayTogether.init_failed.connect(func(msg): _status.text = "無法開始：" + msg)
 	PlayTogether.resumed.connect(func(): _act("state"))  # 從背景回來時立刻更新
@@ -44,7 +54,9 @@ func _build_ui() -> void:
 	box.add_child(title)
 	_status = _label(box, "連線中…")
 	_start = _button(box, "開始一局（10 秒）", func(): _act("start"))
-	_tap = _button(box, "按我！", func(): _act("tap"))
+	_tap = _button(box, "按我！", func():
+		_play("tap")
+		_act("tap"))
 	_tap.visible = false
 	_timer = _label(box, "")
 	_players = _label(box, "")
@@ -169,6 +181,65 @@ func _render(state: Dictionary) -> void:
 		lines.append("%d. %s：%d 下%s" % [i, p.get("name", ""), int(p.get("taps", 0)), "" if p.get("online", true) else "（離線）"])
 		i += 1
 	_players.text = "\n".join(lines)
+	# 音效跟著伺服器的狀態走：開始、最後 3 秒倒數、結束
+	var second := ceili(float(state.get("secondsLeft", 0)))
+	if playing and not _was_playing:
+		_play("start")
+	elif playing and second != _last_second and second <= 3:
+		_play("tick")
+	elif not playing and _was_playing:
+		_play("end")
+	_was_playing = playing
+	_last_second = second
+
+
+## 預設音效：在程式裡合成短音（不放音檔，沒有授權問題）。換成自己的音效時，來源規則見 PLAYTOGETHER.md「音效與音樂」。
+## 網頁版要等玩家在遊戲裡點一下才會發聲（瀏覽器的規定），Godot 會在第一次點擊時自動恢復。
+func _build_sfx() -> void:
+	_sfx = {
+		"tap": _tone([[660.0, 990.0, 0.08]]),
+		"tick": _tone([[880.0, 880.0, 0.06]]),
+		"start": _tone([[523.0, 523.0, 0.1], [659.0, 659.0, 0.1], [784.0, 784.0, 0.12]]),
+		"end": _tone([[784.0, 784.0, 0.12], [659.0, 659.0, 0.12], [523.0, 523.0, 0.12], [1047.0, 1047.0, 0.35]]),
+	}
+	for i in 4:  # 幾個播放器輪流用，連續按的時候音效不會互相截斷
+		var p := AudioStreamPlayer.new()
+		p.volume_db = -12.0  # 不要蓋過玩聚語音
+		add_child(p)
+		_players_pool.append(p)
+
+
+## notes：[[起始頻率, 結束頻率, 秒數], ...] 依序接起來，產生 16-bit 單聲道 PCM
+func _tone(notes: Array) -> AudioStreamWAV:
+	const RATE := 22050
+	var data := PackedByteArray()
+	for n in notes:
+		var count := int(RATE * float(n[2]))
+		var phase := 0.0
+		for i in count:
+			var t := float(i) / count
+			var freq: float = lerpf(n[0], n[1], t)
+			phase += freq / RATE
+			var env := minf(1.0, t * 20.0) * (1.0 - t)  # 淡入淡出，避免爆音
+			var v := int(clampf(sin(phase * TAU) * env, -1.0, 1.0) * 20000.0)
+			data.append(v & 0xff)
+			data.append((v >> 8) & 0xff)
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = RATE
+	wav.stereo = false
+	wav.data = data
+	return wav
+
+
+func _play(sound: String) -> void:
+	if _muted:
+		return
+	for p in _players_pool:
+		if not p.playing:
+			p.stream = _sfx[sound]
+			p.play()
+			return
 
 
 ## 每個請求用自己的 HTTPRequest（同一個 HTTPRequest 不能同時送兩個請求）。

@@ -9,6 +9,8 @@ let token = '';
 let greeting = '';
 let failures = 0;
 let poll = 0;
+let wasPlaying = false;
+let lastSecond = 0;
 
 // 回傳 { status, data }；網路錯誤時 status 是 0
 async function post(path, body) {
@@ -30,6 +32,13 @@ function render(state) {
   $('start').hidden = state.playing;
   $('tap').hidden = !state.playing;
   $('timer').textContent = state.playing ? `剩 ${Math.ceil(state.secondsLeft)} 秒` : state.winner ? `贏家：${state.winner}` : '';
+  // 音效跟著伺服器的狀態走：開始、最後 3 秒倒數、結束
+  const second = Math.ceil(state.secondsLeft);
+  if (state.playing && !wasPlaying) sfx.start();
+  else if (state.playing && second !== lastSecond && second <= 3) sfx.tick();
+  else if (!state.playing && wasPlaying) sfx.end();
+  wasPlaying = state.playing;
+  lastSecond = second;
 }
 
 // 連線失效：停止輪詢，請玩家重新整理（平台會給新的啟動碼，回到原座位）
@@ -77,8 +86,10 @@ async function main() {
   greeting = `你好，${res.data.name}`;
   $('status').textContent = greeting;
   render(res.data.state); // 重新連線後馬上看到目前的狀態
-  $('start').onclick = () => act('start');
-  $('tap').onclick = () => act('tap');
+  // 在點擊事件裡先 unlock 再送出（等網路回來才 unlock，瀏覽器就不認這次點擊了）
+  $('start').onclick = () => { sfx.unlock(); act('start'); };
+  $('tap').onclick = () => { sfx.unlock(); sfx.tap(); act('tap'); };
+  pt.on('mute', ({ muted }) => sfx.setMuted(muted)); // 平台的「遊戲聲音」開關
   pt.on('resume', () => act('state')); // 從背景回來時立刻更新
   pt.ready(); // 平台會收起載入畫面
   pt.ui.orientation(cfg.orientation || 'portrait'); // 告訴平台這款遊戲的畫面方向（要在 ready 之後送，之前送的會被忽略）

@@ -228,7 +228,7 @@ func TestNewWritesAIGuide(t *testing.T) {
 	if strings.Contains(string(pg), "/asset-spec") {
 		t.Fatal("沒選 studios 不該提到 /asset-spec")
 	}
-	if b, err := os.ReadFile(filepath.Join(dir, "web-ai", "art", "SOURCES.md")); err != nil || !strings.Contains(string(b), "| 檔案 | 來源 | 授權 |") {
+	if b, err := os.ReadFile(filepath.Join(dir, "web-ai", "art", "SOURCES.md")); err != nil || !strings.Contains(string(b), "| 檔案 | 來源 | 授權（證明網址） |") {
 		t.Fatalf("要有素材來源紀錄 art/SOURCES.md：%v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "web-ai", "art", ".gdignore")); err == nil {

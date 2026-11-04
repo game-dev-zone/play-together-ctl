@@ -802,6 +802,7 @@ func checkProject(p *project, webDir string) []finding {
 		add("warn", "%s", msg)
 	}
 	checkOrientation(p, webDir, add)
+	checkAudioSources(p, webDir, add)
 	if !strings.HasPrefix(p.Platform, "http") || strings.Contains(p.Platform, "（") {
 		add("error", "playtogether.json 的 platform 還沒填（玩聚建立遊戲後會給你平台網址）")
 	}

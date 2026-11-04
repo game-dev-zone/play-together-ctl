@@ -64,7 +64,7 @@
 - 分級上限是**輔導十五級**，不收限制級；不要有色情、血腥暴力。
 - 不要從外部網址載入程式；上傳的檔案總大小請控制在 50 MB 內[[if eq .Client "godot"]]（Godot 引擎本身壓縮後約 10 MB）[[end]]。
 
-## 素材（圖片、音效）
+## 素材（圖片）
 
 **圖片建議用 Codex 生成**（`codex exec`，需要先登入 Codex）。例如：
 
@@ -81,10 +81,30 @@ codex exec -s workspace-write "產生一張 [[if eq .Orientation "landscape"]]12
 - **生成後親自看過每一張**再使用；不符合規則、有奇怪文字或變形的就重新生成。
 - 原始檔放 `art/generated/`（不會上傳）；遊戲用的版本縮小到實際顯示尺寸、轉成 JPEG 或 WebP（要透明背景才用 PNG），放進[[if eq .Client "godot"]] `[[.GodotPrefix]]assets/`[[else]] `web/`[[end]]，控制上傳大小。
 - **每個素材都記錄在 `art/SOURCES.md`**：檔名、來源（Codex 生成與提示詞摘要，或第三方素材的網址與授權）、日期。不要從網路下載來源或授權不明的圖片、音效、字型。
-- **音效與音樂**：Codex 不產生聲音；請用授權明確的素材（例如 CC0），一樣記錄在 `art/SOURCES.md`。
 [[- if .AI]]
 - 使用 Claude Code Game Studios 的 `/asset-spec` 時：它只產生每個素材的規格與提示詞（Midjourney／Stable Diffusion 寫法），不會自己生成圖片。把提示詞交給 Codex 生成，並補上上面的禁止事項。
 [[- end]]
+
+## 音效與音樂
+
+玩家多半在**直播**裡玩：音樂授權不清楚，直播主的直播或錄影可能被靜音、下架或被聲明版權。依下面的順序選來源：
+
+1. **程式合成**（預設）：範本的音效（[[if eq .Client "godot"]]`[[.GodotPrefix]]main.gd` 的 `_build_sfx`[[else]]`web/sfx.js`[[end]]）是即時合成的短音，沒有音檔、沒有授權問題。按鈕、倒數、得分、結束這類音效優先這樣做。
+2. **CC0 素材**：[Kenney](https://kenney.nl/assets?t=audio)（全部 CC0，不需署名，不可使用 Kenney 的 Logo）優先；OpenGameArt、Freesound 授權混雜，**只用標示 CC0 的**（不用 CC-BY-NC、CC-BY-SA）。
+3. **AI 生成**：音效可用 ElevenLabs 等服務（免費方案商用要署名，付費方案不用）；音樂可用 Suno 等服務，但**只接受付費訂閱期間生成並下載的**（免費方案只限非商業，事後升級不會追溯）。記錄服務、方案、生成日期與提示詞；提示詞不要指定模仿某位歌手、作曲家、真人聲音或某首歌。AI 生成不代表沒有著作權問題，聽起來像既有歌曲的就不要用。
+4. **其他免費音樂網站**（例如 Pixabay）：可以商用，但有些曲子登記了 YouTube Content ID，直播錄影會被聲明。只在確認曲子沒有登記 Content ID 時使用，並保留下載頁面與授權。
+
+不可以：知名歌曲（包括翻唱、改編、remix）、從 YouTube 或其他影片網站擷取的聲音、來源不明的「免版稅」合輯、模仿真人的聲音。
+
+背景音樂（範本沒有附）：
+
+- 預設音量要低，**不要蓋過玩聚語音**；遊戲裡要有關掉背景音樂的按鈕（直播主常放自己的音樂）。
+- 平台選單有「遊戲聲音」開關，SDK 會通知遊戲[[if eq .Client "godot"]]（`PlayTogether.mute_changed`；範本已靜音 Master 匯流排，背景音樂放在 Master 或它的子匯流排就會一起靜音）[[else]]（`pt.on('mute', ...)`；範本已經接到 `sfx.setMuted`，背景音樂也要一起靜音）[[end]]。
+- 循環播放的短曲，轉成 OGG 或 MP3、控制檔案大小。
+
+瀏覽器規定玩家要先在**遊戲裡**點一下才能發聲（平台外殼上的點擊不算）：[[if eq .Client "godot"]]Godot 會在第一次點擊時自動恢復[[else]]在按鈕的點擊事件裡先呼叫 `sfx.unlock()`，不要等網路請求回來才呼叫[[end]]。
+
+**每個音檔都記錄在 `art/SOURCES.md`**（檔名、來源網址、授權與授權證明網址、日期；AI 生成另記服務與方案）。`pt check` 會檢查上傳的音檔有沒有記錄。
 
 ## 給 AI 助手
 
@@ -93,6 +113,7 @@ codex exec -s workspace-write "產生一張 [[if eq .Orientation "landscape"]]12
 - 規劃經濟、營運活動時：不要設計可兌換現金或財物的東西、付費抽獎或機率型付費內容。
 - 規劃網路連線時：使用玩聚的房間與啟動碼，不要自建配對、帳號或房間系統。
 - 需要圖片素材時：寫好提示詞（含「素材」一節的禁止事項）用 Codex 生成，看過再用，並記錄在 `art/SOURCES.md`；不要從網路下載來源不明的素材。
+- 需要音效時：先用程式合成（照範本的做法）；要用音檔或音樂時照「音效與音樂」一節的來源順序，並記錄在 `art/SOURCES.md`。
 - 不要修改 `playtogether.json` 的金鑰設定、`keys/` 裡的檔案，也不要把私鑰內容讀出或印出。
 
 文件：玩聚開發者文件站（平台網址 `/docs`）：快速開始、瀏覽器 SDK、伺服器 SDK、[[if eq .Client "godot"]]Godot 外掛、[[end]]審核準則。

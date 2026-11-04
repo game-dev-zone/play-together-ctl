@@ -1,10 +1,12 @@
 # 素材來源（[[.Name]]）
 
 上架審核會確認素材沒有侵害著作權或商標（審核準則 1.5）。每加入一個圖片、音效、音樂或字型，就在這裡記一筆。
-規則見 `PLAYTOGETHER.md`「素材」一節：圖片建議用 Codex 生成，生成後親自看過再用；原始檔放 `art/generated/`。
+規則見 `PLAYTOGETHER.md`「素材」與「音效與音樂」兩節：圖片建議用 Codex 生成，生成後親自看過再用，原始檔放 `art/generated/`；音效優先用程式合成。
+`pt check` 會檢查上傳的每個音檔（.mp3、.ogg、.wav 等）都有出現在這張表的「檔案」欄。
 
-| 檔案 | 來源 | 授權 | 日期 | 說明 |
+| 檔案 | 來源 | 授權（證明網址） | 日期 | 說明 |
 | --- | --- | --- | --- | --- |
+| [[if eq .Client "godot"]]`[[.GodotPrefix]]main.gd`（`_build_sfx`）[[else]]`web/sfx.js`[[end]] | 程式合成（pt new 範本） | 自己的程式 | | 按下、開始、倒數、結束音效 |
 [[- if eq .Client "godot"]]
 | `[[.GodotPrefix]]fonts/NotoSansTC-Common.otf` | Noto Sans TC 常用字子集（pt new 附上） | SIL OFL 1.1 | | 中文字型 |
 [[- end]]
