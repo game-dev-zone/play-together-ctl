@@ -34,7 +34,7 @@ make verify                      # 啟動驗證：伺服器測試、在模擬模
 
 伺服器範本內建斷線重連骨架（`server/session.go`、`server/session.mjs`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入；前端範本會自動重新連線。
 
-`PLAYTOGETHER.md` 的「素材」一節建議用 Codex 生成圖片（提示詞要寫明禁止事項、看過再用），每個素材記錄在 `art/SOURCES.md`。範本內建程式合成的預設音效（網頁版 `web/sfx.js`、Godot 版 `main.gd`，沒有音檔），並接上平台的「遊戲聲音」開關；要用音檔或音樂時照「音效與音樂」一節的來源順序（程式合成 → CC0 → AI 生成付費方案 → 確認沒有登記 Content ID 的免費音樂）。
+`PLAYTOGETHER.md` 的「素材」一節建議用 Codex 生成圖片：整套素材共用風格卡 `art/STYLE.md`（範本附一套明亮派對風格：形狀、線條、平塗上色、調色盤色碼、光線、排除項目），先做一張樣板，其他素材都用 `-i` 參考樣板生成，降低「每張各自生成」的 AI 感；提示詞要寫明禁止事項、看過再用，每個素材記錄在 `art/SOURCES.md`。範本內建程式合成的預設音效（網頁版 `web/sfx.js`、Godot 版 `main.gd`，沒有音檔），並接上平台的「遊戲聲音」開關；要用音檔或音樂時照「音效與音樂」一節的來源順序（程式合成 → CC0 → AI 生成付費方案 → 確認沒有登記 Content ID 的免費音樂）。
 
 新專案附有 `Makefile`（`make` 列出所有指令：`dev`、`server`、`verify`、`check`、`keys`、`upload`，Godot 另有 `build`、`clean`），每個指令都只是包裝 `pt`。
 
@@ -66,15 +66,31 @@ claude                                            # 第一次執行 /start
 - `CLAUDE.md` 開頭加上玩聚規則，優先於範本的預設（例如不得加入遊戲內分析、不得設計可兌換現金或財物的經濟系統）；另加 `.claude/rules/playtogether.md`。
 - 授權與來源記錄在 `THIRD_PARTY/claude-code-game-studios/`。
 
+### 遊戲開發 skill（`-skills`）
+
+網頁與 Godot 專案都可以加入 [awesome-gamedev-agent-skills](https://github.com/gamedev-skills/awesome-gamedev-agent-skills)（Apache-2.0）的精選 skill：Claude Code（`.claude/skills/`）與 Codex（`.agents/skills/`）都會在需要時自動讀取。
+
+| 選項 | 內容 |
+| --- | --- |
+| `core` | 手感、手機介面、觸控輸入、音效、素材風格一致、效能、關卡節奏、快速原型（8 個） |
+| `full` | `core` 加上畫面引擎的 skill：Godot 4.7（GDScript、場景、訊號、UI、音效、動畫、2D 移動、無頭測試）或網頁（Phaser、PixiJS、three.js） |
+| `none` | 不加入（不是終端機時的預設） |
+
+- 只收說明文件（`SKILL.md`、references）：不收 router、scripts、agents；和玩聚規則衝突的 skill（Godot 多人連線、Godot 匯出、單機存檔、itch／Steam 上架）不收。
+- 版本固定，下載後逐一比對 SHA-256，內容不修改；授權與來源在 `THIRD_PARTY/awesome-gamedev-agent-skills/`。
+- `PLAYTOGETHER.md` 會多一節「第三方遊戲開發 skill」：優先順序與已知衝突（不執行 skill 提到的腳本、不用 ENet、不自動播放音樂、不用麥克風、分數不存本機等）。
+- 可以和 `-ai studios` 同時使用。
+
 | 選項 | 可用值 | 說明 |
 | --- | --- | --- |
 | `-client` | `web`（預設）、`godot` | 遊戲前端。`web` 產生 `web/`；`godot` 產生 Godot 專案 `game/`，匯出到 `build/` |
 | `-server` | `go`（預設）、`node` | 遊戲伺服器（兌換啟動碼、判定勝負）|
 | `-template` | `web-go`、`web-node`、`godot-go`、`godot-node` | 舊寫法，等於同時指定上面兩個 |
 | `-ai` | `studios`、`none` | 加入 Claude Code Game Studios（只限 Godot；只指定它時自動用 Godot） |
+| `-skills` | `full`、`core`、`none` | 加入遊戲開發 skill（見上方） |
 | `-y` | | 不詢問，沒指定的項目用預設值 |
 
-在終端機執行 `pt new` 時，沒用參數指定的項目（名稱、畫面、伺服器、AI 開發方式）會逐步詢問，最後顯示對應的完整指令。CI 或腳本裡（不是終端機）不會詢問。
+在終端機執行 `pt new` 時，沒用參數指定的項目（名稱、畫面、伺服器、AI 開發方式、遊戲開發 skill）會逐步詢問，最後顯示對應的完整指令。CI 或腳本裡（不是終端機）不會詢問。
 
 不需要金鑰、不需要連線到玩聚：直接開啟時 SDK 自動進入模擬模式。
 
@@ -82,7 +98,7 @@ claude                                            # 第一次執行 /start
 
 | 指令 | 說明 |
 | --- | --- |
-| `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-ai studios\|none] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定）；`-orientation` 選直式、橫式或兩者都支援（預設直式） |
+| `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-ai studios\|none] [-skills none\|core\|full] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定）；`-orientation` 選直式、橫式或兩者都支援（預設直式） |
 | `pt dev [-addr 127.0.0.1:8090] [-players 2] [-smoke]` | 本機模擬模式（Godot 專案會先匯出）；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
 | `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器網址設定、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒 |

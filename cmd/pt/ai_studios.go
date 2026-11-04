@@ -31,7 +31,9 @@ type ccgsManifest struct {
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
 	License string `json:"license"`
-	Files   []struct {
+	// Skills：只有 awesome-gamedev-agent-skills 的清單有（ai_skills.go）
+	Skills []skillEntry `json:"skills,omitempty"`
+	Files  []struct {
 		Path   string `json:"path"`
 		SHA256 string `json:"sha256"`
 		Size   int64  `json:"size"`
@@ -61,8 +63,11 @@ const maxCCGSDownload = 64 << 20
 
 // fetchCCGS 下載固定 commit 的原始碼壓縮檔，回傳通過驗證的檔案（路徑 → 內容）。
 // 網址可以用環境變數 PT_CCGS_URL 換成鏡像（內容仍要通過清單的 SHA-256）。
-func fetchCCGS(m ccgsManifest) (map[string][]byte, error) {
-	url := os.Getenv("PT_CCGS_URL")
+func fetchCCGS(m ccgsManifest) (map[string][]byte, error) { return fetchPinned(m, "PT_CCGS_URL") }
+
+// fetchPinned 下載清單裡固定 commit 的 GitHub 原始碼壓縮檔並逐檔驗證；urlEnv 是可以換成鏡像網址的環境變數。
+func fetchPinned(m ccgsManifest, urlEnv string) (map[string][]byte, error) {
+	url := os.Getenv(urlEnv)
 	if url == "" {
 		url = "https://codeload.github.com/" + m.Repo + "/tar.gz/" + m.Commit
 	}

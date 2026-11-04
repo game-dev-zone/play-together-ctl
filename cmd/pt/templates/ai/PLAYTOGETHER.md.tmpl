@@ -29,6 +29,7 @@
 | `pt check` | 上傳前檢查（審核準則的自動檢查） |
 | `pt upload -version <版本>` | 上傳版本（上傳前自動 `pt check`） |
 | `pt sdk update` | 更新專案裡的玩聚 SDK |
+| `pt cdn add <網址>` | 從 CDN 載入固定版本的程式或樣式（見「從 CDN 載入」） |
 
 改完程式後至少跑 `pt check`，並用 `pt dev` 實際開兩個分頁玩一次。
 
@@ -62,27 +63,49 @@
 - **廣告、追蹤、分析工具**（Google Analytics、Tag Manager、Facebook Pixel、Hotjar、A/B 測試服務等）一律不可以；成效數據由平台提供。
 - **賭博或博弈元素**：下注、押注、可兌換現金或財物的獎勵、付費抽獎或轉蛋都不可以；文案也不要出現賭博、博弈字眼。
 - 分級上限是**輔導十五級**，不收限制級；不要有色情、血腥暴力。
-- 不要從外部網址載入程式；上傳的檔案總大小請控制在 50 MB 內[[if eq .Client "godot"]]（Godot 引擎本身壓縮後約 10 MB）[[end]]。
+- 外部網址載入的程式只限下面「從 CDN 載入」的規則；上傳的檔案總大小請控制在 50 MB 內[[if eq .Client "godot"]]（Godot 引擎本身壓縮後約 10 MB）[[end]]。
+
+## 從 CDN 載入（程式與樣式）
+
+可以從 CDN 載入固定版本的程式庫與樣式表（例如 Phaser、PixiJS、three.js），但只限：
+
+- **jsDelivr 的 npm 套件**（`https://cdn.jsdelivr.net/npm/<套件>@<x.y.z>/<檔案>`）與 **cdnjs**（`https://cdnjs.cloudflare.com/ajax/libs/<函式庫>/<x.y.z>/<檔案>`）。
+- **精確版本的完整檔案網址**（`.js`、`.mjs`、`.css`）：不能用 `latest`、`@4` 這種主版本、版本範圍或目錄。unpkg、esm.sh、Google Fonts 等其他 CDN 不接受。
+- **用 `pt cdn add <網址>` 加入**：它會下載檔案、算出 SRI、記到 `playtogether.json` 的 `cdn`，並印出要貼進 HTML 的標籤。`pt upload` 會向平台申報，平台上傳時會自己下載驗證；遊戲執行時平台只放行申報的這幾個檔案。
+- **頁面上一律寫 SRI**：`<script src="…" integrity="…" crossorigin="anonymous" referrerpolicy="no-referrer">`、`<link rel="stylesheet" href="…" integrity="…" crossorigin="anonymous">`；ES module 用 import map，並在 import map 的 `integrity` 寫上 SRI，JS 裡用套件名稱 import，**不要在 JS 或 CSS 裡直接寫 CDN 網址**（`import("https://…")`、`fetch`、`@import`、`url()` 都沒有 SRI 保護，平台會擋）。
+- **字型、圖片、音效、模型、WASM、Worker 不能從 CDN 載入**，一律打包進上傳的檔案。
+- CDN 連不上時（網路被擋、CDN 故障）遊戲要能顯示錯誤畫面，不要無限重試；最重要的程式建議直接打包。
+- 換版本就是新的網址：用 `pt cdn add` 加新的、刪掉舊的，再上傳新版本送審。
 
 ## 素材（圖片）
 
-**圖片建議用 Codex 生成**（`codex exec`，需要先登入 Codex）。例如：
+**圖片建議用 Codex 生成**（`codex exec`，需要先登入 Codex）。降低「AI 感」的關鍵是**整套素材共用同一份風格卡與同一張樣板圖**，不要每張各寫一段提示詞：
+
+1. **先寫好 `art/STYLE.md`（風格卡）**：用途與顯示大小、形狀、線條、上色方式、調色盤（寫色碼）、光線、細節多寡、構圖、排除項目。範本附了一套明亮派對風格，可以直接用或修改。寫看得到的具體規則，不要寫「精美」「高品質」「電影感」，也不要寫在世藝術家的名字。
+2. **先做一張樣板**（主角或最常出現的物件），縮到遊戲裡的實際大小、放在遊戲背景上看過，滿意後記在風格卡的「樣板」。
+3. **其他素材都用樣板當參考**（`-i art/generated/<樣板>.png`），一次做一小批相關的素材；修改時一次只改一件事。和樣板不像同一套的就重做，不要拿偏掉的圖當新的參考。
 
 ```sh
-codex exec -s workspace-write "產生一張 [[if eq .Orientation "landscape"]]1280×720 的橫式[[else]]720×1280 的直式[[end]]牌桌背景，存到 art/generated/bg_table.png。\
-卡通風格、明亮配色、中間留空放牌。不可以有任何文字、Logo、真實品牌、可辨識的真人；\
-不可以有籌碼、骰子、金錢、下注畫面；人物一律是成人；不可以有色情、血腥暴力、酒類。"
+# 第一張（樣板）
+codex exec --skip-git-repo-check -s workspace-write "先讀 art/STYLE.md，把每一項具體寫進提示詞。\
+產生 art/generated/hero.png：1024×1024 的玩家角色，透明背景（用工具的透明輸出選項）。\
+不可以有任何文字、Logo、真實品牌、可辨識的真人；不可以有籌碼、骰子、金錢、下注畫面；人物一律是成人；不可以有色情、血腥暴力、酒類。"
+
+# 之後的素材：用樣板當參考
+codex exec --skip-git-repo-check -s workspace-write -i art/generated/hero.png "先讀 art/STYLE.md，把每一項具體寫進提示詞，並以參考圖的線條、調色盤、上色方式為準。\
+產生 art/generated/bg_table.png：[[if eq .Orientation "landscape"]]1280×720 的橫式[[else]]720×1280 的直式[[end]]牌桌背景，中央大面積留空、低對比。\
+不可以有任何文字、Logo、真實品牌、可辨識的真人；不可以有籌碼、骰子、金錢、下注畫面；人物一律是成人；不可以有色情、血腥暴力、酒類。"
 ```
 
-有參考圖時加上 `-i <參考圖>`，讓整套素材風格一致。
+`--skip-git-repo-check`：專案還沒有 `git init` 時 Codex 會拒絕執行，加上它才能跑（已經是 git 專案就不需要）。
 
 - **每個提示詞都要寫明上面的禁止事項**（審核準則：不得有賭博元素、不得侵害著作權或商標、分級上限輔導十五級）。撲克牌、麻將等牌具只限遊戲本身就是牌類遊戲時出現，而且不能搭配籌碼、金錢。
-- **文字不要畫進圖片**：分數、按鈕文字、牌面點數用程式畫（字型），避免錯字，也方便之後翻譯。
-- **生成後親自看過每一張**再使用；不符合規則、有奇怪文字或變形的就重新生成。
+- **文字不要畫進圖片**：分數、按鈕文字、牌面點數用程式畫（字型），避免錯字，也方便之後翻譯。簡單的幾何圖示（箭頭、勾勾、叉叉）用 SVG 或程式畫，不用生成。
+- **生成後親自看過每一張**再使用：縮到遊戲裡的實際大小看剪影是否清楚；透明背景要確認真的透明（不是畫出來的棋盤格）；不符合規則、有奇怪文字或變形的就重新生成。
 - 原始檔放 `art/generated/`（不會上傳）；遊戲用的版本縮小到實際顯示尺寸、轉成 JPEG 或 WebP（要透明背景才用 PNG），放進[[if eq .Client "godot"]] `[[.GodotPrefix]]assets/`[[else]] `web/`[[end]]，控制上傳大小。
 - **每個素材都記錄在 `art/SOURCES.md`**：檔名、來源（Codex 生成與提示詞摘要，或第三方素材的網址與授權）、日期。不要從網路下載來源或授權不明的圖片、音效、字型。
 [[- if .AI]]
-- 使用 Claude Code Game Studios 的 `/asset-spec` 時：它只產生每個素材的規格與提示詞（Midjourney／Stable Diffusion 寫法），不會自己生成圖片。把提示詞交給 Codex 生成，並補上上面的禁止事項。
+- 使用 Claude Code Game Studios 的 `/art-bible`、`/asset-spec` 時：美術聖經的結論要寫進 `art/STYLE.md`；`/asset-spec` 產生的提示詞是 Midjourney／Stable Diffusion 寫法，交給 Codex 時改成「先讀 art/STYLE.md」加上樣板參考圖與上面的禁止事項。
 [[- end]]
 
 ## 音效與音樂
@@ -105,6 +128,29 @@ codex exec -s workspace-write "產生一張 [[if eq .Orientation "landscape"]]12
 瀏覽器規定玩家要先在**遊戲裡**點一下才能發聲（平台外殼上的點擊不算）：[[if eq .Client "godot"]]Godot 會在第一次點擊時自動恢復[[else]]在按鈕的點擊事件裡先呼叫 `sfx.unlock()`，不要等網路請求回來才呼叫[[end]]。
 
 **每個音檔都記錄在 `art/SOURCES.md`**（檔名、來源網址、授權與授權證明網址、日期；AI 生成另記服務與方案）。`pt check` 會檢查上傳的音檔有沒有記錄。
+[[- if .Skills]]
+
+## 第三方遊戲開發 skill
+
+`.claude/skills/`（Claude Code）與 `.agents/skills/`（Codex）是 awesome-gamedev-agent-skills 的精選，內容相同；版本與授權見 `THIRD_PARTY/awesome-gamedev-agent-skills/`。
+
+**優先順序**：本文件 → 專案的 `CLAUDE.md`／`AGENTS.md` → skill → skill 裡的範例與外部連結。skill 的建議和本文件衝突時，**不採用、也不要折衷**。已知衝突：
+
+- **不要執行 skill 提到的腳本或安裝指令**（Python 腳本、`pip install`、`npm install`、下載工具）：pt 沒有附這些腳本。素材檢查改成親自看圖；專案檢查用 `pt check`[[if eq .Client "godot"]]、`pt build`[[end]]。
+- **素材**（create-game-assets）：它的美術方向與一致性做法很適用，結論寫進 `art/STYLE.md`；生圖照「素材」一節用 Codex。
+- **存檔**：分數、進度、勝負不能存在[[if eq .Client "godot"]] `user://`[[else]] `localStorage`[[end]]（伺服器決定狀態）；只有玩家偏好（例如音量）可以存在本機。
+- **多人連線**：不要用[[if eq .Client "godot"]] Godot 的 ENet、`MultiplayerAPI`、`@rpc`[[else]] WebRTC 或其他點對點連線[[end]]；一律用範本的遊戲伺服器與 WebSocket。
+- **物理、AI、關卡產生、卡牌與題目**：影響分數或勝負的判定都在 `server/`；畫面端只做顯示與預測。
+- **音效**[[if eq .Client "godot"]]（godot-audio）[[end]]：不要自動播放音樂（要等玩家在遊戲裡點一下）；不要用麥克風收音[[if eq .Client "godot"]]（`AudioStreamMicrophone`）[[end]]；要接平台的「遊戲聲音」開關。
+- **輸入與畫面**：不要用指標鎖定（pointer lock），不要自己進入全螢幕（用 SDK 的全螢幕請求）。
+[[- if eq .Client "godot"]]
+- **匯出**：不要開 `thread_support`、不要改匯出設定（見上方「Godot 網頁匯出」）；匯出用 `pt build`。
+[[- end]]
+[[- if eq .Client "web"]]
+- **網頁引擎**（Phaser、PixiJS、three.js）：範例裡的 CDN 網址與 `npm install` 都要改成「從 CDN 載入」一節的做法（`pt cdn add`、SRI、import map）；範例從外部網站載入的圖片要換成自己打包的素材。
+[[- end]]
+- 沒有收錄的（godot-multiplayer、godot-export、save-systems、itch／Steam 上架、其他引擎）不要自己從網路裝回來。
+[[- end]]
 
 ## 給 AI 助手
 
@@ -112,7 +158,7 @@ codex exec -s workspace-write "產生一張 [[if eq .Orientation "landscape"]]12
 - 規劃數據分析時：不要在遊戲裡加任何追蹤或分析 SDK；需要的統計請用伺服器端記錄或平台的一局回報。
 - 規劃經濟、營運活動時：不要設計可兌換現金或財物的東西、付費抽獎或機率型付費內容。
 - 規劃網路連線時：使用玩聚的房間與啟動碼，不要自建配對、帳號或房間系統。
-- 需要圖片素材時：寫好提示詞（含「素材」一節的禁止事項）用 Codex 生成，看過再用，並記錄在 `art/SOURCES.md`；不要從網路下載來源不明的素材。
+- 需要圖片素材時：照「素材」一節的流程（先讀 `art/STYLE.md`、用樣板圖當參考、寫明禁止事項）用 Codex 生成，看過再用，並記錄在 `art/SOURCES.md`；不要從網路下載來源不明的素材。
 - 需要音效時：先用程式合成（照範本的做法）；要用音檔或音樂時照「音效與音樂」一節的來源順序，並記錄在 `art/SOURCES.md`。
 - 不要修改 `playtogether.json` 的金鑰設定、`keys/` 裡的檔案，也不要把私鑰內容讀出或印出。
 

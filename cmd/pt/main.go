@@ -73,6 +73,8 @@ func main() {
 		err = keygen(os.Args[2:])
 	case "upload":
 		err = upload(os.Args[2:])
+	case "cdn":
+		err = cmdCDN(os.Args[2:])
 	case "version", "-version", "--version":
 		fmt.Print(versionInfo())
 	default:
@@ -93,12 +95,14 @@ func usage() {
          [-client web|godot] [-server go|node]  直接指定，不再詢問
          [-orientation portrait|landscape|any]  畫面方向：直式（預設）、橫式、兩者都支援
          [-ai studios|none] [-y]                Godot 專案加入 Claude Code Game Studios；-y 不詢問、用預設值
+         [-skills none|core|full]               加入遊戲開發 skill（awesome-gamedev-agent-skills 精選）
   pt dev [-addr 127.0.0.1:8090]                本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
          [-smoke]                               啟動驗證：啟動、確認首頁與 SDK 載入得到後結束（不開瀏覽器）
   pt build                                      Godot 專案：用 Godot 無頭模式匯出網頁版到 build/
   pt check [-local] [建置資料夾]                上傳前檢查（對照審核準則）；-local：platform、serverUrl 還沒填不算錯誤
   pt keygen -purpose upload|server [-out 檔案]   產生金鑰；在專案裡預設寫到 keys/<用途>.key
-  pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定（含畫面方向）從 playtogether.json 讀
+  pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定（含畫面方向、CDN 申報）從 playtogether.json 讀
+  pt cdn add <網址>                             從 jsDelivr／cdnjs 載入固定版本的程式或樣式：算出 SRI、記到 playtogether.json、印出要貼的標籤
   pt sdk status                                 檢查專案的 SDK、這個 pt 內嵌的 SDK、最新版 pt 的 SDK
   pt sdk update [-force]                        把專案裡的 SDK 更新成這個 pt 內嵌的版本（不會降版，除非 -force）
   pt sdk export <資料夾>                        把 SDK 檔案寫到資料夾（接到既有專案用）
@@ -249,6 +253,9 @@ func upload(args []string) error {
 	if *orientation != "" {
 		reg["orientation"] = *orientation
 	}
+	if p != nil && len(p.CDN) > 0 {
+		reg["cdnAssets"] = p.CDN
+	}
 	if err := c.signed("POST", "/v1/dev/builds", reg, &created); err != nil {
 		return err
 	}
@@ -398,6 +405,8 @@ var errorText = map[string]string{
 	"hosting_disabled":   "平台沒有開啟託管上架",
 	"sha256_mismatch":    "上傳過程中檔案損毀，請重新上傳",
 	"size_mismatch":      "上傳過程中檔案大小不符，請重新上傳",
+	"bad_cdn_asset":      "playtogether.json 的 cdn 格式不對（只接受 jsDelivr、cdnjs 精確版本的 .js／.mjs／.css 完整網址加 SRI；用 pt cdn add 加入）",
+	"cdn_check_failed":   "平台下載 CDN 檔案驗證失敗（重新導向、沒有允許跨來源，或內容和 SRI 不符）",
 }
 
 func doJSON(req *http.Request, out any) error {
@@ -409,10 +418,15 @@ func doJSON(req *http.Request, out any) error {
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode >= 300 {
 		var e struct {
-			Error string `json:"error"`
+			Error  string `json:"error"`
+			URL    string `json:"url"`
+			Detail string `json:"detail"`
 		}
 		_ = json.Unmarshal(body, &e)
 		if t, ok := errorText[e.Error]; ok {
+			if e.URL != "" {
+				t += "：" + e.URL + "（" + e.Detail + "）"
+			}
 			return errors.New(t)
 		}
 		return fmt.Errorf("平台回應 %d %s", res.StatusCode, e.Error)

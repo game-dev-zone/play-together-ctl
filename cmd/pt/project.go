@@ -66,7 +66,10 @@ type project struct {
 	Godot string `json:"godot,omitempty"`
 	// 畫面方向：portrait、landscape、any；舊專案沒有這個欄位
 	Orientation string `json:"orientation,omitempty"`
-	AI          string `json:"ai,omitempty"` // studios：已加入 Claude Code Game Studios
+	AI          string `json:"ai,omitempty"`     // studios：已加入 Claude Code Game Studios
+	Skills      string `json:"skills,omitempty"` // core、full：已加入 awesome-gamedev-agent-skills 精選
+	// 從 CDN 載入的程式與樣式（pt cdn add 加入）；pt upload 申報給平台
+	CDN []cdnAsset `json:"cdn,omitempty"`
 
 	dir string // playtogether.json 所在的資料夾
 }
@@ -145,13 +148,14 @@ func cmdNew(args []string) error {
 	tmpl := fs.String("template", "", "舊的寫法：web-go、web-node、godot-go、godot-node（等於 -client 加 -server）")
 	platform := fs.String("platform", "https://（平台網址）", "玩聚平台網址（之後可以在 playtogether.json 修改）")
 	ai := fs.String("ai", "", "AI 開發範本：studios（加入 Claude Code Game Studios，只限 Godot）或 none；在終端機執行且沒指定時會詢問")
+	skills := fs.String("skills", "", "AI 遊戲開發 skill（awesome-gamedev-agent-skills 精選）：core（手感、手機介面、輸入、音效、素材、效能）、full（core 加上畫面引擎的 skill）或 none；在終端機執行且沒指定時會詢問")
 	orientation := fs.String("orientation", "portrait", "畫面方向：portrait（直式）、landscape（橫式）或 any（兩者都支援）")
 	yes := fs.Bool("y", false, "不詢問，沒指定的項目用預設值")
 	_ = fs.Parse(reorder(args))
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	if fs.NArg() > 1 {
-		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-ai studios|none] <專案名稱>")
+		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-ai studios|none] [-skills none|core|full] <專案名稱>")
 	}
 	checkName := func(name string) error {
 		if !namePattern.MatchString(name) {
@@ -188,10 +192,17 @@ func cmdNew(args []string) error {
 		}
 		*client, set["client"] = "godot", true // 只指定 -ai studios：一定是 Godot
 	}
+	if *skills != "" && !slices.Contains(skillLevels, *skills) {
+		return fmt.Errorf("-skills 只能是 none、core 或 full（目前是 %q）", *skills)
+	}
 	if err := requireAssets(); err != nil {
 		return err
 	}
 	ccgs, err := loadCCGS()
+	if err != nil {
+		return err
+	}
+	gds, err := loadSkills()
 	if err != nil {
 		return err
 	}
@@ -203,8 +214,8 @@ func cmdNew(args []string) error {
 			return err
 		}
 	}
-	if !*yes && interactive() && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || !set["ai"]) {
-		if name, err = newWizard(name, client, server, orientation, ai, set, ccgs, checkName); err != nil {
+	if !*yes && interactive() && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || !set["ai"] || !set["skills"]) {
+		if name, err = newWizard(name, client, server, orientation, ai, skills, set, ccgs, gds, checkName); err != nil {
 			if errors.Is(err, errCanceled) {
 				fmt.Println()
 				return errors.New("已取消，沒有建立任何檔案")
@@ -216,9 +227,13 @@ func cmdNew(args []string) error {
 		}
 	}
 	if name == "" {
-		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-ai studios|none] <專案名稱>（在終端機執行 pt new 會逐步詢問）")
+		return errors.New("用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-ai studios|none] [-skills none|core|full] <專案名稱>（在終端機執行 pt new 會逐步詢問）")
 	}
 	studios := *ai == "studios"
+	if *skills == "" {
+		*skills = "none"
+	}
+	withSkills := *skills != "none"
 	godotDir := "game"
 	if studios {
 		godotDir = "." // Claude Code Game Studios 的工具假設 project.godot 在根目錄
@@ -234,6 +249,7 @@ func cmdNew(args []string) error {
 	template := *client + "-" + *server
 	data := map[string]string{"Name": name, "Client": *client, "Server": *server, "Template": template, "Platform": *platform, "SDKVersion": sdkVersion(),
 		"GodotDir": godotDir, "GodotPrefix": godotPrefix, "GodotPath": godotPath, "AI": map[bool]string{true: "studios", false: ""}[studios],
+		"Skills":      map[bool]string{true: *skills, false: ""}[withSkills],
 		"Orientation": *orientation, "OrientationLabel": orientationLabel[*orientation]}
 	files := map[string][]byte{}
 	render := func(src, dst string) error {
@@ -284,6 +300,17 @@ func cmdNew(args []string) error {
 			return err
 		}
 	}
+	var skillNames []string
+	if withSkills {
+		fmt.Printf("下載 %s（commit %s）並驗證每個檔案…\n", gds.Name, gds.Commit[:7])
+		got, err := fetchPinned(gds, "PT_SKILLS_URL")
+		if err != nil {
+			return err
+		}
+		if skillNames, err = addSkillsFiles(files, gds, got, *skills, *client); err != nil {
+			return err
+		}
+	}
 	for rel, content := range files {
 		dst := filepath.Join(name, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -312,6 +339,9 @@ func cmdNew(args []string) error {
 	}
 	fmt.Println("  make verify   # 啟動驗證：伺服器測試、檢查要上傳的檔案、在模擬模式實際啟動一次（make 列出所有指令）")
 	fmt.Println("接上玩聚的步驟見 README.md。")
+	if withSkills {
+		fmt.Printf("已加入 %d 個遊戲開發 skill（%s）：Claude Code 在 .claude/skills/、Codex 在 .agents/skills/；和玩聚規則衝突時以 PLAYTOGETHER.md 為準。\n", len(skillNames), gds.Name)
+	}
 	if !studios {
 		fmt.Println("用 AI 助手開發：專案附有 CLAUDE.md、AGENTS.md，平台規則在 PLAYTOGETHER.md。")
 		if *client == "godot" {
@@ -324,7 +354,7 @@ func cmdNew(args []string) error {
 // newWizard 逐步詢問專案名稱、畫面、伺服器、AI 開發範本，最後確認。回傳空名稱表示開發者選擇不建立。
 var orientationLabel = map[string]string{"portrait": "直式", "landscape": "橫式", "any": "直式橫式都支援"}
 
-func newWizard(name string, client, server, orientation, ai *string, set map[string]bool, ccgs ccgsManifest, checkName func(string) error) (string, error) {
+func newWizard(name string, client, server, orientation, ai, skills *string, set map[string]bool, ccgs, gds ccgsManifest, checkName func(string) error) (string, error) {
 	var err error
 	fmt.Println("建立玩聚遊戲專案（直接按 Enter 用預設值，Ctrl-C 取消）")
 	fmt.Println()
@@ -372,8 +402,18 @@ func newWizard(name string, client, server, orientation, ai *string, set map[str
 			fmt.Printf("AI 開發：專案會附上給 AI 助手的規則（PLAYTOGETHER.md、CLAUDE.md、AGENTS.md）。%s 目前只搭配 Godot。\n\n", ccgs.Name)
 		}
 	}
-	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s -ai %s %s", *client, *server, *orientation, *ai, name)
-	fmt.Printf("即將建立 %s：畫面 %s、伺服器 %s、%s、AI 範本 %s\n", name, *client, *server, orientationLabel[*orientation], map[string]string{"studios": ccgs.Name, "none": "一般"}[*ai])
+	if !set["skills"] {
+		engine := map[string]string{"web": "Phaser、PixiJS、three.js", "godot": "Godot 4.7"}[*client]
+		if *skills, err = choose("要加入 AI 遊戲開發 skill 嗎？（"+gds.Name+" 精選，Claude Code 與 Codex 都能用）", []option{
+			{"full", "加入（建議）", "手感、手機介面、觸控輸入、音效、素材風格一致、效能，加上 " + engine + " 的 skill；只收說明文件、逐檔驗證"},
+			{"core", "只加通用的", "不含引擎的 skill"},
+			{"none", "不加入", ""},
+		}, "full"); err != nil {
+			return "", err
+		}
+	}
+	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s -ai %s -skills %s %s", *client, *server, *orientation, *ai, *skills, name)
+	fmt.Printf("即將建立 %s：畫面 %s、伺服器 %s、%s、AI 範本 %s、遊戲開發 skill %s\n", name, *client, *server, orientationLabel[*orientation], map[string]string{"studios": ccgs.Name, "none": "一般"}[*ai], map[string]string{"full": "完整", "core": "通用", "none": "不加入"}[*skills])
 	fmt.Printf("（下次可以直接執行：%s）\n", cmd)
 	ok, err := confirm("確定建立？", true)
 	if err != nil {
@@ -735,12 +775,9 @@ func checkProject(p *project, webDir string) []finding {
 		if !strings.Contains(html, "playtogether-sdk") {
 			add("error", "index.html 沒有載入玩聚 SDK（playtogether-sdk.iife.js 或 playtogether-sdk-godot.iife.js）")
 		}
-		for _, m := range scriptSrc.FindAllStringSubmatch(html, -1) {
-			if strings.HasPrefix(m[1], "http") || strings.HasPrefix(m[1], "//") {
-				add("warn", "index.html 從外部載入程式：%s（建議和遊戲檔案放在一起；外部 CDN 請固定版本號）", m[1])
-			}
-		}
 	}
+	// 外部程式與樣式：一律要申報、寫 SRI（cdn.go）
+	checkCDN(p, webDir, add)
 
 	var total int64
 	files := 0
