@@ -1,0 +1,29 @@
+{
+  "result": "REVIEW_REQUIRED",
+  "allowedSeverities": [
+    "REVIEW_REQUIRED"
+  ],
+  "reviewCount": 3,
+  "requiredFindings": [
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "gameplay.tableGame.category：poker"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "gameplay.tableGame.wageringTokens：allowed"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "gameplay.tableGame.virtualWagering：allowed"
+    }
+  ],
+  "declaration": {
+    "gameplay.tableGame.category": "poker",
+    "gameplay.tableGame.wageringTokens": "allowed",
+    "gameplay.tableGame.virtualWagering": "allowed",
+    "gameplay.tableGame.tokenPersistence": "round",
+    "economy.realMoneyWagering": false,
+    "economy.purchasableStake": false
+  }
+}

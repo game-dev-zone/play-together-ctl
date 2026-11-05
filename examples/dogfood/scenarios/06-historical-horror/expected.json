@@ -1,0 +1,42 @@
+{
+  "result": "REVIEW_REQUIRED",
+  "allowedSeverities": [
+    "REVIEW_REQUIRED"
+  ],
+  "reviewCount": 4,
+  "requiredFindings": [
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "sensitiveContent.historicalPersecution：true"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "sensitiveContent.politicalRepression：true"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "sensitiveContent.discriminationDepiction：true"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "sensitiveContent.hateSpeechDepiction：true"
+    }
+  ],
+  "declaration": {
+    "contentProfile.profile": "strong",
+    "sensitiveContent.historicalPersecution": true,
+    "sensitiveContent.politicalRepression": true,
+    "sensitiveContent.hateAdvocacy": false,
+    "sensitiveContent.encourageProtectedClassViolence": false
+  },
+  "docContains": {
+    "docs/content/CONTENT_PROFILE.md": [
+      "| 威權統治、白色恐怖、監控、審訊、政治監禁（`politicalRepression`） | `true` | 需要平台審核 |",
+      "這個要求本身就是授權"
+    ],
+    "docs/ai/AI_WORKFLOW.md": [
+      "開發者明確要求敏感題材",
+      "不需要再提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`"
+    ]
+  }
+}

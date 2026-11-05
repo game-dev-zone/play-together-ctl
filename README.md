@@ -166,6 +166,8 @@ pt check：PASS／REVIEW_REQUIRED／ERROR
 
 ## 依遊戲類型開始
 
+七種常見情境（單人益智、多人合作、桌遊、撲克、麻將、歷史恐怖、類吃角子老虎）的建立指令、關鍵宣告與預期的 `pt check` 結果見 [`examples/dogfood/`](examples/dogfood/)。
+
 不確定參數怎麼選時，可以先從遊戲類型決定。下面的指令都是起點，不需要先了解 Game Studios、skill 或其他 AI 內部工具；專案建立後，在資料夾裡啟動 Claude Code（`claude`）或 Codex，直接用自然語言描述要做的遊戲即可。
 
 內容邊界（`-profile`）是開發期間的**內容上限，不是要求**，也不等於正式分級結果：選 `strong` 不代表 AI 會主動加入恐怖、暴力或酒類，只代表遊戲需要時可以用到這個程度。不確定時用預設的 `general`，之後要提高時由開發者修改 `playtogether.json`（AI 會先提出 `CONTENT_PROFILE_CHANGE_REQUEST`）。

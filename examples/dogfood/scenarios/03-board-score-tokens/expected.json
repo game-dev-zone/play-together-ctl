@@ -1,0 +1,13 @@
+{
+  "result": "PASS",
+  "allowedSeverities": [],
+  "reviewCount": 0,
+  "declaration": {
+    "gameplay.tableGame.enabled": true,
+    "gameplay.tableGame.category": "board",
+    "gameplay.tableGame.scoreTokens": "allowed",
+    "gameplay.tableGame.wageringTokens": "none",
+    "gameplay.tableGame.virtualWagering": "none",
+    "gameplay.tableGame.tokenPersistence": "none"
+  }
+}

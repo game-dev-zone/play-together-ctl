@@ -1,0 +1,11 @@
+{
+  "result": "PASS",
+  "allowedSeverities": [],
+  "reviewCount": 0,
+  "declaration": {
+    "contentProfile.profile": "general",
+    "gameServer.mode": "playtogether-managed",
+    "multiplayer.enabled": true,
+    "gameplay.tableGame.enabled": false
+  }
+}

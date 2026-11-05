@@ -1,0 +1,33 @@
+{
+  "result": "REVIEW_REQUIRED",
+  "allowedSeverities": [
+    "REVIEW_REQUIRED"
+  ],
+  "reviewCount": 1,
+  "requiredFindings": [
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "gameplay.tableGame.category：mahjong"
+    }
+  ],
+  "forbiddenFindings": [
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "scoreTokens"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "wageringTokens"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "virtualWagering"
+    }
+  ],
+  "declaration": {
+    "gameplay.tableGame.category": "mahjong",
+    "gameplay.tableGame.scoreTokens": "allowed",
+    "gameplay.tableGame.wageringTokens": "none",
+    "gameplay.tableGame.virtualWagering": "none"
+  }
+}

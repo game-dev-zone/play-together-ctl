@@ -1,0 +1,32 @@
+{
+  "result": "REVIEW_REQUIRED",
+  "allowedSeverities": [
+    "REVIEW_REQUIRED"
+  ],
+  "reviewCount": 4,
+  "requiredFindings": [
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "gameplay.tableGame.category：slot"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "gameplay.tableGame.presentation：casinoLike"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "gameplay.tableGame.wageringTokens：allowed"
+    },
+    {
+      "severity": "REVIEW_REQUIRED",
+      "contains": "gameplay.tableGame.virtualWagering：allowed"
+    }
+  ],
+  "declaration": {
+    "gameplay.tableGame.category": "slot",
+    "gameplay.tableGame.presentation": "casinoLike",
+    "gameplay.tableGame.wageringTokens": "allowed",
+    "gameplay.tableGame.virtualWagering": "allowed",
+    "economy.realMoneyWagering": false
+  }
+}

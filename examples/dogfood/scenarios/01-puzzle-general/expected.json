@@ -1,0 +1,10 @@
+{
+  "result": "PASS",
+  "allowedSeverities": [],
+  "reviewCount": 0,
+  "declaration": {
+    "contentProfile.profile": "general",
+    "gameplay.tableGame.enabled": false,
+    "gameServer.mode": "none"
+  }
+}
