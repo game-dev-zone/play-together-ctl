@@ -107,6 +107,121 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 
 不需要金鑰、不需要連線到玩聚：直接開啟時 SDK 自動進入模擬模式。
 
+## 依遊戲類型開始
+
+不確定參數怎麼選時，可以先從遊戲類型決定。下面的指令都是起點，不需要先了解 Game Studios、skill 或其他 AI 內部工具；專案建立後，在資料夾裡啟動 Claude Code（`claude`）或 Codex，直接用自然語言描述要做的遊戲即可。
+
+| 遊戲類型 | 建議畫面 | `gameServer.mode` | 建議 AI 模式 | 起始指令 |
+| --- | --- | --- | --- | --- |
+| 單人休閒／益智／節奏 | Web | `none` | `standard` | `pt new -client web -game-server none -mode standard my-game` |
+| 敘事／恐怖解謎／RPG | Godot | `none` | `studio` | `pt new -client godot -game-server none -mode studio haunted-game` |
+| 多人派對／合作 | Web 或 Godot | `playtogether-managed` | `standard` | `pt new -client web -game-server playtogether-managed -mode standard party-game` |
+| 即時競技／動作對戰 | Godot | `playtogether-managed` | `standard` | `pt new -client godot -game-server playtogether-managed -mode standard arena-game` |
+| 已有自己的 Game Server | 依既有遊戲 | `external` | `standard` | `pt new -client web -game-server external -mode standard existing-game` |
+| 快速驗證玩法／Prototype | Web | `none` | `standard` | `pt new -client web -game-server none -mode standard prototype-game` |
+
+### 單人休閒、益智、節奏遊戲
+
+先用 Web 做最小可玩版本通常最快：
+
+```sh
+pt new -client web -game-server none -mode standard my-puzzle
+cd my-puzzle
+claude
+```
+
+接著直接告訴 AI：
+
+> 幫我做一款手機直式的單人益智遊戲。先定義核心玩法循環，再做一個 5 分鐘內能玩完的 Prototype。
+
+`gameServer.mode: none` 的正式遊戲不需要部署 Game Server，也不需要 `serverKeyId` 或 `serverUrl`；專案仍會附 `server/`，只供本機模擬、SDK 範例與 smoke test 使用。
+
+### 敘事、恐怖解謎、RPG
+
+這類遊戲通常需要較多世界觀、關卡、謎題與故事規劃，建議用 Godot + `studio`：
+
+```sh
+pt new -client godot -game-server none -mode studio haunted-school
+cd haunted-school
+claude
+```
+
+接著可以直接說：
+
+> 我要做一款 20～30 分鐘的心理恐怖解謎遊戲，以台灣校園為背景。先規劃核心體驗、故事真相、第一組謎題與 playable vertical slice，再開始實作。
+
+開發者不需要自己選 Game Studios 的 agent、skill 或 slash command；Claude 會依 `CLAUDE.md` 與 `docs/ai/AI_WORKFLOW.md` 自動判斷何時先規劃、何時進入實作。
+
+目前 `studio` 模式只支援 Godot。
+
+### 多人派對、合作遊戲
+
+如果沒有既有後端，先用玩聚範本 Game Server：
+
+```sh
+pt new -client web -game-server playtogether-managed -mode standard party-game
+cd party-game
+claude
+```
+
+接著可以說：
+
+> 幫我做一款 4 人合作派對遊戲，每局 3 分鐘。先做一個只有單一核心玩法的可玩版本，伺服器負責判定結果、斷線重連與一局生命週期。
+
+多人專案的正式結果、分數與可信任狀態不要只放在畫面端；AI 會依專案宣告保留玩聚的連線與 server-authoritative 架構。
+
+### 即時競技、動作對戰
+
+需要較多角色控制、碰撞、動畫或即時操作時，可以從 Godot 開始：
+
+```sh
+pt new -client godot -game-server playtogether-managed -mode standard arena-game
+cd arena-game
+claude
+```
+
+接著可以說：
+
+> 幫我做一個 2～4 人即時競技 Prototype。先定義 client prediction 可以做到哪裡、哪些結果一定由伺服器判定，再做最小可玩版本與延遲／斷線測試。
+
+不要讓 AI 自行改成 Godot Multiplayer、ENet、P2P 或其他連線框架；連線架構以 `PROJECT_CONTEXT.md` 與 `playtogether.json` 的宣告為準。
+
+### 已有自己的 Game Server
+
+第三方遊戲已經有後端時，不需要遷移到玩聚範本伺服器：
+
+```sh
+pt new -client web -game-server external -mode standard existing-game
+cd existing-game
+claude
+```
+
+接著可以說：
+
+> 這個專案已有正式 Game Server。先閱讀現有 protocol、登入、session 與測試方式，保留目前架構，只補上 PlayTogether 需要的啟動碼兌換、SDK 與平台生命週期整合。
+
+`external` 模式下，`server/` 仍會產生，但只作為玩聚整合參考與本機模擬；正式環境使用開發者自己的 Game Server，`serverUrl` 填它的對外網址。
+
+### 快速驗證新玩法
+
+還不確定遊戲值不值得做完整版本時，先用 Web + `standard` 做最小 Prototype：
+
+```sh
+pt new -client web -game-server none -mode standard prototype-game
+cd prototype-game
+claude
+```
+
+例如：
+
+> 我有一個玩家控制龍捲風吸收物件並破壞場景的點子。先不要做完整遊戲，幫我定義核心循環與成功標準，只做能驗證「控制龍捲風是否有趣」的第一個 Prototype。
+
+預設流程是：
+
+**概念 → 核心循環 → 最小可玩版本 → 實際遊玩 → 再決定是否擴充**
+
+> **CI／自動化提醒**：`pt new -y`、非互動環境或 CI 在沒有明確指定 `-mode` 時，預設使用 `lightweight`，不下載任何第三方 AI 內容。需要 skill 或 studio 時請明確指定 `-mode standard` 或 `-mode studio`。
+
 ## 指令
 
 | 指令 | 說明 |
