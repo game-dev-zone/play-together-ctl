@@ -15,7 +15,7 @@
 
     {"id": "real-money-business", "field": "economy.realMoney", "values": ["true"], "level": "review", "category": "經濟", "reason": "商業模式涉及真實金錢（不是下注；技術上遊戲仍不能自己接付款）"},
     {"id": "virtual-wagering", "field": "gameplay.tableGame.virtualWagering", "values": ["allowed"], "level": "review", "category": "玩法", "reason": "虛擬下注玩法"},
-    {"id": "virtual-chips", "field": "gameplay.tableGame.scoreTokens", "values": ["allowed"], "level": "review", "category": "玩法", "reason": "虛擬籌碼或計分 token"},
+    {"id": "wagering-chips", "field": "gameplay.tableGame.wageringTokens", "values": ["allowed"], "level": "review", "category": "玩法", "reason": "下注用的虛擬籌碼（一般計分 token 不需要審核）"},
     {"id": "table-category", "field": "gameplay.tableGame.category", "values": ["poker", "mahjong", "slot", "roulette", "baccarat", "other"], "level": "review", "category": "玩法", "reason": "牌桌類型（是否接受、正式分級、警語、標籤、上架文案由平台決定）"},
     {"id": "casino-like", "field": "gameplay.tableGame.presentation", "values": ["casinoLike"], "level": "review", "category": "玩法", "reason": "賭場風格呈現"},
     {"id": "persistent-chips", "field": "gameplay.tableGame.tokenPersistence", "values": ["persistent"], "level": "review", "category": "玩法", "reason": "跨局累積的籌碼"},

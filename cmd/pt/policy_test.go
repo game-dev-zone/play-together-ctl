@@ -129,12 +129,12 @@ func TestPolicyProfiles(t *testing.T) {
 	}
 }
 
-// -table-game：建立與開發都支援；撲克、麻將、吃角子老虎等是 REVIEW_REQUIRED（不是錯誤，也不寫死分級）；卡牌、骰子是 PASS。
+// -table-game：建立與開發都支援；撲克、麻將、吃角子老虎等是 REVIEW_REQUIRED（不是錯誤，也不寫死分級）；卡牌、骰子、一般桌遊（計分 token）是 PASS。
 func TestPolicyTableGameNew(t *testing.T) {
 	requireEmbeddedSDK(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
-	for cat, review := range map[string]bool{"poker": true, "mahjong": true, "slot": true, "roulette": true, "baccarat": true, "board": true, "other": true, "card": false, "dice": false} {
+	for cat, review := range map[string]bool{"poker": true, "mahjong": true, "slot": true, "roulette": true, "baccarat": true, "other": true, "board": false, "card": false, "dice": false} {
 		name := "t-" + cat
 		must(t, cmdNew([]string{name, "-y", "-table-game", cat}))
 		p := readProject(t, filepath.Join(dir, name))
@@ -218,7 +218,20 @@ func TestCheckPolicyMatrix(t *testing.T) {
 			pl.Gameplay.TableGame.FreeTokenSources = []string{"daily", "adReward"}
 		}, []string{levelReview}},
 		{"牌桌啟用但沒有類別", func(pl *policy) { pl.Gameplay.TableGame.Enabled = true }, []string{levelSchema}},
-		{"沒有牌桌卻有籌碼", func(pl *policy) { pl.Gameplay.TableGame.ScoreTokens = "allowed" }, []string{levelSchema, levelReview}},
+		{"沒有牌桌卻有計分 token", func(pl *policy) { pl.Gameplay.TableGame.ScoreTokens = "allowed" }, []string{levelSchema}},
+		{"一般桌遊＋計分 token", table("board"), nil},
+		{"桌遊計分 token 不需要保存範圍", func(pl *policy) { table("board")(pl); pl.Gameplay.TableGame.Cards = "allowed" }, nil},
+		{"撲克＋虛擬下注＋下注籌碼", table("poker"), []string{levelReview}},
+		{"只有下注籌碼沒有下注動作", func(pl *policy) {
+			table("card")(pl)
+			pl.Gameplay.TableGame.WageringTokens = "allowed"
+			pl.Gameplay.TableGame.TokenPersistence = "round"
+		}, []string{levelReview}},
+		{"計分 token 不能拿來下注", func(pl *policy) {
+			table("board")(pl)
+			pl.Gameplay.TableGame.VirtualWagering = "allowed"
+		}, []string{levelSchema, levelReview}},
+		{"沒有下注籌碼卻有保存範圍", func(pl *policy) { table("board")(pl); pl.Gameplay.TableGame.TokenPersistence = "persistent" }, []string{levelSchema, levelReview}},
 		{"虛擬下注沒有籌碼", func(pl *policy) { table("card")(pl); pl.Gameplay.TableGame.VirtualWagering = "allowed" }, []string{levelSchema, levelReview}},
 		{"籌碼沒有保存範圍", func(pl *policy) { table("poker")(pl); pl.Gameplay.TableGame.TokenPersistence = "none" }, []string{levelSchema, levelReview}},
 		{"不合法的類別", func(pl *policy) { table("card")(pl); pl.Gameplay.TableGame.Category = "casino" }, []string{levelSchema}},
@@ -491,7 +504,7 @@ func TestUploadSkipCheckSemantics(t *testing.T) {
 	if err := up("-skip-check"); err == nil || strings.Contains(err.Error(), "-skip-check") || uploads != 1 {
 		t.Fatalf("宣告錯誤要擋下：%v", err)
 	}
-	// 需要審核：可以送審
+	// 改了宣告沒同步文件：宣告錯誤，-skip-check 也擋下
 	setJSON(func(m map[string]any) {
 		g := m["gameplay"].(map[string]any)
 		raw, _ := json.Marshal(tablePreset("poker"))
@@ -499,7 +512,105 @@ func TestUploadSkipCheckSemantics(t *testing.T) {
 		_ = json.Unmarshal(raw, &tg)
 		g["tableGame"] = tg
 	})
+	if err := up("-skip-check"); err == nil || strings.Contains(err.Error(), "-skip-check") || uploads != 1 {
+		t.Fatalf("文件和宣告不一致要擋下：%v", err)
+	}
+	// pt content sync 之後：需要審核的項目可以送審
+	must(t, cmdContent([]string{"sync"}))
 	if err := up("-skip-check"); err != nil || uploads != 2 {
 		t.Fatalf("需要審核的項目可以送審：%v", err)
+	}
+}
+
+// v0.15 的開發契約文件：缺少或和宣告不一致是宣告錯誤；pt content sync 重新產生並記錄平台政策版本；
+// 宣告有錯誤時不產生文件；policyVersion 缺少或不同只提醒。v0.14 的舊文件不一致仍只提醒。
+func TestPolicyDocsAndSync(t *testing.T) {
+	requireEmbeddedSDK(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	must(t, cmdNew([]string{"docs-game", "-y"}))
+	root := filepath.Join(dir, "docs-game")
+	t.Chdir(root)
+	check := func() levels {
+		t.Helper()
+		p, err := findProject()
+		must(t, err)
+		return runPolicy(p)
+	}
+	if l := check(); !l.only() || len(l[levelWarn]) != 0 {
+		t.Fatalf("新專案要 PASS：%v", l)
+	}
+	if p, _ := findProject(); p.PolicyVersion != loadPolicyRules().Version {
+		t.Fatalf("新專案要記錄平台政策版本：%q", p.PolicyVersion)
+	}
+	profile := filepath.Join(root, "docs/content/CONTENT_PROFILE.md")
+	must(t, os.Remove(profile))
+	if l := check(); len(l[levelSchema]) != 1 {
+		t.Fatalf("文件缺少要是宣告錯誤：%v", l)
+	}
+	// JSON 改成 strong，文件仍是 general：宣告錯誤
+	must(t, cmdContent([]string{"sync"}))
+	raw, _ := os.ReadFile(filepath.Join(root, projectFile))
+	m := map[string]any{}
+	must(t, json.Unmarshal(raw, &m))
+	cpRaw, _ := json.Marshal(presetProfile("strong"))
+	var cp map[string]any
+	_ = json.Unmarshal(cpRaw, &cp)
+	m["contentProfile"] = cp
+	write := func() {
+		b, _ := json.MarshalIndent(m, "", "  ")
+		must(t, os.WriteFile(filepath.Join(root, projectFile), b, 0o644))
+	}
+	write()
+	if l := check(); len(l[levelSchema]) != 1 || !strings.Contains(l[levelSchema][0], "不一致") {
+		t.Fatalf("文件和宣告不一致要是宣告錯誤：%v", l)
+	}
+	must(t, cmdContent([]string{"sync"}))
+	if l := check(); !l.only() {
+		t.Fatalf("sync 之後要 PASS：%v", l)
+	}
+	if doc, _ := os.ReadFile(profile); !strings.Contains(string(doc), "Strong") {
+		t.Fatal("sync 要依新宣告重新產生文件")
+	}
+	// 宣告有錯誤時不產生文件
+	m["contentProfile"].(map[string]any)["blood"] = "mild"
+	write()
+	before, _ := os.ReadFile(profile)
+	if err := cmdContent([]string{"sync"}); err == nil {
+		t.Fatal("宣告有錯誤時 sync 要失敗")
+	}
+	if after, _ := os.ReadFile(profile); string(after) != string(before) {
+		t.Fatal("宣告有錯誤時不能改寫文件")
+	}
+	// policyVersion：缺少或和這個 pt 不同只提醒
+	m["contentProfile"].(map[string]any)["blood"] = "moderate"
+	for _, v := range []any{nil, "2000-01-01"} {
+		if v == nil {
+			delete(m, "policyVersion")
+		} else {
+			m["policyVersion"] = v
+		}
+		write()
+		if l := check(); !l.only() || len(l[levelWarn]) != 1 || !strings.Contains(l[levelWarn][0], "pt content sync") {
+			t.Fatalf("policyVersion %v 只提醒：%v", v, l)
+		}
+	}
+	must(t, cmdContent([]string{"sync"}))
+	if p, _ := findProject(); p.PolicyVersion != loadPolicyRules().Version {
+		t.Fatalf("sync 要更新 policyVersion：%q", p.PolicyVersion)
+	}
+	if l := check(); !l.only() || len(l[levelWarn]) != 0 {
+		t.Fatalf("sync 之後沒有提醒：%v", l)
+	}
+	// v0.14 的舊文件不一致：只提醒
+	r := ratingPreset("15plus")
+	legacy := &project{Name: "old", ContentRating: &r, dir: t.TempDir()}
+	must(t, os.MkdirAll(filepath.Join(legacy.dir, "docs/content"), 0o755))
+	must(t, os.WriteFile(filepath.Join(legacy.dir, "docs/content/CONTENT_RATING.md"), []byte("舊的"), 0o644))
+	if l := runPolicy(legacy); !l.only() {
+		t.Fatalf("v0.14 的舊文件不一致只提醒：%v", l)
+	}
+	if err := func() error { t.Chdir(t.TempDir()); return cmdContent([]string{"sync"}) }(); err == nil {
+		t.Fatal("不在專案裡 sync 要失敗")
 	}
 }

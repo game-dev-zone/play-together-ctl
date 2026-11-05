@@ -9,6 +9,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,10 +65,11 @@ type tableGame struct {
 	Presentation     string   `json:"presentation"`
 	Cards            string   `json:"cards"`
 	Dice             string   `json:"dice"`
-	ScoreTokens      string   `json:"scoreTokens"`
-	VirtualWagering  string   `json:"virtualWagering"`
-	TokenPersistence string   `json:"tokenPersistence"`
-	FreeTokenSources []string `json:"freeTokenSources"`
+	ScoreTokens      string   `json:"scoreTokens"`      // 一般計分或資源 token（桌遊的分數、資源）：本身不需要審核
+	WageringTokens   string   `json:"wageringTokens"`   // 下注用的籌碼（虛擬下注的本金）：需要平台審核
+	VirtualWagering  string   `json:"virtualWagering"`  // Bet／Call／Raise／All-in 等下注型動作，要有下注用的籌碼
+	TokenPersistence string   `json:"tokenPersistence"` // 下注籌碼的保存範圍
+	FreeTokenSources []string `json:"freeTokenSources"` // 免費取得下注籌碼的方式
 }
 
 type gameplayPolicy struct {
@@ -148,7 +150,7 @@ func presetProfile(profile string) contentProfile {
 
 // tablePreset 是 -table-game 各類型的起始值：只填常用的能力欄位，不含任何准駁或分級。
 func tablePreset(category string) tableGame {
-	t := tableGame{Category: "none", Presentation: "standard", Cards: "none", Dice: "none", ScoreTokens: "none", VirtualWagering: "none", TokenPersistence: "none", FreeTokenSources: []string{}}
+	t := tableGame{Category: "none", Presentation: "standard", Cards: "none", Dice: "none", ScoreTokens: "none", WageringTokens: "none", VirtualWagering: "none", TokenPersistence: "none", FreeTokenSources: []string{}}
 	if category == "" || category == "none" {
 		return t
 	}
@@ -157,7 +159,7 @@ func tablePreset(category string) tableGame {
 	case "card":
 		t.Cards = "allowed"
 	case "poker", "baccarat":
-		t.Cards, t.ScoreTokens, t.VirtualWagering = "allowed", "allowed", "allowed"
+		t.Cards, t.WageringTokens, t.VirtualWagering = "allowed", "allowed", "allowed"
 	case "mahjong":
 		t.Cards, t.ScoreTokens = "allowed", "allowed"
 	case "dice":
@@ -165,12 +167,12 @@ func tablePreset(category string) tableGame {
 	case "board":
 		t.Dice, t.ScoreTokens = "allowed", "allowed"
 	case "slot", "roulette":
-		t.ScoreTokens, t.VirtualWagering = "allowed", "allowed"
+		t.WageringTokens, t.VirtualWagering = "allowed", "allowed"
 	}
 	if category == "slot" || category == "roulette" || category == "baccarat" {
 		t.Presentation = "casinoLike"
 	}
-	if t.ScoreTokens == "allowed" {
+	if t.WageringTokens == "allowed" {
 		t.TokenPersistence = "round"
 	}
 	return t
@@ -240,6 +242,7 @@ func (pl *policy) fields() map[string][]string {
 		"gameplay.chanceMechanics": s(pl.Gameplay.ChanceMechanics), "gameplay.tableGame.enabled": b(t.Enabled),
 		"gameplay.tableGame.category": s(t.Category), "gameplay.tableGame.presentation": s(t.Presentation),
 		"gameplay.tableGame.cards": s(t.Cards), "gameplay.tableGame.dice": s(t.Dice), "gameplay.tableGame.scoreTokens": s(t.ScoreTokens),
+		"gameplay.tableGame.wageringTokens":  s(t.WageringTokens),
 		"gameplay.tableGame.virtualWagering": s(t.VirtualWagering), "gameplay.tableGame.tokenPersistence": s(t.TokenPersistence),
 		"gameplay.tableGame.freeTokenSources": t.FreeTokenSources,
 		"economy.realMoney":                   b(e.RealMoney), "economy.realMoneyWagering": b(e.RealMoneyWagering),
@@ -560,6 +563,7 @@ func validatePolicy(pl policy, add addFunc) {
 	in("gameplay.tableGame.cards", t.Cards, noneAllowed)
 	in("gameplay.tableGame.dice", t.Dice, noneAllowed)
 	in("gameplay.tableGame.scoreTokens", t.ScoreTokens, noneAllowed)
+	in("gameplay.tableGame.wageringTokens", t.WageringTokens, noneAllowed)
 	in("gameplay.tableGame.virtualWagering", t.VirtualWagering, noneAllowed)
 	in("gameplay.tableGame.tokenPersistence", t.TokenPersistence, tokenPersistences)
 	seen := map[string]bool{}
@@ -571,23 +575,23 @@ func validatePolicy(pl policy, add addFunc) {
 		seen[s] = true
 	}
 	if !t.Enabled {
-		if t.Category != "none" || t.Presentation != "standard" || t.Cards != "none" || t.Dice != "none" || t.ScoreTokens != "none" ||
+		if t.Category != "none" || t.Presentation != "standard" || t.Cards != "none" || t.Dice != "none" || t.ScoreTokens != "none" || t.WageringTokens != "none" ||
 			t.VirtualWagering != "none" || t.TokenPersistence != "none" || len(t.FreeTokenSources) > 0 {
-			add(levelSchema, "gameplay.tableGame.enabled 是 false，但其他牌桌欄位有設定：沒有牌桌玩法時 category、cards、dice、scoreTokens、virtualWagering、tokenPersistence 要是 none、presentation 是 standard、freeTokenSources 是空的；有牌桌玩法時把 enabled 改成 true")
+			add(levelSchema, "gameplay.tableGame.enabled 是 false，但其他牌桌欄位有設定：沒有牌桌玩法時 category、cards、dice、scoreTokens、wageringTokens、virtualWagering、tokenPersistence 要是 none、presentation 是 standard、freeTokenSources 是空的；有牌桌玩法時把 enabled 改成 true")
 		}
 		return
 	}
 	if t.Category == "none" {
 		add(levelSchema, "gameplay.tableGame.enabled 是 true，但 category 是 none：請宣告牌桌類型（%s）", strings.Join(tableCategories[1:], "、"))
 	}
-	if t.VirtualWagering == "allowed" && t.ScoreTokens != "allowed" {
-		add(levelSchema, "gameplay.tableGame.virtualWagering 是 allowed，但 scoreTokens 是 none：虛擬下注要有下注用的籌碼或 token")
+	if t.VirtualWagering == "allowed" && t.WageringTokens != "allowed" {
+		add(levelSchema, "gameplay.tableGame.virtualWagering 是 allowed，但 wageringTokens 是 none：虛擬下注要宣告下注用的籌碼（一般計分 token 是 scoreTokens，不能拿來下注）")
 	}
-	if t.ScoreTokens == "allowed" && t.TokenPersistence == "none" {
-		add(levelSchema, "gameplay.tableGame.scoreTokens 是 allowed：請宣告籌碼的保存範圍 tokenPersistence（round、room 或 persistent）")
+	if t.WageringTokens == "allowed" && t.TokenPersistence == "none" {
+		add(levelSchema, "gameplay.tableGame.wageringTokens 是 allowed：請宣告下注籌碼的保存範圍 tokenPersistence（round、room 或 persistent）")
 	}
-	if t.ScoreTokens != "allowed" && (t.TokenPersistence != "none" || len(t.FreeTokenSources) > 0) {
-		add(levelSchema, "gameplay.tableGame.scoreTokens 是 none，但 tokenPersistence 或 freeTokenSources 有設定：沒有籌碼時這兩項要是 none 與空的")
+	if t.WageringTokens != "allowed" && (t.TokenPersistence != "none" || len(t.FreeTokenSources) > 0) {
+		add(levelSchema, "gameplay.tableGame.wageringTokens 是 none，但 tokenPersistence 或 freeTokenSources 有設定：這兩項是下注籌碼的設定，沒有下注籌碼時要是 none 與空的")
 	}
 	if slices.Contains([]string{"card", "poker", "mahjong", "baccarat"}, t.Category) && t.Cards != "allowed" {
 		add(levelWarn, "gameplay.tableGame.category 是 %s，但 cards 是 none：確認宣告是否正確", t.Category)
@@ -595,6 +599,71 @@ func validatePolicy(pl policy, add addFunc) {
 	if t.Category == "dice" && t.Dice != "allowed" {
 		add(levelWarn, "gameplay.tableGame.category 是 dice，但 dice 是 none：確認宣告是否正確")
 	}
+}
+
+// policyDocs 是依宣告產生的開發契約文件（相對路徑 → 內容）。
+func policyDocs(name string, pl policy) map[string]string {
+	return map[string]string{
+		"docs/content/CONTENT_PROFILE.md":  contentProfileDoc(name, pl),
+		"docs/content/GAMEPLAY_ECONOMY.md": gameplayEconomyDoc(name, pl),
+	}
+}
+
+// cmdContent：pt content sync 依 playtogether.json 重新產生 docs/content/ 的開發契約文件，並記錄目前的平台政策版本。
+// 宣告本身有錯誤（schema）時不產生，避免把錯的宣告寫成 AI 的契約；硬性規則與需要審核的項目照實寫進文件。
+func cmdContent(args []string) error {
+	if len(args) != 1 || args[0] != "sync" {
+		return errors.New("用法：pt content sync（依 playtogether.json 重新產生 docs/content/CONTENT_PROFILE.md 與 GAMEPLAY_ECONOMY.md）")
+	}
+	p, err := findProject()
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return errors.New("找不到 playtogether.json：請在 pt new 建立的專案裡執行")
+	}
+	if !p.hasPolicy() {
+		return errors.New("playtogether.json 沒有 v0.15 的宣告（platformAudience、contentProfile、sensitiveContent、gameplay、economy）：v0.14 的專案請先用 pt new -profile … 建暫存專案，複製這五個區塊")
+	}
+	var bad []string
+	add := func(level, format string, a ...any) {
+		if level == levelSchema {
+			bad = append(bad, fmt.Sprintf(format, a...))
+		}
+	}
+	checkTopLevel(p.raw, add)
+	pl, _, _ := readPolicy(p, add)
+	validatePolicy(pl, add)
+	if len(bad) > 0 {
+		for _, m := range bad {
+			fmt.Println("  ✗", m)
+		}
+		return errors.New("宣告有錯誤，沒有產生文件：請先修正 playtogether.json")
+	}
+	for file, content := range policyDocs(p.Name, pl) {
+		dst := filepath.Join(p.dir, filepath.FromSlash(file))
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		old, _ := os.ReadFile(dst)
+		if string(old) == content {
+			fmt.Println("  ・", file, "（沒有變更）")
+			continue
+		}
+		if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
+			return err
+		}
+		fmt.Println("  ✓", file, "已更新")
+	}
+	if v := loadPolicyRules().Version; p.PolicyVersion != v {
+		fmt.Printf("  ✓ policyVersion：%s → %s\n", map[bool]string{true: "（沒有）", false: p.PolicyVersion}[p.PolicyVersion == ""], v)
+		p.PolicyVersion = v
+		if err := p.save(); err != nil {
+			return err
+		}
+	}
+	fmt.Println("完成：再執行 pt check 確認結果（需要平台審核的項目仍要送審，不代表已批准）")
+	return nil
 }
 
 // checkPolicyDocs：docs/content/ 的文件要和宣告一致（AI 讀的是文件）。
@@ -606,16 +675,20 @@ func checkPolicyDocs(p *project, pl policy, legacy bool, add addFunc) {
 		checkContentRatingDoc(p, add)
 		return
 	}
-	for _, d := range []struct{ file, want string }{
-		{"CONTENT_PROFILE.md", contentProfileDoc(p.Name, pl)},
-		{"GAMEPLAY_ECONOMY.md", gameplayEconomyDoc(p.Name, pl)},
-	} {
-		got, err := os.ReadFile(filepath.Join(p.dir, "docs", "content", d.file))
+	// AI 讀的是這兩份文件（開發契約）：v0.15 的文件缺少或和宣告不一致是宣告錯誤（-skip-check 不能略過）
+	for file, want := range policyDocs(p.Name, pl) {
+		got, err := os.ReadFile(filepath.Join(p.dir, filepath.FromSlash(file)))
 		if err != nil {
-			add(levelWarn, "沒有 docs/content/%s：AI 需要它才知道開發契約（用 pt new 以相同設定建暫存專案複製過來）", d.file)
-		} else if string(got) != d.want {
-			add(levelWarn, "docs/content/%s 和 playtogether.json 的宣告不一致：改了宣告後要一起更新文件（AI 讀的是文件）", d.file)
+			add(levelSchema, "沒有 %s：AI 依這份開發契約工作，執行 pt content sync 依 playtogether.json 產生", file)
+		} else if string(got) != want {
+			add(levelSchema, "%s 和 playtogether.json 的宣告不一致：AI 讀的是文件，確認宣告正確後執行 pt content sync 重新產生（不要為了通過檢查而修改宣告）", file)
 		}
+	}
+	switch {
+	case p.PolicyVersion == "":
+		add(levelWarn, "playtogether.json 沒有 policyVersion：執行 pt content sync 記錄目前的平台政策版本（%s）", loadPolicyRules().Version)
+	case p.PolicyVersion != loadPolicyRules().Version:
+		add(levelWarn, "玩聚平台政策已更新（專案記錄的是 %s，這個 pt 是 %s）：確認上面的檢查結果後，執行 pt content sync 同步文件與版本", p.PolicyVersion, loadPolicyRules().Version)
 	}
 	if _, err := os.Stat(filepath.Join(p.dir, "docs", "content", "CONTENT_RATING.md")); err == nil {
 		add(levelWarn, "docs/content/CONTENT_RATING.md 是 v0.14 的舊文件，已經沒有作用：請刪除（AI 改讀 CONTENT_PROFILE.md 與 GAMEPLAY_ECONOMY.md）")
@@ -679,7 +752,7 @@ func contentProfileDoc(name string, pl policy) string {
 	w("| Content Profile | %s（`%s`） |\n\n", profileLabel[c.Profile], c.Profile)
 	w("## 怎麼使用\n\n")
 	w("- 這是**上限，不是要求**：AI 不會因為上限較寬就主動加入暴力、血腥、恐怖、性暗示、粗俗語言、酒或菸；只在遊戲設計需要、開發者要求時使用，而且不超過下面的等級。\n")
-	w("- **AI 不能自行提高內容邊界**：要加入超過目前等級的內容時，先提出 `CONTENT_PROFILE_CHANGE_REQUEST`（格式在 `docs/ai/AI_WORKFLOW.md`），開發者同意後修改 `playtogether.json` 並重新產生這份文件，再實作。不要先做內容、再為了通過 `pt check` 改宣告。\n")
+	w("- **AI 不能自行提高內容邊界**：要加入超過目前等級的內容時，先提出 `CONTENT_PROFILE_CHANGE_REQUEST`（格式在 `docs/ai/AI_WORKFLOW.md`），開發者同意後修改 `playtogether.json`、執行 `pt content sync` 重新產生這份文件，再實作。不要先做內容、再為了通過 `pt check` 改宣告。\n")
 	w("- 發現既有內容已經超出邊界時：降低內容以符合邊界，或提出 `CONTENT_PROFILE_CHANGE_REQUEST`；不要靜默放寬。\n")
 	w("- `general`、`moderate`、`strong` 是固定值；要調整個別項目，profile 改成 `custom`（`pt check` 會檢查）。\n")
 	w("- 牌、骰子、籌碼、虛擬下注不屬於內容邊界，見 `GAMEPLAY_ECONOMY.md`。\n\n")
@@ -736,14 +809,15 @@ func gameplayEconomyDoc(name string, pl policy) string {
 	} else {
 		w("| 牌桌類型（`tableGame.category`） | %s（`%s`） |\n", tableLabel[t.Category], t.Category)
 		w("| 呈現（`presentation`） | `%s` |\n", t.Presentation)
-		w("| 牌（`cards`） | %s |\n| 骰子（`dice`） | %s |\n| 籌碼或計分 token（`scoreTokens`） | %s |\n", onOff(t.Cards), onOff(t.Dice), onOff(t.ScoreTokens))
+		w("| 牌（`cards`） | %s |\n| 骰子（`dice`） | %s |\n| 一般計分或資源 token（`scoreTokens`） | %s |\n", onOff(t.Cards), onOff(t.Dice), onOff(t.ScoreTokens))
+		w("| 下注用的籌碼（`wageringTokens`） | %s |\n", onOff(t.WageringTokens))
 		w("| 虛擬下注（`virtualWagering`） | %s |\n", onOff(t.VirtualWagering))
-		w("| 籌碼保存範圍（`tokenPersistence`） | `%s` |\n", t.TokenPersistence)
+		w("| 下注籌碼的保存範圍（`tokenPersistence`） | `%s` |\n", t.TokenPersistence)
 		src := "沒有"
 		if len(t.FreeTokenSources) > 0 {
 			src = "`" + strings.Join(t.FreeTokenSources, "`、`") + "`"
 		}
-		w("| 免費取得籌碼（`freeTokenSources`） | %s |\n\n", src)
+		w("| 免費取得下注籌碼（`freeTokenSources`） | %s |\n\n", src)
 	}
 	w("## 經濟（現實價值）\n\n")
 	w("| 項目 | 宣告 | pt 的結果 |\n| --- | --- | --- |\n")
@@ -767,7 +841,7 @@ func gameplayEconomyDoc(name string, pl policy) string {
 	default:
 		w("沒有需要平台特別審核的玩法或經濟項目（上架仍要經過一般審核）。\n")
 	}
-	w("\n要改玩法或經濟宣告時，AI 先提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`（格式在 `docs/ai/AI_WORKFLOW.md`），開發者同意後修改 `playtogether.json` 並重新產生這份文件。\n")
+	w("\n要改玩法或經濟宣告時，AI 先提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`（格式在 `docs/ai/AI_WORKFLOW.md`），開發者同意後修改 `playtogether.json`，再執行 `pt content sync` 重新產生這份文件（文件和宣告不一致時 `pt check` 是宣告錯誤）。\n")
 	return b.String()
 }
 
@@ -805,7 +879,7 @@ func policySummary(pl policy) map[string]string {
 	}
 	return map[string]string{
 		"ProfileName": pl.Content.Profile, "ProfileLabel": profileLabel[pl.Content.Profile], "SensitiveSummary": sensitive,
-		"TableGameSummary": table, "TableAssets": fmt.Sprintf("%s / %s / %s", t.Cards, t.Dice, t.ScoreTokens), "VirtualWagering": t.VirtualWagering,
+		"TableGameSummary": table, "TableAssets": fmt.Sprintf("%s / %s / %s / %s", t.Cards, t.Dice, t.ScoreTokens, t.WageringTokens), "VirtualWagering": t.VirtualWagering,
 		"TokenSummary": fmt.Sprintf("%s；Free Token Sources: %s", t.TokenPersistence, src), "ValidationSummary": result,
 	}
 }

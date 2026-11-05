@@ -75,6 +75,8 @@ func main() {
 		err = upload(os.Args[2:])
 	case "cdn":
 		err = cmdCDN(os.Args[2:])
+	case "content":
+		err = cmdContent(os.Args[2:])
 	case "version", "-version", "--version":
 		fmt.Print(versionInfo())
 	default:
@@ -110,6 +112,7 @@ func usage() {
   pt build                                      Godot 專案：用 Godot 無頭模式匯出網頁版到 build/
   pt check [-local] [-json] [建置資料夾]        上傳前檢查：ERROR_HARD_RULE／ERROR_SCHEMA／ERROR_BUILD／REVIEW_REQUIRED／WARNING；
                                                 -local：platform、serverUrl（需要時）還沒填不算錯誤；-json：JSON 輸出
+  pt content sync                               依 playtogether.json 重新產生 docs/content/ 的開發契約文件並記錄平台政策版本
   pt keygen -purpose upload|server [-out 檔案]   產生金鑰；在專案裡預設寫到 keys/<用途>.key
   pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定（含畫面方向、CDN 申報）從 playtogether.json 讀
          [-skip-check]                          略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查

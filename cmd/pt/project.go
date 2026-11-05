@@ -72,6 +72,8 @@ type project struct {
 	// 多人與遊戲伺服器架構（v0.13 起；舊專案沒有時視為多人＋playtogether-managed）。AI 改連線前一定要先確認
 	Multiplayer *multiplayerConfig `json:"multiplayer,omitempty"`
 	GameServer  *gameServerConfig  `json:"gameServer,omitempty"`
+	// 建立或最近一次 pt content sync 時的平台政策版本（policy/rules.json 的 version）
+	PolicyVersion string `json:"policyVersion,omitempty"`
 	// 政策宣告（v0.15 起；policy.go）：讀成原始 JSON，pt check 再嚴格解析（才能抓到缺欄位、未知鍵、型別錯誤）
 	PlatformAudience json.RawMessage `json:"platformAudience,omitempty"`
 	ContentProfile   json.RawMessage `json:"contentProfile,omitempty"`
@@ -325,7 +327,7 @@ func cmdNew(args []string) error {
 		"Skills":      map[bool]string{true: *skills, false: ""}[withSkills],
 		"Orientation": *orientation, "OrientationLabel": orientationLabel[*orientation],
 		"AIMode": aiMode, "AIModeLabel": aiModeLabel[aiMode], "GameServer": *gameServer,
-		"PolicyJSON":    policyJSON(pl),
+		"PolicyJSON": policyJSON(pl), "PolicyVersion": loadPolicyRules().Version,
 		"Multiplayer":   map[bool]string{true: "true", false: ""}[*gameServer != "none"],
 		"SkillsLabel":   map[string]string{"full": "完整（通用＋" + map[string]string{"web": "網頁引擎", "godot": "Godot"}[*client] + "）", "core": "通用", "none": ""}[*skills],
 		"SkillsVersion": gds.Version + "（commit " + gds.Commit[:7] + "）", "StudiosVersion": ccgs.Version + "（commit " + ccgs.Commit[:7] + "）"}

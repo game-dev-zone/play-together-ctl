@@ -123,13 +123,14 @@ pt check：PASS／REVIEW_REQUIRED／ERROR
 | 等級 | 內容 | `pt upload` |
 | --- | --- | --- |
 | `ERROR_HARD_RULE` | 平台硬性規則：真實金錢下注、可購買下注本金、提領、兌換、可轉讓現實價值、付費隨機獎勵、鼓吹仇恨、平台不收的內容；私鑰、廣告／追蹤 SDK、WebRTC、付款、麥克風、未申報的 CDN 等平台與安全架構規則 | 擋下，**`-skip-check` 不能略過** |
-| `ERROR_SCHEMA` | 宣告錯誤或自相矛盾：缺欄位、拼錯的鍵、preset 被手改、牌桌欄位矛盾、音效沒記錄來源 | 擋下，**`-skip-check` 不能略過** |
+| `ERROR_SCHEMA` | 宣告錯誤或自相矛盾：缺欄位、拼錯的鍵、preset 被手改、牌桌欄位矛盾、`docs/content/` 的開發契約文件缺少或和宣告不一致、音效沒記錄來源 | 擋下，**`-skip-check` 不能略過** |
 | `ERROR_BUILD` | 建置或本機設定：還沒匯出、沒有載入 SDK、`serverUrl`／`platform` 沒填或不一致 | 擋下，`-skip-check` 可以略過 |
-| `REVIEW_REQUIRED` | 需要玩聚平台人工審核：撲克、麻將、吃角子老虎、輪盤、類百家樂、虛擬下注、虛擬籌碼、賭場風格、跨局或每日贈送籌碼、商業模式涉及真實金錢、敏感題材 | 可以送審，**不代表已批准** |
-| `WARNING` | 舊格式、文件不同步、建議事項 | 繼續 |
+| `REVIEW_REQUIRED` | 需要玩聚平台人工審核：撲克、麻將、吃角子老虎、輪盤、類百家樂、虛擬下注、下注用的籌碼（`wageringTokens`）、賭場風格、跨局或每日贈送的下注籌碼、商業模式涉及真實金錢、敏感題材；一般桌遊的計分 token（`scoreTokens`）不需要審核 | 可以送審，**不代表已批准** |
+| `WARNING` | 舊格式、`policyVersion` 和這個 `pt` 的平台政策版本不同、建議事項 | 繼續 |
 
 - `pt check` 只檢查設定檔，不判斷遊戲實際內容，不推論法律分級，也不做關鍵字偵測；`pt check -json` 輸出結果給 CI 與 AI 工具。
-- 需要審核與硬性規則的清單內建在 `pt`（政策資料），玩聚平台政策改變時隨新版 `pt` 更新。
+- 需要審核與硬性規則的清單內建在 `pt`（政策資料），玩聚平台政策改變時隨新版 `pt` 更新；`playtogether.json` 的 `policyVersion` 記錄專案同步的版本。
+- 宣告經開發者確認修改後，執行 `pt content sync` 重新產生 `docs/content/` 的兩份文件並更新 `policyVersion`（宣告本身有錯誤時不產生）。
 - v0.14 的 `contentRating` 仍可讀取：依 v0.14 的規則驗證，一般只有遷移提醒，但明確的真錢下注、付費抽獎仍是硬性規則，不合法的舊值是宣告錯誤；建議用 `pt new -profile …` 建暫存專案，把 `platformAudience`、`contentProfile`、`sensitiveContent`、`gameplay`、`economy` 與 `docs/content/` 複製過去。
 - `art/STYLE.md` 只管視覺風格，產生素材前同時讀 `PLAYTOGETHER.md`、`CONTENT_PROFILE.md` 與 `GAMEPLAY_ECONOMY.md`。
 

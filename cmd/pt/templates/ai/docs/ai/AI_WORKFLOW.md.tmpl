@@ -134,10 +134,10 @@ Codex 不執行 Claude Code Game Studios 的流程。Codex 可以：讀 Studios 
 | --- | --- |
 | **平台硬性規則**（`PLAYTOGETHER.md`） | **不實作**。說明原因並提出替代設計（例如每局重置、不能購買、不能兌換的籌碼） |
 | **需要平台審核**（`pt check` 的 REVIEW_REQUIRED） | 可以開發；明確提醒開發者需要玩聚平台審核；不宣稱已批准、不說「可以上架」 |
-| **要加入超出內容邊界的內容** | **不自動提高 profile**：提出 `CONTENT_PROFILE_CHANGE_REQUEST`，開發者同意後由開發者修改 `contentProfile`（或明確授權你修改），重新產生 `CONTENT_PROFILE.md`，再實作 |
+| **要加入超出內容邊界的內容** | **不自動提高 profile**：提出 `CONTENT_PROFILE_CHANGE_REQUEST`，開發者同意後由開發者修改 `contentProfile`（或明確授權你修改），執行 `pt content sync` 重新產生 `CONTENT_PROFILE.md`，再實作 |
 | **既有內容已經超出內容邊界** | 降低內容以符合邊界，或提出 `CONTENT_PROFILE_CHANGE_REQUEST`；不得靜默放寬 |
-| **玩法、經濟或敏感題材宣告要改**（例如改成撲克、加入籌碼、加入政治迫害題材） | 提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`，開發者同意後才改宣告與文件 |
-| **`pt check` 失敗** | 修正實作或依上面的流程申請變更；不得為了通過檢查而修改宣告 |
+| **玩法、經濟或敏感題材宣告要改**（例如改成撲克、加入籌碼、加入政治迫害題材） | 提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`，開發者同意後才改宣告，再執行 `pt content sync` 重新產生文件 |
+| **`pt check` 失敗** | 修正實作或依上面的流程申請變更；不得為了通過檢查而修改宣告。`docs/content/` 的文件和宣告不一致是宣告錯誤：宣告經開發者確認後執行 `pt content sync` |
 
 禁止的流程：先做出超出內容邊界的內容 → 發現 `pt check` 失敗 → 自動把 `general` 改成 `strong`。
 
