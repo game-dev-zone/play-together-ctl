@@ -15,5 +15,8 @@
   "orientation": "[[.Orientation]]"[[if eq .Client "godot"]],
   "godot": "[[.GodotDir]]"[[end]][[if .AI]],
   "ai": "[[.AI]]"[[end]][[if .Skills]],
-  "skills": "[[.Skills]]"[[end]]
+  "skills": "[[.Skills]]"[[end]],
+  "aiMode": "[[.AIMode]]",
+  "multiplayer": { "enabled": [[if .Multiplayer]]true[[else]]false[[end]] },
+  "gameServer": { "mode": "[[.GameServer]]" }
 }

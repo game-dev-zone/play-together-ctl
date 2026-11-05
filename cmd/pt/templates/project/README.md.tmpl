@@ -33,7 +33,13 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 
 1. 產生金鑰，把公鑰交給玩聚登記：`pt keygen -purpose upload`、`pt keygen -purpose server`（私鑰寫在 `keys/`，不會進版控）。
 2. 玩聚建立遊戲後，把金鑰 ID、平台網址填進 `playtogether.json`（`uploadKeyId`、`serverKeyId`、`platform`）。
+[[- if eq .GameServer "playtogether-managed"]]
 3. 部署遊戲伺服器（`server/`），把對外網址填進 `playtogether.json` 的 `serverUrl`，以及[[if eq .Client "godot"]] `[[.GodotPrefix]]config.gd` 的 `SERVER_URL`[[else]] `web/config.js` 的 `serverUrl`[[end]]。
+[[- else if eq .GameServer "external"]]
+3. 在**你自己的遊戲伺服器**加上玩聚的啟動碼兌換（可以參考 `server/`，或用玩聚的伺服器 SDK），把它的對外網址填進 `playtogether.json` 的 `serverUrl`，以及[[if eq .Client "godot"]] `[[.GodotPrefix]]config.gd` 的 `SERVER_URL`[[else]] `web/config.js` 的 `serverUrl`[[end]]。`server/` 不需要部署。
+[[- else]]
+3. 這個遊戲不需要遊戲伺服器（`gameServer.mode` 是 `none`）：`server/` 只用於本機模擬，不需要部署，`serverUrl` 留空。範本的示範玩法會連到 `server/`，正式玩法要改成不需要遊戲伺服器的做法。
+[[- end]]
 4. `pt check`：上傳前檢查。
 5. `pt upload -version 1.0.0 -notes "第一個版本"`：設定都從 `playtogether.json` 讀[[if eq .Client "godot"]]，上傳前會自動重新匯出[[end]]。
 6. 把印出的版本 ID 交給玩聚開預覽房間、送審。
@@ -48,21 +54,24 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 [[- else]]
 | `web/` | 遊戲畫面（上傳到玩聚託管的就是這個資料夾） |
 [[- end]]
-| `server/` | 遊戲伺服器：兌換啟動碼、判定分數與勝負、回報一局。遊戲規則在 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]`；斷線重連骨架在 `[[if eq .Server "go"]]session.go[[else]]session.mjs[[end]]`（座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間），通常不需要修改 |
+| `server/` | [[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else if eq .GameServer "external"]]範本遊戲伺服器（整合參考與本機模擬，不是你的正式遊戲伺服器）[[else]]範本遊戲伺服器（本機模擬與參考，正式遊玩不需要）[[end]]：兌換啟動碼、判定分數與勝負、回報一局。遊戲規則在 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]`；斷線重連骨架在 `[[if eq .Server "go"]]session.go[[else]]session.mjs[[end]]`（座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間），通常不需要修改 |
 | `playtogether.json` | 專案設定（pt 指令都從這裡讀） |
 | `Makefile` | 常用指令（見上方） |
 | `keys/` | 私鑰（不進版控） |
-| `PLAYTOGETHER.md` | 玩聚平台規則（架構原則、執行環境限制、審核規則），`CLAUDE.md`、`AGENTS.md` 讓 AI 助手先讀它 |
+| `PLAYTOGETHER.md` | 玩聚平台規則（架構原則、執行環境限制、審核規則） |
+| `docs/ai/` | 給 AI 工具的工作流程（`AI_WORKFLOW.md`）與專案背景（`PROJECT_CONTEXT.md`，含多人與遊戲伺服器架構）[[if .AI]]、目前任務、設計變更紀錄[[end]]；`CLAUDE.md`、`AGENTS.md` 讓 AI 先讀這些 |
 [[- if .AI]]
-| `.claude/`、`design/`、`docs/`、`production/`、`project.yaml` | Claude Code Game Studios（MIT，見 `THIRD_PARTY/`） |
+| `.claude/`、`design/`、`docs/`（`docs/ai/` 除外）、`production/`、`project.yaml` | Claude Code Game Studios（MIT，見 `THIRD_PARTY/`） |
 [[- end]]
 
 ## 用 AI 助手開發
-[[if .AI]]
-這個專案加入了 [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios)：在專案根目錄執行 `claude`，第一次先執行 `/start`。建議嚴謹度（rigor）用 `minimal`（寫完一頁企劃就開始做；`/start` 看到「多人」可能自動選 `full`，請改回 `minimal`，之後可用 `/settings` 調整），並在 `/setup-engine` 選 Godot。
-`CLAUDE.md` 開頭的玩聚規則優先於範本的預設；每次改完跑 `pt check`，再用 `pt dev` 實際玩一次。
-範本的 hooks 會在你的電腦上執行，每次開新工作階段也會連 GitHub 檢查更新（`/settings --local updates.check=false` 可關閉）。
-[[- else]]
-`CLAUDE.md`（Claude Code）與 `AGENTS.md`（Codex 等）都會讓 AI 助手先讀 `PLAYTOGETHER.md`。[[if eq .Client "godot"]]
-想用 AI 遊戲開發團隊範本 Claude Code Game Studios：建立專案時加上 `-ai studios`。[[end]]
+
+AI 模式：**[[.AIModeLabel]]**。在專案資料夾啟動 Claude Code（`claude`）、Codex 等 AI 工具，直接用一般的話描述想做的遊戲或功能就可以，例如「幫我做一款 4 人合作遊戲」「幫我建立第一個可玩原型」「幫我改善目前操作手感」。不需要學任何 AI 框架、skill 或指令：`CLAUDE.md`、`AGENTS.md` 會讓 AI 先讀 `PLAYTOGETHER.md` 與 `docs/ai/`，自己判斷要先設計還是直接實作，完成前也會跑驗證。
+[[- if .Skills]]
+
+已加入遊戲開發 skill（[[.SkillsLabel]]）：Claude Code 在 `.claude/skills/`、Codex 在 `.agents/skills/`。
+[[- end]]
+[[- if .AI]]
+
+已加入 [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios) 作為規劃、故事與設計流程（只在 Claude Code 執行），內部設定已經寫好（`project.yaml` 最後的玩聚區塊）。它的 hooks 會在你的電腦上由 Claude Code 執行；pt 已關閉它連 GitHub 檢查更新的功能，升級請用新版 pt。pt 修改過的地方記錄在 `THIRD_PARTY/claude-code-game-studios/SOURCE.md`。
 [[- end]]

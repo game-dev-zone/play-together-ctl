@@ -26,7 +26,7 @@ go install github.com/game-dev-zone/play-together-ctl/cmd/pt@latest
 ## 五分鐘開始
 
 ```sh
-pt new                           # 逐步選擇名稱、畫面（網頁或 Godot）、伺服器、AI 開發方式
+pt new                           # 逐步選擇名稱、畫面（網頁或 Godot）、多人與遊戲伺服器、方向、AI 開發模式
 cd my-party-game
 pt dev                           # 本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
 make verify                      # 啟動驗證：伺服器測試、在模擬模式實際啟動一次、檢查要上傳的檔案
@@ -50,47 +50,60 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 
 ### 用 AI 開發
 
-每個新專案都附上 `PLAYTOGETHER.md`（玩聚的架構原則、iframe 執行環境限制、審核規則），以及讓 AI 助手先讀它的 `CLAUDE.md`（Claude Code）與 `AGENTS.md`（Codex 等）。
+開發者不需要了解 AI 框架、skill 或指令：在專案資料夾啟動 Claude Code（`claude`）或 Codex，直接用一般的話描述想做的遊戲或功能（「幫我做一款 4 人合作遊戲」「幫我建立第一個可玩原型」「操作手感不好」）。`pt new` 產生的規則讓 AI 自己判斷要先做創意設計還是直接實作、新遊戲先做最小可玩原型、改玩法或故事時先提出設計變更請求，完成前跑驗證。
 
-### 遊戲開發 skill（`-skills`）
+每個專案（所有 AI 模式）都有：
 
-網頁與 Godot 專案都可以加入 [awesome-gamedev-agent-skills](https://github.com/gamedev-skills/awesome-gamedev-agent-skills)（Apache-2.0）的精選 skill：Claude Code（`.claude/skills/`）與 Codex（`.agents/skills/`）都會在需要時自動讀取。
-
-| 選項 | 內容 |
+| 檔案 | 內容 |
 | --- | --- |
-| `core` | 手感、手機介面、觸控輸入、音效、素材風格一致、效能、關卡節奏、快速原型（8 個） |
-| `full` | `core` 加上畫面引擎的 skill：Godot 4.7（GDScript、場景、訊號、UI、音效、動畫、2D 移動、無頭測試）或網頁（Phaser、PixiJS、three.js） |
-| `none` | 不加入（不是終端機時的預設） |
+| `PLAYTOGETHER.md` | 玩聚平台規則（架構原則、iframe 執行環境、審核），**最高優先** |
+| `docs/ai/AI_WORKFLOW.md` | AI 工作流程：權威順序、創意與實作的分工、自動判斷需求、先做原型、遊戲伺服器架構規則、設計變更請求、完成前驗證 |
+| `docs/ai/PROJECT_CONTEXT.md` | 專案背景：畫面、方向、AI 模式、**多人與遊戲伺服器架構**、已安裝的 AI 能力、重要路徑 |
+| `CLAUDE.md`、`AGENTS.md` | Claude Code 與 Codex 的入口：依序讀上面三份（有 `docs/ai/CURRENT_TASK.md` 時也讀） |
 
-- 只收說明文件（`SKILL.md`、references）：不收 router、scripts、agents；和玩聚規則衝突的 skill（Godot 多人連線、Godot 匯出、單機存檔、itch／Steam 上架）不收。
-- 版本固定，下載後逐一比對 SHA-256，內容不修改；授權與來源在 `THIRD_PARTY/awesome-gamedev-agent-skills/`。
-- `PLAYTOGETHER.md` 會多一節「第三方遊戲開發 skill」：優先順序與已知衝突（不執行 skill 提到的腳本、不用 ENet、不自動播放音樂、不用麥克風、分數不存本機等）。
-- 可以和 `-ai studios` 同時使用。
+### AI 開發模式（`-mode`）
 
-### 進階：Claude Code Game Studios（`-ai studios`）
+| 模式 | 內容 | 適合 |
+| --- | --- | --- |
+| `standard`（精靈建議） | 平台規則＋[awesome-gamedev-agent-skills](https://github.com/gamedev-skills/awesome-gamedev-agent-skills)（Apache-2.0）精選：手感、手機介面、觸控輸入、音效、素材風格一致、效能、關卡節奏、快速原型，加上 Godot 4.7 或網頁引擎（Phaser、PixiJS、three.js）的 skill | 大部分遊戲；Claude Code（`.claude/skills/`）與 Codex（`.agents/skills/`）都能用 |
+| `studio` | `standard`＋[Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios)（MIT）的規劃、故事、設計流程，以及 `docs/ai/CURRENT_TASK.md`（工作契約）、`docs/ai/DECISIONS.md`（設計變更紀錄）。**只限 Godot**；流程較重、token 用量大，Studios 流程只在 Claude Code 執行 | 故事、謎題、角色扮演或規模較大的遊戲 |
+| `lightweight` | 只有平台規則與工作流程文件 | 不想加任何第三方內容；`-y`、非互動與 CI 沒指定模式時的預設（不下載任何東西） |
+| `custom` | 用 `-skills none\|core\|full`、`-ai studios` 自己組合 | 進階；舊參數（只給 `-skills` 或 `-ai`）等於 `custom`，結果和以前相同 |
 
-Godot 專案可以用參數加入 [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios)（MIT）：一套用 Claude Code 照完整工作室流程（企劃、美術、程式、QA 等 AI 角色）開發遊戲的範本。流程與 token 用量都比較重、只支援 Claude Code，派對遊戲一般用上面的遊戲開發 skill 就夠了，所以 `pt new` 的精靈不再詢問（v0.12.1）。
+- 第三方內容一律固定版本，下載後逐一比對內嵌清單的 SHA-256，任何一個檔案不符就停止，不留下專案資料夾；`pt` 不安裝清單以外的檔案，也不執行下載的任何程式。授權與來源記錄在 `THIRD_PARTY/`。
+- 遊戲開發 skill 只收說明文件（不收 router、scripts、agents），內容不修改；和玩聚規則衝突的（Godot 多人連線、Godot 匯出、單機存檔、itch／Steam 上架）不收。`pt` 自己決定收哪些、衝突時誰優先，不安裝上游的 router。
+- Claude Code Game Studios（目前 1.2.0）：
+  - 開發者不用學它的指令：`CLAUDE.md` 開頭的玩聚區塊讓 Claude 自己判斷何時使用它的流程（包括實作 story 與完成檢查）。
+  - `pt` 在驗證完雜湊後只調整這幾處，都有「PlayTogether（pt new 加入）」標記，記錄在 `THIRD_PARTY/claude-code-game-studios/SOURCE.md`：`dev-story`、`story-done` 改成 AI 可以自動使用；`team-release`、`release-checklist` 改成只能手動（發佈由 `pt check`、`pt upload` 與玩聚審核負責）；`project.yaml` 預先寫入嚴謹度 `minimal`、自動化程度 `guided`，並關閉它連 GitHub 檢查更新的功能（升級一律透過新版 `pt`）。上游改版導致找不到要調整的地方時，安裝直接失敗。
+  - 它的 hooks 會在你的電腦上由 Claude Code 執行。
+  - Godot 專案改放在專案根目錄（範本的工具需要 `project.godot` 在根目錄）；`server/`、`design/`、`docs/` 等資料夾加上 `.gdignore`，不會被打包進遊戲。
 
-```sh
-pt new -client godot -ai studios my-godot-game    # 可以再加 -skills full
-cd my-godot-game
-claude                                            # 第一次執行 /start（嚴謹度建議選 minimal；看到「多人」它可能自動選 full）
-```
+### 遊戲伺服器架構（`-game-server`）
 
-- 版本固定（目前 1.2.0），下載後逐一比對內嵌清單的 SHA-256，任何一個檔案不符就停止，不留下專案資料夾。範本的 hooks 會在你的電腦上執行，所以 `pt` 不會安裝清單以外的檔案。
-- Godot 專案改放在專案根目錄（範本的工具需要 `project.godot` 在根目錄）；`server/`、`design/`、`docs/` 等資料夾加上 `.gdignore`，不會被打包進遊戲。
-- `CLAUDE.md` 開頭加上玩聚規則，優先於範本的預設；另加 `.claude/rules/playtogether.md`。授權與來源記錄在 `THIRD_PARTY/claude-code-game-studios/`。
+遊戲伺服器不是上架的必要條件。專案在 `playtogether.json` 宣告架構，AI 改連線前一定要先確認，不會自行改成引擎內建多人連線、P2P 或其他架構：
+
+| `gameServer.mode` | 意思 | 範本 `server/` 的角色 |
+| --- | --- | --- |
+| `playtogether-managed`（預設） | 多人遊戲，用玩聚範本伺服器的架構 | 正式遊戲伺服器的起點，要部署並填 `serverUrl` |
+| `external` | 多人遊戲，你已經有自己的遊戲伺服器 | 整合參考與本機模擬，**不需要部署**；`serverUrl` 填你的伺服器 |
+| `none` | 單人或畫面端就能玩（解謎、敘事、冒險、節奏、休閒等） | 本機模擬與參考，**不需要部署**；`serverUrl` 留空 |
+
+`pt check` 依宣告的架構判斷：`none` 不要求 `serverUrl`；`multiplayer.enabled: true` 卻是 `none` 會被擋（多人遊戲需要經核准的連線架構）。舊專案沒有這兩個欄位時，當成多人＋`playtogether-managed`，結果和以前相同。
 
 | 選項 | 可用值 | 說明 |
 | --- | --- | --- |
 | `-client` | `web`（預設）、`godot` | 遊戲前端。`web` 產生 `web/`；`godot` 產生 Godot 專案 `game/`，匯出到 `build/` |
 | `-server` | `go`（預設）、`node` | 遊戲伺服器（兌換啟動碼、判定勝負）|
 | `-template` | `web-go`、`web-node`、`godot-go`、`godot-node` | 舊寫法，等於同時指定上面兩個 |
-| `-ai` | `studios`、`none`（預設） | 進階：加入 Claude Code Game Studios（只限 Godot；只指定它時自動用 Godot；精靈不詢問） |
-| `-skills` | `full`、`core`、`none` | 加入遊戲開發 skill（見上方） |
+| `-game-server` | `playtogether-managed`（預設）、`external`、`none` | 遊戲伺服器架構（見上方）；同時決定 `multiplayer.enabled`（`none` 是單人） |
+| `-mode` | `standard`、`studio`、`lightweight`、`custom` | AI 開發模式（見上方）；`studio` 沒指定畫面時自動用 Godot |
+| `-skills` | `full`、`core`、`none` | 自訂：遊戲開發 skill 的範圍 |
+| `-ai` | `studios`、`none` | 自訂：加入 Claude Code Game Studios（只限 Godot；只指定它時自動用 Godot） |
 | `-y` | | 不詢問，沒指定的項目用預設值 |
 
-在終端機執行 `pt new` 時，沒用參數指定的項目（名稱、畫面、伺服器、方向、遊戲開發 skill）會逐步詢問，最後顯示對應的完整指令。CI 或腳本裡（不是終端機）不會詢問。
+在終端機執行 `pt new` 時，沒用參數指定的項目（名稱、畫面、是否多人與遊戲伺服器、伺服器語言、方向、AI 開發模式）會逐步詢問，最後顯示對應的完整指令。CI（環境變數 `CI` 有值）或腳本裡（不是終端機）不會詢問；沒指定 AI 模式時用 `lightweight`，不需要網路。
+
+既有專案想改用新的 AI 工作流程：用 `pt new` 以相同設定建一個暫存專案，把 `docs/ai/`、`CLAUDE.md`、`AGENTS.md` 複製過去（`CLAUDE.md`、`AGENTS.md` 改過的話手動合併），並在 `playtogether.json` 加上 `aiMode`、`multiplayer`、`gameServer`。
 
 不需要金鑰、不需要連線到玩聚：直接開啟時 SDK 自動進入模擬模式。
 
@@ -98,10 +111,10 @@ claude                                            # 第一次執行 /start（嚴
 
 | 指令 | 說明 |
 | --- | --- |
-| `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-skills none\|core\|full] [-ai studios] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定）；`-orientation` 選直式、橫式或兩者都支援（預設直式） |
+| `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-game-server playtogether-managed\|external\|none] [-mode standard\|studio\|lightweight\|custom] [-skills none\|core\|full] [-ai studios] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定、AI 工作流程）；`-orientation` 選直式、橫式或兩者都支援（預設直式） |
 | `pt dev [-addr 127.0.0.1:8090] [-players 2] [-smoke]` | 本機模擬模式（Godot 專案會先匯出）；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
-| `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器網址設定、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒 |
+| `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器架構與網址設定、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒 |
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；公鑰交給玩聚登記，私鑰只在你手上 |
 | `pt upload -version <版本> [-notes 說明] [-no-build] [-orientation portrait\|landscape\|any]` | 上傳版本（設定從 `playtogether.json` 讀，包括畫面方向；Godot 專案先匯出；上傳前自動檢查） |
 | `pt sdk status` | 比較專案的 SDK、這個 `pt` 內嵌的 SDK、最新版 `pt` 內嵌的 SDK，並列出被修改過的 SDK 檔案 |

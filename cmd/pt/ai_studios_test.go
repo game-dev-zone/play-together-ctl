@@ -24,6 +24,11 @@ var fakeStudio = map[string]string{
 	".claude/hooks/session-start.sh": "#!/bin/bash\necho hi\n",
 	"design/registry/README.md":      "registry\n",
 	"project.yaml":                   "schema_version: 1\n",
+	// pt 會調整這四個 skill 的 frontmatter（ai_mode.go studiosPatches）
+	".claude/skills/dev-story/SKILL.md":         "---\nname: dev-story\nuser-invocable: true\ndisable-model-invocation: true\nmodel: sonnet\n---\n\n# Dev Story\n",
+	".claude/skills/story-done/SKILL.md":        "---\nname: story-done\nuser-invocable: true\ndisable-model-invocation: true\nmodel: sonnet\n---\n\n# Story Done\n",
+	".claude/skills/team-release/SKILL.md":      "---\nname: team-release\nuser-invocable: true\nmodel: sonnet\n---\n\n# Team Release\nuser-invocable: true\n",
+	".claude/skills/release-checklist/SKILL.md": "---\nname: release-checklist\nuser-invocable: true\nmodel: sonnet\n---\n\n# Release Checklist\n",
 }
 
 func fakeManifest() ccgsManifest {
@@ -152,11 +157,17 @@ func TestNewStudios(t *testing.T) {
 		t.Error("studios 專案的 Godot 專案要在根目錄，不該有 game/")
 	}
 	claude := read("CLAUDE.md")
-	if !strings.HasPrefix(claude, "<!-- 由 pt new -ai studios 加入") || !strings.Contains(claude, "@PLAYTOGETHER.md") || !strings.Contains(claude, "studio rules") {
+	if !strings.HasPrefix(claude, "<!-- 由 pt new 加入（PlayTogether）") || !strings.Contains(claude, "studio rules") ||
+		strings.Index(claude, "@PLAYTOGETHER.md") > strings.Index(claude, "studio rules") {
 		t.Fatalf("CLAUDE.md 要先放玩聚規則，再接範本內容：\n%s", claude)
 	}
-	if !strings.Contains(claude, "`minimal`") || !strings.Contains(read("README.md"), "`minimal`") {
-		t.Fatal("CLAUDE.md 與 README 要建議嚴謹度用 minimal（/start 看到多人會自動選 full）")
+	for _, imp := range []string{"@PLAYTOGETHER.md", "@docs/ai/AI_WORKFLOW.md", "@docs/ai/PROJECT_CONTEXT.md", "@docs/ai/CURRENT_TASK.md"} {
+		if !strings.Contains(claude, imp) {
+			t.Fatalf("Studios 的 CLAUDE.md 要匯入 %s", imp)
+		}
+	}
+	if strings.Contains(read("README.md"), "/start") || strings.Contains(read("README.md"), "minimal") {
+		t.Fatal("README 不該要開發者執行 /start 或選嚴謹度（內部設定由 pt 寫好）")
 	}
 	gi := read(".gitignore")
 	if !strings.Contains(gi, "keys/") || !strings.Contains(gi, "\n.godot/") || !strings.HasSuffix(strings.TrimSpace(gi), "!export_presets.cfg") {
@@ -167,7 +178,7 @@ func TestNewStudios(t *testing.T) {
 	if p.Godot != "." || p.AI != "studios" {
 		t.Fatalf("playtogether.json 要記錄 godot=.、ai=studios：%+v", p)
 	}
-	if !strings.Contains(read("README.md"), "/start") || !strings.Contains(read("PLAYTOGETHER.md"), "Godot 網頁匯出") {
+	if !strings.Contains(read("README.md"), "Claude Code Game Studios") || !strings.Contains(read("PLAYTOGETHER.md"), "Godot 網頁匯出") {
 		t.Fatal("README 與 PLAYTOGETHER.md 要說明 studios 與 Godot 規則")
 	}
 	// 素材：/asset-spec 只產生提示詞，交給 Codex；根目錄的 Godot 專案不能匯入素材原始檔

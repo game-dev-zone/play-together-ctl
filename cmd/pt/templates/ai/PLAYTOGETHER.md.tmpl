@@ -1,7 +1,7 @@
 # 玩聚平台規則（[[.Name]]）
 
-這個專案是在**玩聚 PlayTogether** 上架的多人派對遊戲：直播主貼出房間連結，觀眾用手機登入後進房一起玩。
-人和 AI 助手（Claude Code、Codex 等）開發時都要遵守這份規則；和其他文件或 AI 範本的建議衝突時，**以這份為準**。
+這個專案是在**玩聚 PlayTogether** 上架的遊戲：玩家用手機登入玩聚後，在玩聚的房間裡開始遊戲[[if .Multiplayer]]，一起玩[[end]]。
+人和 AI 助手（Claude Code、Codex 等）開發時都要遵守這份規則；和其他文件或 AI 範本的建議衝突時，**以這份為準**。AI 的工作流程在 `docs/ai/AI_WORKFLOW.md`，專案背景與遊戲伺服器架構在 `docs/ai/PROJECT_CONTEXT.md`。
 
 ## 專案結構
 
@@ -13,7 +13,7 @@
 [[- else]]
 | `web/` | 遊戲畫面（HTML／JS），上傳的就是這個資料夾；`config.js` 放平台與遊戲伺服器網址 |
 [[- end]]
-| `server/` | 遊戲伺服器（[[if eq .Server "go"]]Go[[else]]Node.js[[end]]）：兌換啟動碼、判定分數與勝負、回報一局。`[[if eq .Server "go"]]session.go[[else]]session.mjs[[end]]` 是斷線重連骨架（座位、token、離線、向玩聚查房間）：換玩法時改 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]` 的遊戲物件（`view`、`canFree`、`leave`、`abort`），不要拿掉骨架；`view` 只能放這位玩家看得到的資料 |
+| `server/` | [[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else if eq .GameServer "external"]]範本遊戲伺服器（**整合參考與本機模擬，不是你的正式遊戲伺服器**）[[else]]範本遊戲伺服器（**本機模擬與參考，正式遊玩不需要**）[[end]]（[[if eq .Server "go"]]Go[[else]]Node.js[[end]]）：兌換啟動碼、判定分數與勝負、回報一局。`[[if eq .Server "go"]]session.go[[else]]session.mjs[[end]]` 是斷線重連骨架（座位、token、離線、向玩聚查房間）：換玩法時改 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]` 的遊戲物件（`view`、`canFree`、`leave`、`abort`），不要拿掉骨架；`view` 只能放這位玩家看得到的資料 |
 | `playtogether.json` | `pt` 的專案設定 |
 | `keys/` | 私鑰，**不得進版控、不得放進前端** |
 | `art/` | 素材原始檔（`art/generated/`）與素材來源紀錄 `art/SOURCES.md`；不會上傳 |
@@ -35,12 +35,21 @@
 
 ## 架構原則（不能改）
 
-1. **伺服器決定遊戲狀態**：分數、勝負、回合流程都在 `server/` 判定；畫面端只送「操作」，不送結果。
-2. **玩家身分只來自平台**：畫面端從 SDK 拿到一次性的啟動碼，交給遊戲伺服器用伺服器 SDK 兌換成玩家 ID、暱稱、房號。不要自己做登入、帳號、配對或房間系統，也不要向玩家要任何個人資料。
-3. **畫面端回報的資料不得用於玩家權益**（排名、獎勵、解鎖），一律以伺服器判定為準。
-4. **每一局要回報**：開始與結束時由遊戲伺服器呼叫回報一局（`reportRoundStart`／`reportRoundEnd`），平台用它統計成效。
-5. **語音由平台處理**：遊戲不得使用麥克風、相機、WebRTC；發言規則由遊戲伺服器送給平台。
-6. **私鑰只在遊戲伺服器**：不得出現在畫面端、版控或上傳的檔案裡。
+這個專案宣告的架構：多人遊戲 `[[if .Multiplayer]]true[[else]]false[[end]]`、遊戲伺服器 `[[.GameServer]]`（`playtogether.json` 的 `multiplayer`、`gameServer`；說明見 `docs/ai/PROJECT_CONTEXT.md`）。
+
+1. **遊戲伺服器架構以專案宣告為準**：修改連線或遊戲伺服器相關程式前，先確認宣告的架構並保留它；不得擅自改成[[if eq .Client "godot"]]引擎內建多人連線（Godot Multiplayer、ENet 等）[[else]]WebRTC 等點對點連線[[end]]、P2P、Relay、第三方後端服務，也不得擅自改成範本遊戲伺服器。要改架構時先提出設計變更請求。
+   - `playtogether-managed`：照範本伺服器（`server/`）的架構。
+   - `external`：保留你自己的遊戲伺服器架構，不要求遷移到範本伺服器；`server/` 只當參考與本機模擬。
+   - `none`：不主動加入多人框架或遊戲伺服器；`server/` 只當本機模擬與參考，不需要部署。
+   - 多人遊戲（`multiplayer.enabled: true`）一定要有經核准的連線架構（`playtogether-managed` 或 `external`），`pt check` 會擋 `none`。
+2. **可信任的狀態由權威決定**：多人遊戲的分數、勝負、回合流程由遊戲伺服器判定，畫面端只送「操作」，不送結果。權威分數、競賽結果、經濟、可信任的進度**不得以畫面端的本機狀態作為唯一真實來源**（玩家偏好例如音量可以存本機）。沒有遊戲伺服器（`none`）的遊戲不能有這類功能，除非玩聚提供對應的平台 API。
+3. **玩家身分只來自平台**：畫面端從 SDK 拿到一次性的啟動碼，由遊戲伺服器向玩聚兌換成玩家 ID、暱稱、房號（Ed25519 簽章；用範本或伺服器 SDK，`external` 也可以照規格自己實作）。不得把可重用的 token 交給畫面端；不要另外做登入或帳號，也不要向玩家要任何個人資料。
+4. **畫面端回報的資料不得用於玩家權益**（排名、獎勵、解鎖）。
+5. **有遊戲伺服器時，每一局要回報**：開始與結束時由遊戲伺服器呼叫回報一局（`reportRoundStart`／`reportRoundEnd`），平台用它統計成效。
+6. **語音由平台處理**：遊戲不得使用麥克風、相機、WebRTC；發言規則由遊戲伺服器送給平台。
+7. **私鑰只在遊戲伺服器**：不得出現在畫面端、版控或上傳的檔案裡。
+8. **不得用第三方服務直接替換玩聚平台 API**（房間、玩家身分、語音、回報一局等），除非開發者明確要求且平台允許。
+9. **發佈只走玩聚流程**：`pt check`、`pt upload` 與玩聚審核；不得加入和玩聚衝突的匯出、發佈、發行流程。
 
 ## 執行環境（遊戲在玩聚的 iframe 裡）
 
@@ -134,13 +143,13 @@ codex exec --skip-git-repo-check -s workspace-write -i art/generated/hero.png "�
 
 `.claude/skills/`（Claude Code）與 `.agents/skills/`（Codex）是 awesome-gamedev-agent-skills 的精選，內容相同；版本與授權見 `THIRD_PARTY/awesome-gamedev-agent-skills/`。
 
-**優先順序**：本文件 → 專案的 `CLAUDE.md`／`AGENTS.md` → skill → skill 裡的範例與外部連結。skill 的建議和本文件衝突時，**不採用、也不要折衷**。已知衝突：
+**優先順序**：本文件 → `docs/ai/AI_WORKFLOW.md` 與 `docs/ai/PROJECT_CONTEXT.md` → skill → skill 裡的範例與外部連結。skill 的建議和本文件衝突時，**不採用、也不要折衷**。已知衝突：
 
 - **不要執行 skill 提到的腳本或安裝指令**（Python 腳本、`pip install`、`npm install`、下載工具）：pt 沒有附這些腳本。素材檢查改成親自看圖；專案檢查用 `pt check`[[if eq .Client "godot"]]、`pt build`[[end]]。
 - **素材**（create-game-assets）：它的美術方向與一致性做法很適用，結論寫進 `art/STYLE.md`；生圖照「素材」一節用 Codex。
-- **存檔**：分數、進度、勝負不能存在[[if eq .Client "godot"]] `user://`[[else]] `localStorage`[[end]]（伺服器決定狀態）；只有玩家偏好（例如音量）可以存在本機。
-- **多人連線**：不要用[[if eq .Client "godot"]] Godot 的 ENet、`MultiplayerAPI`、`@rpc`[[else]] WebRTC 或其他點對點連線[[end]]；一律用範本的遊戲伺服器與 WebSocket。
-- **物理、AI、關卡產生、卡牌與題目**：影響分數或勝負的判定都在 `server/`；畫面端只做顯示與預測。
+- **存檔**：可信任的分數、進度、勝負不能只存在[[if eq .Client "godot"]] `user://`[[else]] `localStorage`[[end]]（見架構原則 2）；玩家偏好（例如音量）可以存在本機。
+- **多人連線**：照 `docs/ai/PROJECT_CONTEXT.md` 宣告的遊戲伺服器架構；不要用[[if eq .Client "godot"]] Godot 的 ENet、`MultiplayerAPI`、`@rpc`[[else]] WebRTC 或其他點對點連線[[end]]取代它。
+- **物理、AI、關卡產生、卡牌與題目**：多人遊戲中影響分數或勝負的判定都在遊戲伺服器；畫面端只做顯示與預測。
 - **音效**[[if eq .Client "godot"]]（godot-audio）[[end]]：不要自動播放音樂（要等玩家在遊戲裡點一下）；不要用麥克風收音[[if eq .Client "godot"]]（`AudioStreamMicrophone`）[[end]]；要接平台的「遊戲聲音」開關。
 - **輸入與畫面**：不要用指標鎖定（pointer lock），不要自己進入全螢幕（用 SDK 的全螢幕請求）。
 [[- if eq .Client "godot"]]
@@ -154,10 +163,12 @@ codex exec --skip-git-repo-check -s workspace-write -i art/generated/hero.png "�
 
 ## 給 AI 助手
 
-- 新功能先想清楚「哪些在伺服器、哪些在畫面端」，再寫程式。
+工作流程（怎麼判斷需求、先做原型、設計變更請求、完成前驗證）在 `docs/ai/AI_WORKFLOW.md`。這裡只列平台相關的規則：
+
+- 新功能先想清楚「哪些在遊戲伺服器、哪些在畫面端」（照宣告的遊戲伺服器架構），再寫程式。
 - 規劃數據分析時：不要在遊戲裡加任何追蹤或分析 SDK；需要的統計請用伺服器端記錄或平台的一局回報。
 - 規劃經濟、營運活動時：不要設計可兌換現金或財物的東西、付費抽獎或機率型付費內容。
-- 規劃網路連線時：使用玩聚的房間與啟動碼，不要自建配對、帳號或房間系統。
+- 規劃網路連線時：玩家身分與房間來自玩聚（啟動碼兌換得到房號）；不要另外做帳號或登入。
 - 需要圖片素材時：照「素材」一節的流程（先讀 `art/STYLE.md`、用樣板圖當參考、寫明禁止事項）用 Codex 生成，看過再用，並記錄在 `art/SOURCES.md`；不要從網路下載來源不明的素材。
 - 需要音效時：先用程式合成（照範本的做法）；要用音檔或音樂時照「音效與音樂」一節的來源順序，並記錄在 `art/SOURCES.md`。
 - 不要修改 `playtogether.json` 的金鑰設定、`keys/` 裡的檔案，也不要把私鑰內容讀出或印出。

@@ -157,9 +157,18 @@ func addStudiosFiles(files map[string][]byte, m ccgsManifest, studio map[string]
 			files[rel] = content
 		}
 	}
+	// 驗證通過之後才調整設定（只改 frontmatter 的一行與 project.yaml 最後的玩聚區塊，都有標記）
+	notes, err := applyStudiosPatches(files, m)
+	if err != nil {
+		return err
+	}
 	files["THIRD_PARTY/claude-code-game-studios/SOURCE.md"] = []byte(fmt.Sprintf(
-		"# %s\n\n- 來源：https://github.com/%s\n- 版本：%s（commit %s）\n- 授權：%s（見同資料夾的 LICENSE）\n\n由 `pt new -ai studios` 加入：每個檔案都比對過 SHA-256。`.claude/rules/playtogether.md` 與 `CLAUDE.md` 開頭的玩聚規則是 pt 加上的。\n",
-		m.Name, m.Repo, m.Version, m.Commit, m.License))
+		"# %s\n\n- 來源：https://github.com/%s\n- 版本：%s（commit %s）\n- 授權：%s（見同資料夾的 LICENSE）\n\n"+
+			"由 `pt new` 加入（工作室模式或 `-ai studios`）：每個檔案都先比對過 SHA-256，再做下列調整。\n\n"+
+			"pt 加上的檔案與段落：`CLAUDE.md` 開頭的玩聚規則、`.claude/rules/playtogether.md`、`docs/ai/`。\n\n"+
+			"pt 修改的上游檔案（只改這些地方，修改處都有「PlayTogether（pt new 加入）」標記，其餘內容沒有修改）：\n\n- %s\n\n"+
+			"Studios 的 hooks（`.claude/settings.json`）會在使用 Claude Code 時執行；其中 `update-check.sh` 會連到 GitHub 檢查新版，已用 `updates.check: false` 關閉，升級一律透過新版 pt。\n",
+		m.Name, m.Repo, m.Version, m.Commit, m.License, strings.Join(notes, "\n- ")))
 	if err := fs2Walk("templates/ai-studios/claude", func(rel string, content []byte) error {
 		files[path.Join(".claude", rel)] = content
 		return nil

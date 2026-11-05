@@ -1,3 +1,22 @@
 # [[.Name]]
 
-開發這個專案前，先讀 [PLAYTOGETHER.md](PLAYTOGETHER.md)：玩聚平台的架構原則、執行環境限制與審核規則。和其他建議衝突時以它為準。
+這是玩聚 PlayTogether 的遊戲專案。開發者不需要了解這個專案裡的 AI 工具，只會用一般的話描述想做什麼；由你判斷該怎麼做。
+
+**開始前依序讀**：
+
+1. [PLAYTOGETHER.md](PLAYTOGETHER.md)：玩聚平台規則。和其他建議衝突時**以它為準**。
+2. [docs/ai/AI_WORKFLOW.md](docs/ai/AI_WORKFLOW.md)：工作流程（權威順序、創意與實作的分工、設計變更請求、完成前驗證）。
+3. [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md)：專案背景與**多人、遊戲伺服器架構**。
+4. `docs/ai/CURRENT_TASK.md`：有的話，就是目前的工作契約。
+
+重點：
+
+- **遊戲伺服器架構以專案宣告為準**：改連線或遊戲伺服器相關程式前先確認 `PROJECT_CONTEXT.md`，保留宣告的架構；不要自行改成引擎內建多人連線、P2P、第三方後端或玩聚範本伺服器。
+- 不得自行重新定義遊戲願景、故事設定、謎題意圖、玩法規則、進度、關卡意圖；需要改時提出 `DESIGN_CHANGE_REQUEST`（格式在 `AI_WORKFLOW.md`）。
+[[- if .AI]]
+- 這個專案的規劃流程是 Claude Code Game Studios，**Codex 不執行它的流程**。Codex 可以：讀 `design/`、`production/` 裡的設計文件與 story、實作已核准的設計、code review、跑測試、檢查架構、提出設計變更、review Claude 的實作。設計變更請求寫進 `docs/ai/DECISIONS.md`。
+[[- end]]
+[[- if .Skills]]
+- 實作技巧可以參考 `.agents/skills/` 的遊戲開發 skill；它們是實作知識，不是平台規則。
+[[- end]]
+- 不要對開發者提 agent、skill、流程的名稱；完成前照 `AI_WORKFLOW.md`「完成前驗證」，不能只因為產生了程式碼就回報通過。

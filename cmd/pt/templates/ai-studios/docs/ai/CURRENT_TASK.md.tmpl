@@ -1,0 +1,39 @@
+# 目前任務
+
+AI 工作時把這份當成工作契約。開始新的任務時更新它；用 Claude Code Game Studios 的 story 時，「設計依據」寫 story 檔的路徑，**不要把 story 的內容複製過來**。
+
+| 項目 | 內容 |
+| --- | --- |
+| 階段 | 概念 |
+| Sprint | （尚未開始） |
+| 目標 | 和開發者建立遊戲概念、玩家想像、核心循環、一局長度、最小可玩版本與成功標準，接著做第一個垂直切片 |
+| 設計依據 | （還沒有；之後指向 `design/` 的文件或 `production/` 的 story） |
+
+## 允許的修改
+
+- 這個任務需要的遊戲畫面、遊戲伺服器邏輯、素材與設計文件
+
+## 禁止的修改
+
+- `PLAYTOGETHER.md` 的平台規則
+- `playtogether.json` 的多人與遊戲伺服器架構（`multiplayer`、`gameServer`）與金鑰設定；`keys/`
+- [[if eq .Client "godot"]]`export_presets.cfg`、`addons/playtogether`、[[end]]玩聚 SDK 檔案、`THIRD_PARTY/`、第三方 skill
+- 已接受的故事設定與玩法規則（需要改時寫設計變更請求到 `docs/ai/DECISIONS.md`）
+
+## 驗收標準
+
+- （依任務填寫：玩家看得到的結果）
+
+## 驗證
+
+1. 針對改動的測試
+2. 專案測試：`make test`
+3. `pt dev -smoke`
+4. `pt check -local`
+5. 看 `git diff`，確認沒有碰到上面禁止的修改
+6. 實際玩過（`pt dev`）
+7. 實作報告：寫在下方「結果」
+
+## 結果
+
+（完成後填寫：改了什麼、怎麼驗證、還有什麼沒做）

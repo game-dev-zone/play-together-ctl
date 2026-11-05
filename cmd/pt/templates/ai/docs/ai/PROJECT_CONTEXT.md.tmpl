@@ -1,0 +1,67 @@
+# 專案背景（[[.Name]]）
+
+由 `pt new` 產生。專案設定以 `playtogether.json` 為準；這裡只整理 AI 工作時需要知道的背景，並指出正式來源，不複製它們的內容。標示「待填」的欄位，可以在和開發者確認後由 AI 填寫。
+
+## 遊戲
+
+| 項目 | 內容 |
+| --- | --- |
+| 遊戲名稱 | 待填（專案代號 `[[.Name]]`） |
+| 類型 | 待填 |
+| 目標玩家 | 待填 |
+| 一局長度 | 待填 |
+| 目前里程碑 | 概念（還沒有遊戲設計） |
+| 設計的正式來源 | [[if .AI]]`design/`（Claude Code Game Studios 產生的遊戲概念、GDD、故事設定）[[else]]`docs/design/`（或開發者指定的位置；還沒有）[[end]] |
+
+## 多人與遊戲伺服器架構（不能擅自改）
+
+| 項目 | 值 |
+| --- | --- |
+| 多人遊戲（`multiplayer.enabled`） | `[[if .Multiplayer]]true[[else]]false[[end]]` |
+| 遊戲伺服器（`gameServer.mode`） | `[[.GameServer]]` |
+| 範本 `server/`（[[if eq .Server "go"]]Go[[else]]Node.js[[end]]）的角色 | [[if eq .GameServer "playtogether-managed"]]**正式遊戲伺服器的起點**：要部署，並把對外網址填進 `playtogether.json` 的 `serverUrl`[[else if eq .GameServer "external"]]**玩聚的整合參考與本機模擬伺服器，不是你的正式遊戲伺服器**；示範啟動碼兌換、回報一局與斷線重連，`pt dev` 用它在本機模擬。不需要部署[[else]]**玩聚的本機模擬與參考伺服器，正式遊玩不需要它**；`pt dev` 用它在本機模擬，也示範 SDK 用法。不需要部署[[end]] |
+[[- if eq .GameServer "external"]]
+| 你的正式遊戲伺服器 | 待填（程式碼位置或 repo、協定、啟動與測試指令、對外網址）；`playtogether.json` 的 `serverUrl` 填它的對外網址 |
+[[- end]]
+
+改這兩個值或連線架構前，先提出設計變更請求（`docs/ai/AI_WORKFLOW.md`）。改了之後兩處要一致（`playtogether.json` 與本表），`pt check` 會檢查組合是否成立。
+[[- if eq .GameServer "none"]]
+
+範本附的示範玩法會連到 `server/`；做正式玩法時，改成不需要遊戲伺服器的畫面端玩法。可信任的分數、獎勵、經濟這類功能需要權威機制，見 `AI_WORKFLOW.md`「遊戲伺服器架構」。
+[[- end]]
+
+## 技術
+
+| 項目 | 內容 |
+| --- | --- |
+| 畫面 | [[if eq .Client "godot"]]Godot 4（網頁匯出，專案在 `[[.GodotPath]]`）[[else]]網頁（HTML／JavaScript，`web/`）[[end]] |
+| 範本伺服器語言 | [[if eq .Server "go"]]Go[[else]]Node.js[[end]] |
+| 畫面方向 | [[.OrientationLabel]]（`[[.Orientation]]`） |
+| 玩聚 SDK | [[.SDKVersion]]（`pt sdk update` 更新） |
+| 玩聚整合 | 平台網址 `platform`、遊戲伺服器網址 `serverUrl`、金鑰 ID 都在 `playtogether.json`（玩聚建立遊戲後填寫） |
+
+## AI 開發設定
+
+| 項目 | 內容 |
+| --- | --- |
+| AI 模式 | [[.AIModeLabel]]（`[[.AIMode]]`） |
+| 遊戲開發 skill | [[if .Skills]][[.SkillsLabel]]：awesome-gamedev-agent-skills [[.SkillsVersion]]，Claude Code 在 `.claude/skills/`、Codex 在 `.agents/skills/`[[else]]沒有加入[[end]] |
+| 規劃流程 | [[if .AI]]Claude Code Game Studios [[.StudiosVersion]]（只在 Claude Code 執行）[[else]]沒有加入[[end]] |
+| 第三方來源與授權 | [[if or .AI .Skills]]`THIRD_PARTY/`[[else]]無[[end]] |
+
+## 重要路徑
+
+| 路徑 | 內容 |
+| --- | --- |
+| `PLAYTOGETHER.md` | 玩聚平台規則（最高優先） |
+| `docs/ai/AI_WORKFLOW.md` | AI 工作流程 |
+[[- if .AI]]
+| `docs/ai/CURRENT_TASK.md` | 目前的工作契約 |
+| `docs/ai/DECISIONS.md` | 設計變更請求紀錄 |
+| `design/`、`production/` | Studios 的設計文件與製作進度 |
+[[- end]]
+| `playtogether.json` | pt 的專案設定（含多人與遊戲伺服器架構） |
+| [[if eq .Client "godot"]]`[[.GodotPath]]`[[else]]`web/`[[end]] | 遊戲畫面 |
+| `server/` | 範本遊戲伺服器（角色見上表） |
+| `art/STYLE.md`、`art/SOURCES.md` | 素材風格卡、素材來源紀錄 |
+| `keys/` | 私鑰（不得讀出、不得進版控） |
