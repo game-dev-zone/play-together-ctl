@@ -330,7 +330,7 @@ func cmdNew(args []string) error {
 		fmt.Println("  pt dev        # 匯出 Godot 網頁版並用本機模擬模式打開兩個玩家分頁（需要 Godot 4.3 以上與網頁匯出範本）")
 		if studios {
 			fmt.Println("  用 Godot 編輯器打開專案根目錄修改遊戲")
-			fmt.Printf("  claude        # 在專案根目錄啟動 Claude Code，執行 /start 開始（%s 已加入，玩聚規則在 PLAYTOGETHER.md）\n", ccgs.Name)
+			fmt.Printf("  claude        # 在專案根目錄啟動 Claude Code，執行 /start 開始，嚴謹度建議選 minimal（%s 已加入，玩聚規則在 PLAYTOGETHER.md）\n", ccgs.Name)
 		} else {
 			fmt.Println("  用 Godot 編輯器打開 game/ 修改遊戲")
 		}

@@ -59,7 +59,7 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 
 ## 用 AI 助手開發
 [[if .AI]]
-這個專案加入了 [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios)：在專案根目錄執行 `claude`，第一次先執行 `/start`。建議用 `minimal` 模式（寫完一頁企劃就開始做），並在 `/setup-engine` 選 Godot。
+這個專案加入了 [Claude Code Game Studios](https://github.com/donchitos/claude-code-game-studios)：在專案根目錄執行 `claude`，第一次先執行 `/start`。建議嚴謹度（rigor）用 `minimal`（寫完一頁企劃就開始做；`/start` 看到「多人」可能自動選 `full`，請改回 `minimal`，之後可用 `/settings` 調整），並在 `/setup-engine` 選 Godot。
 `CLAUDE.md` 開頭的玩聚規則優先於範本的預設；每次改完跑 `pt check`，再用 `pt dev` 實際玩一次。
 範本的 hooks 會在你的電腦上執行，每次開新工作階段也會連 GitHub 檢查更新（`/settings --local updates.check=false` 可關閉）。
 [[- else]]

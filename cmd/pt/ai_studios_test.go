@@ -155,6 +155,9 @@ func TestNewStudios(t *testing.T) {
 	if !strings.HasPrefix(claude, "<!-- 由 pt new -ai studios 加入") || !strings.Contains(claude, "@PLAYTOGETHER.md") || !strings.Contains(claude, "studio rules") {
 		t.Fatalf("CLAUDE.md 要先放玩聚規則，再接範本內容：\n%s", claude)
 	}
+	if !strings.Contains(claude, "`minimal`") || !strings.Contains(read("README.md"), "`minimal`") {
+		t.Fatal("CLAUDE.md 與 README 要建議嚴謹度用 minimal（/start 看到多人會自動選 full）")
+	}
 	gi := read(".gitignore")
 	if !strings.Contains(gi, "keys/") || !strings.Contains(gi, "\n.godot/") || !strings.HasSuffix(strings.TrimSpace(gi), "!export_presets.cfg") {
 		t.Fatalf(".gitignore 要保留玩聚規則並讓匯出設定進版控：\n%s", gi)

@@ -74,7 +74,7 @@ Godot 專案可以用參數加入 [Claude Code Game Studios](https://github.com/
 ```sh
 pt new -client godot -ai studios my-godot-game    # 可以再加 -skills full
 cd my-godot-game
-claude                                            # 第一次執行 /start（建議選 minimal 模式）
+claude                                            # 第一次執行 /start（嚴謹度建議選 minimal；看到「多人」它可能自動選 full）
 ```
 
 - 版本固定（目前 1.2.0），下載後逐一比對內嵌清單的 SHA-256，任何一個檔案不符就停止，不留下專案資料夾。範本的 hooks 會在你的電腦上執行，所以 `pt` 不會安裝清單以外的檔案。
