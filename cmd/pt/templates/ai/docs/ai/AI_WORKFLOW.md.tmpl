@@ -136,7 +136,9 @@ Codex 不執行 Claude Code Game Studios 的流程。Codex 可以：讀 Studios 
 | **需要平台審核**（`pt check` 的 REVIEW_REQUIRED） | 可以開發；明確提醒開發者需要玩聚平台審核；不宣稱已批准、不說「可以上架」 |
 | **要加入超出內容邊界的內容** | **不自動提高 profile**：提出 `CONTENT_PROFILE_CHANGE_REQUEST`，開發者同意後由開發者修改 `contentProfile`（或明確授權你修改），執行 `pt content sync` 重新產生 `CONTENT_PROFILE.md`，再實作 |
 | **既有內容已經超出內容邊界** | 降低內容以符合邊界，或提出 `CONTENT_PROFILE_CHANGE_REQUEST`；不得靜默放寬 |
-| **玩法、經濟或敏感題材宣告要改**（例如改成撲克、加入籌碼、加入政治迫害題材） | 提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`，開發者同意後才改宣告，再執行 `pt content sync` 重新產生文件 |
+| **玩法或經濟宣告要改**（例如改成撲克、加入籌碼） | 提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`，開發者同意後才改宣告，再執行 `pt content sync` 重新產生文件 |
+| **開發者明確要求敏感題材**（例如「做一款類似《返校》、描寫威權時代政治迫害的恐怖遊戲」「反派要說出歧視的台詞」） | 這個要求本身就是授權：**直接**把對應的 `sensitiveContent` 欄位改成 `true`、執行 `pt content sync`，並告知開發者這個題材會變成 REVIEW_REQUIRED（需要玩聚平台審核，不代表不能做）。不需要再提出 `GAMEPLAY_POLICY_CHANGE_REQUEST` |
+| **你自己發現**既有劇情、文案或素材可能涉及沒有宣告的敏感題材 | 不要自行改宣告：簡短告訴開發者你發現了什麼、建議把哪些欄位改成 `true`，請開發者確認；確認後再更新並執行 `pt content sync` |
 | **`pt check` 失敗** | 修正實作或依上面的流程申請變更；不得為了通過檢查而修改宣告。`docs/content/` 的文件和宣告不一致是宣告錯誤：宣告經開發者確認後執行 `pt content sync` |
 
 禁止的流程：先做出超出內容邊界的內容 → 發現 `pt check` 失敗 → 自動把 `general` 改成 `strong`。
@@ -146,6 +148,8 @@ Codex 不執行 Claude Code Game Studios 的流程。Codex 可以：讀 Studios 
 - 內容邊界是**上限，不是要求**：不要主動加入暴力、血腥、恐怖、酒、菸、性暗示、粗俗語言，也不要主動加入籌碼商店、每日送籌碼這類經濟設計。只在遊戲設計需要、開發者要求時使用，而且不超過宣告。
 - **Table Game ≠ Real-Money Gambling**：牌桌、牌、骰子、虛擬籌碼、Bet／Call／Raise／Fold／All-in 等玩法本身不違規。判斷時先檢查是否存在：真實金錢下注、可購買的下注本金、可提領、可兌換、可轉讓的現實價值、付費隨機獎勵。
 - **描寫仇恨 ≠ 鼓吹仇恨**：歷史、教育、紀實、敘事、批判性內容可以描寫仇恨、迫害、歧視、政治暴力與威權統治（例如描寫威權時代政治迫害的恐怖遊戲）；這類題材正常進入設計流程、宣告 `sensitiveContent`（需要平台審核），呈現強度依內容邊界。不要因為涉及政治迫害或歧視就拒絕開發。但不得主動把真實受保護群體描寫成應被仇恨、迫害或消滅的對象，也不得把傷害真實受保護群體設計成目標或獎勵（硬性規則）。
+- **敏感題材由開發者決定**：開發者是題材與創作方向的最終決定者，你不是 `sensitiveContent` 的審核者，能否上架由玩聚平台審核決定。`historicalPersecution`、`politicalRepression`、`discriminationDepiction`、`hateSpeechDepiction` 是描寫，會變成 REVIEW_REQUIRED；`hateAdvocacy`、`encourageProtectedClassViolence` 是鼓吹與煽動，是平台硬性規則，不實作。
+- **不得為了讓 `pt check` 通過而弱化題材**：不刪除、不淡化開發者要的合法題材，也不把應該是 `true` 的 `sensitiveContent` 改回 `false`。REVIEW_REQUIRED 不是錯誤，不需要「修好」。開發者自己決定拿掉某個題材時，才把對應欄位改回 `false`。
 - 商業模式涉及真實金錢（`economy.realMoney`）需要審核，但技術上遊戲仍不能自己接付款；看廣告取得籌碼需要審核，但遊戲仍不能自己加入廣告 SDK。
 
 ```
@@ -163,7 +167,7 @@ Recommendation:
 
 ```
 GAMEPLAY_POLICY_CHANGE_REQUEST
-Current Declaration:（gameplay、economy、sensitiveContent 的相關欄位）
+Current Declaration:（gameplay、economy 的相關欄位；敏感題材不用這個格式，見上表）
 Requested Change:
 Reason:
 Hard Rule Check:（是否涉及真實金錢下注、可購買下注本金、提領、兌換、可轉讓現實價值、付費隨機獎勵、鼓吹仇恨）

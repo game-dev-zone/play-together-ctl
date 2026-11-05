@@ -614,3 +614,81 @@ func TestPolicyDocsAndSync(t *testing.T) {
 		t.Fatal("不在專案裡 sync 要失敗")
 	}
 }
+
+// 敏感題材：開發者明確要求時，AI 直接更新宣告並 pt content sync（不需要變更申請），結果是 REVIEW_REQUIRED（不是錯誤）；
+// AI 自己發現時要請開發者確認；不得為了通過檢查把 true 靜默改回 false（沒有重新產生文件時是宣告錯誤）。
+func TestSensitiveContentWorkflow(t *testing.T) {
+	requireEmbeddedSDK(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	must(t, cmdNew([]string{"fanxiao", "-y", "-profile", "strong"}))
+	root := filepath.Join(dir, "fanxiao")
+	t.Chdir(root)
+
+	// AI 契約：明確要求即授權、AI 自己發現要確認、不得弱化題材；敏感題材不再要求 GAMEPLAY_POLICY_CHANGE_REQUEST
+	wf := readFile(t, dir, "fanxiao", "docs/ai/AI_WORKFLOW.md")
+	for _, s := range []string{"開發者明確要求敏感題材", "這個要求本身就是授權", "不需要再提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`",
+		"你自己發現", "請開發者確認", "你不是 `sensitiveContent` 的審核者", "不把應該是 `true` 的 `sensitiveContent` 改回 `false`", "REVIEW_REQUIRED 不是錯誤"} {
+		if !strings.Contains(wf, s) {
+			t.Errorf("AI_WORKFLOW.md 少了 %q", s)
+		}
+	}
+	for _, f := range []string{"docs/ai/AI_WORKFLOW.md", "docs/ai/PROJECT_CONTEXT.md", "docs/content/CONTENT_PROFILE.md"} {
+		doc := readFile(t, dir, "fanxiao", f)
+		for _, banned := range []string{"敏感題材走 `GAMEPLAY_POLICY_CHANGE_REQUEST`", "玩法、經濟或敏感題材宣告要改", "要加入上表的題材時，先提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`"} {
+			if strings.Contains(doc, banned) {
+				t.Errorf("%s 還要求敏感題材先提出變更申請：%q", f, banned)
+			}
+		}
+	}
+	prof := readFile(t, dir, "fanxiao", "docs/content/CONTENT_PROFILE.md")
+	if !strings.Contains(prof, "這個要求本身就是授權") || !strings.Contains(prof, "先請開發者確認") || !strings.Contains(prof, "改回 `false`") {
+		t.Error("CONTENT_PROFILE.md 要寫明敏感題材的流程")
+	}
+
+	// 開發者要求類《返校》的歷史政治恐怖題材：AI 直接改四個描寫欄位並 sync
+	setSensitive := func(vals map[string]bool) {
+		raw, _ := os.ReadFile(filepath.Join(root, projectFile))
+		m := map[string]any{}
+		must(t, json.Unmarshal(raw, &m))
+		sc := m["sensitiveContent"].(map[string]any)
+		for k, v := range vals {
+			sc[k] = v
+		}
+		b, _ := json.MarshalIndent(m, "", "  ")
+		must(t, os.WriteFile(filepath.Join(root, projectFile), b, 0o644))
+	}
+	check := func() levels {
+		p, err := findProject()
+		must(t, err)
+		return runPolicy(p)
+	}
+	depictions := map[string]bool{"historicalPersecution": true, "politicalRepression": true, "discriminationDepiction": true, "hateSpeechDepiction": true}
+	setSensitive(depictions)
+	must(t, cmdContent([]string{"sync"}))
+	l := check()
+	if !l.only(levelReview) || len(l[levelReview]) != 4 {
+		t.Fatalf("四個描寫欄位都是 REVIEW_REQUIRED、沒有錯誤：%v", l)
+	}
+	if !strings.Contains(readFile(t, dir, "fanxiao", "docs/content/CONTENT_PROFILE.md"), "| 威權統治、白色恐怖、監控、審訊、政治監禁（`politicalRepression`） | `true` |") {
+		t.Error("sync 之後文件要反映宣告")
+	}
+
+	// 為了讓 pt check 通過把 true 靜默改回 false（沒有重新產生文件）：文件和宣告不一致，是宣告錯誤
+	setSensitive(map[string]bool{"politicalRepression": false})
+	if l := check(); len(l[levelSchema]) == 0 {
+		t.Fatalf("靜默把 true 改回 false 要被抓到（文件不一致）：%v", l)
+	}
+	setSensitive(depictions)
+
+	// 兩個鼓吹／煽動欄位仍是硬性規則
+	for _, k := range []string{"hateAdvocacy", "encourageProtectedClassViolence"} {
+		setSensitive(map[string]bool{k: true})
+		must(t, cmdContent([]string{"sync"})) // 宣告格式正確就能 sync（硬性規則照實寫進文件）
+		if l := check(); len(l[levelHard]) != 1 {
+			t.Errorf("%s 要是 ERROR_HARD_RULE：%v", k, l)
+		}
+		setSensitive(map[string]bool{k: false})
+		must(t, cmdContent([]string{"sync"}))
+	}
+}
