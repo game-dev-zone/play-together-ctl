@@ -77,6 +77,12 @@ func main() {
 		err = cmdCDN(os.Args[2:])
 	case "content":
 		err = cmdContent(os.Args[2:])
+	case "status":
+		err = cmdStatus(os.Args[2:])
+	case "login":
+		err = cmdLogin(os.Args[2:])
+	case "logout":
+		err = cmdLogout(os.Args[2:])
 	case "version", "-version", "--version":
 		fmt.Print(versionInfo())
 	default:
@@ -114,7 +120,11 @@ func usage() {
                                                 -local：platform、serverUrl（需要時）還沒填不算錯誤；-json：JSON 輸出
   pt content sync                               依 playtogether.json 重新產生 docs/content/ 的開發契約文件並記錄平台政策版本
   pt keygen -purpose upload|server [-out 檔案]   產生金鑰；在專案裡預設寫到 keys/<用途>.key
-  pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定（含畫面方向、CDN 申報）從 playtogether.json 讀
+  pt upload -version <版本> [-notes …]          上傳版本與上架資料（store/）；在專案裡其他設定（含畫面方向、CDN 申報、宣告）從 playtogether.json 讀
+         [-no-listing] [-listing-only]          只上傳版本／只上傳上架資料
+  pt status                                     版本與上架資料的審核狀態、退件原因、正式分級
+  pt login [-api 平台網址]                      在瀏覽器確認後取得送審授權（30 天）；之後 pt upload 會在檢查通過後直接送審（-no-submit 不送審）
+  pt logout                                     刪除這台電腦上的送審授權
          [-skip-check]                          略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查
   pt cdn add <網址>                             從 jsDelivr／cdnjs 載入固定版本的程式或樣式：算出 SRI、記到 playtogether.json、印出要貼的標籤
   pt sdk status                                 檢查專案的 SDK、這個 pt 內嵌的 SDK、最新版 pt 的 SDK
@@ -189,6 +199,9 @@ func upload(args []string) error {
 	skipCheck := fs.Bool("skip-check", false, "略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查")
 	noBuild := fs.Bool("no-build", false, "Godot 專案：不重新匯出，直接上傳現有的 build/")
 	orientation := fs.String("orientation", "", "畫面方向 portrait|landscape|any（在 pt new 建立的專案裡預設讀 playtogether.json）")
+	noListing := fs.Bool("no-listing", false, "不上傳上架資料（store/），只上傳版本")
+	listingOnly := fs.Bool("listing-only", false, "只上傳上架資料（換截圖、修說明），不打包遊戲")
+	noSubmit := fs.Bool("no-submit", false, "只上傳，不送審（已經 pt login 時預設會在檢查通過後送審）")
 	_ = fs.Parse(reorder(args))
 	p, err := findProject()
 	if err != nil {
@@ -217,6 +230,12 @@ func upload(args []string) error {
 	// 畫面方向是版本的一部分：平台依此提示玩家旋轉手機（沒有給時平台當成 portrait）
 	if *orientation != "" && !slices.Contains(orientations, *orientation) {
 		return fmt.Errorf("-orientation 必須是 %s", strings.Join(orientations, "、"))
+	}
+	if *noListing && *listingOnly {
+		return errors.New("-no-listing 和 -listing-only 只能指定一個")
+	}
+	if *listingOnly {
+		return uploadListingOnly(p, *api, *keyID, *keyFile, *noSubmit)
 	}
 	if dir == "" || *version == "" || fs.NArg() > 1 {
 		return errors.New("用法：pt upload -version <版本> [-notes …] [建置資料夾]（在 pt new 建立的專案裡可以省略資料夾）")
@@ -278,6 +297,10 @@ func upload(args []string) error {
 	if p != nil && len(p.CDN) > 0 {
 		reg["cdnAssets"] = p.CDN
 	}
+	// 宣告快照：平台自己判斷硬性規則與需要審核的項目（不採信本機的 pt check）
+	if decl, ok := declarationBody(p); ok {
+		reg["declaration"], reg["policyVersion"] = decl, p.PolicyVersion
+	}
 	if err := c.signed("POST", "/v1/dev/builds", reg, &created); err != nil {
 		return err
 	}
@@ -287,6 +310,13 @@ func upload(args []string) error {
 		return fmt.Errorf("上傳失敗：%w", err)
 	}
 	fmt.Println("已上傳，版本 ID：", created.BuildID)
+	revID := ""
+	if !*noListing {
+		var err error
+		if revID, err = uploadStore(c, p); err != nil {
+			return err
+		}
+	}
 	if *wait == 0 {
 		return nil
 	}
@@ -309,8 +339,23 @@ func upload(args []string) error {
 		switch b.ArtifactStatus {
 		case "ready":
 			fmt.Printf("\n檢查通過（%d 個檔案）。版本網址：%s\n", b.CheckReport.FileCount, b.EntryURL)
-			fmt.Println("下一步：請玩聚為這個版本開預覽房間，用手機實際玩一局；沒問題後請玩聚送審（開發者主控台開放前由平台協助）。")
-			fmt.Println("版本 ID 請一併提供給玩聚。")
+			if !*noSubmit {
+				logged, err := submitWithCredential(base, created.BuildID, revID)
+				if err != nil {
+					return err
+				}
+				if logged {
+					fmt.Println("審核進度：pt status（或開發者頁）")
+					return nil
+				}
+			}
+			fmt.Println("下一步：執行 pt login 授權後，pt upload 會在檢查通過後直接送審；也可以到開發者頁送審。")
+			if revID != "" {
+				fmt.Printf("版本 ID %s、上架資料修訂 ID %s（兩者一起送審，發佈時一起生效）。\n", created.BuildID, revID)
+			} else {
+				fmt.Println("版本 ID：", created.BuildID)
+			}
+			fmt.Println("審核進度：pt status")
 			return nil
 		case "failed":
 			fmt.Println("\n檢查沒有通過：")
@@ -429,6 +474,20 @@ var errorText = map[string]string{
 	"size_mismatch":      "上傳過程中檔案大小不符，請重新上傳",
 	"bad_cdn_asset":      "playtogether.json 的 cdn 格式不對（只接受 jsDelivr、cdnjs 精確版本的 .js／.mjs／.css 完整網址加 SRI；用 pt cdn add 加入）",
 	"cdn_check_failed":   "平台下載 CDN 檔案驗證失敗（重新導向、沒有允許跨來源，或內容和 SRI 不符）",
+	"policy_hard_rule":   "playtogether.json 的宣告違反玩聚平台硬性規則，平台不收這個版本（執行 pt check 看原因）",
+	"bad_declaration":    "playtogether.json 的宣告格式不對（執行 pt check 看原因）",
+	"bad_name":           "store/listing.json 的 name：繁中與英文都必填，最多 30 字",
+	"bad_summary":        "store/listing.json 的 summary：繁中最多 60 字、英文最多 80 字，都必填",
+	"bad_description":    "store/listing.json 的 description：繁中與英文都必填，最多 4000 字",
+	"bad_tags":           "store/listing.json 的 tags 有不認得的代碼",
+	"bad_players":        "store/listing.json 的 players 不合法",
+	"missing_images":     "store/ 要有圖示與至少一張截圖",
+	"bad_images":         "store/ 的圖片數量或位置不對（截圖最多 10 張）",
+	"too_many_drafts":    "還沒送審的上架資料草稿太多：請先送審，或請玩聚清除",
+	"bad_image":          "圖片只接受 PNG 或 JPEG",
+	"bad_image_size":     "圖片太大或太小",
+	"bad_image_aspect":   "圖片比例和需要的差太多，平台不能自動裁切：請換一張",
+	"busy":               "平台忙碌中，請重新執行 pt upload",
 }
 
 func doJSON(req *http.Request, out any) error {

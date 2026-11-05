@@ -1015,6 +1015,7 @@ func checkProject(p *project, webDir string) []finding {
 		add(levelBuild, "playtogether.json 的 platform 還沒填（玩聚建立遊戲後會給你平台網址）")
 	}
 	checkPolicy(p, add)
+	checkStore(p, add)
 	if checkGameServer(p, add) {
 		if p.ServerURL == "" {
 			msg := "playtogether.json 的 serverUrl 還沒填：上傳後遊戲畫面和遊戲伺服器在不同網址，要填遊戲伺服器的對外網址"

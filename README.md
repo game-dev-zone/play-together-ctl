@@ -90,6 +90,17 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 
 `pt check` 依宣告的架構判斷：`none` 不要求 `serverUrl`；`multiplayer.enabled: true` 卻是 `none` 會被擋（多人遊戲需要經核准的連線架構）。舊專案沒有這兩個欄位時，當成多人＋`playtogether-managed`，結果和以前相同。
 
+### 上架資料（`store/`）
+
+名稱、簡介、說明（**繁中與英文必填**）、標籤、人數、一局時間、給審核者的說明放在 `store/listing.json`，圖示（`icon.png`）、截圖（`screenshots/01.png`…，1–10 張，實際遊戲畫面）、選填的封面（`cover.png`）放在同一個資料夾。規格見專案裡的 `store/README.md`。
+
+- `pt upload` 會和版本一起上傳上架資料，**平台自動裁切、縮放、重新編碼**；內容沒變時沿用上一次的修訂。只想換截圖或修說明：`pt upload -listing-only`；只上傳版本：`-no-listing`。
+- `pt check` 一併檢查 `store/`：範本文字還沒改或缺圖片時只說明（`pt upload` 會只上傳版本）；長度、標籤、圖片格式、尺寸與比例錯誤是 `ERROR_SCHEMA`（`-skip-check` 不能略過）。
+- `pt upload` 也會送出 `playtogether.json` 的宣告，**平台自己判斷**硬性規則與需要審核的項目（不採信本機的 `pt check`）。
+- `pt status`：版本與上架資料的審核狀態、退件條號與原因、正式分級（由平台審核決定）。
+- `pt login`：在瀏覽器用玩聚帳號確認短碼與團隊，取得送審授權（30 天，可以在玩聚前台的開發者頁撤銷）。之後 `pt upload` 會在檢查通過後**直接送審**版本與上架資料（`-no-submit` 只上傳）；沒登入時只上傳，可以到開發者頁預覽、調整圖片裁切、送審。`pt logout` 刪除這台電腦上的授權。上傳金鑰只能上傳、不能送審。
+- 託管遊戲第一次上架必須有核准的上架資料。只改簡介、說明裡的幾個字（例如錯字）免審、直接生效，平台事後抽查。
+
 ### 內容邊界與政策宣告（`-profile`、`-table-game`）
 
 `playtogether.json` 記錄開發者的宣告，`pt new` 依它產生 `docs/content/CONTENT_PROFILE.md` 與 `docs/content/GAMEPLAY_ECONOMY.md`（所有 AI 模式都有），AI 依它工作：

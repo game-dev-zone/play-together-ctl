@@ -110,6 +110,10 @@ Table Game ≠ Real-Money Gambling：牌、骰子、籌碼、Bet／Call／Raise�
 需要平台審核 ≠ 已批准
 ```
 
+## 上架資料（store/）
+
+名稱、簡介、說明（繁中與英文必填）、圖示、截圖（1–10 張，實際遊戲畫面）放在 `store/`，`pt upload` 會和版本一起上傳，平台自動裁切。託管遊戲第一次上架必須有核准的上架資料。規格見 `store/README.md`；`pt status` 看審核進度。
+
 ## 需要玩聚平台審核的項目（可以開發與送審，結果由平台決定）
 
 `pt check` 會標成 `REVIEW_REQUIRED`，可以送審，但**不代表已批准**：

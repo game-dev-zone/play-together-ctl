@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -220,8 +221,8 @@ func TestCheck(t *testing.T) {
 	}
 	cfg, _ := os.ReadFile(filepath.Join(web, "config.js"))
 	must(t, os.WriteFile(filepath.Join(web, "config.js"), bytes.Replace(cfg, []byte("serverUrl: ''"), []byte("serverUrl: 'https://game.example.com'"), 1), 0o644))
-	if fs := checkProject(p, web); len(fs) != 0 {
-		t.Fatalf("設定正確時要通過：%+v", fs)
+	if fs := checkProject(p, web); slices.ContainsFunc(fs, func(f finding) bool { return f.level != levelInfo }) {
+		t.Fatalf("設定正確時要通過（說明不算）：%+v", fs)
 	}
 	p.ServerURL = "http://game.example.com"
 	if fs := checkProject(p, web); !has(fs, "error", "https://") {
