@@ -105,19 +105,19 @@ func checkCDN(p *project, webDir string, add func(level, format string, a ...any
 		list = p.CDN
 	}
 	if len(list) > maxCDNAssets {
-		add("error", "playtogether.json 的 cdn 最多 %d 個檔案", maxCDNAssets)
+		add(levelHard, "playtogether.json 的 cdn 最多 %d 個檔案", maxCDNAssets)
 	}
 	for _, c := range list {
 		if err := cdnURLError(c.URL); err != nil {
-			add("error", "playtogether.json 的 cdn：%s：%v", c.URL, err)
+			add(levelHard, "playtogether.json 的 cdn：%s：%v", c.URL, err)
 			continue
 		}
 		if err := sriError(c.Integrity); err != nil {
-			add("error", "playtogether.json 的 cdn：%s：%v（用 pt cdn add 產生）", c.URL, err)
+			add(levelHard, "playtogether.json 的 cdn：%s：%v（用 pt cdn add 產生）", c.URL, err)
 			continue
 		}
 		if _, dup := declared[c.URL]; dup {
-			add("error", "playtogether.json 的 cdn 重複：%s", c.URL)
+			add(levelHard, "playtogether.json 的 cdn 重複：%s", c.URL)
 		}
 		declared[c.URL] = c.Integrity
 	}
@@ -151,13 +151,13 @@ func checkCDN(p *project, webDir string, add func(level, format string, a ...any
 				want, ok := declared[src]
 				switch {
 				case strings.EqualFold(m[1], "link") && !strings.EqualFold(a["rel"], "stylesheet"):
-					add("error", "%s 從外部載入 %s（rel=%s）：CDN 只能用在程式與樣式表，字型、圖片、預先載入都要打包進上傳的檔案", rel, src, a["rel"])
+					add(levelHard, "%s 從外部載入 %s（rel=%s）：CDN 只能用在程式與樣式表，字型、圖片、預先載入都要打包進上傳的檔案", rel, src, a["rel"])
 				case !ok:
-					add("error", "%s 從外部載入 %s，但 playtogether.json 的 cdn 沒有申報（用 pt cdn add %s）", rel, src, src)
+					add(levelHard, "%s 從外部載入 %s，但 playtogether.json 的 cdn 沒有申報（用 pt cdn add %s）", rel, src, src)
 				case a["integrity"] != want:
-					add("error", "%s 載入 %s 要加 integrity=\"%s\"（和申報的 SRI 相同）", rel, src, want)
+					add(levelHard, "%s 載入 %s 要加 integrity=\"%s\"（和申報的 SRI 相同）", rel, src, want)
 				case a["crossorigin"] != "anonymous":
-					add("error", "%s 載入 %s 要加 crossorigin=\"anonymous\"（沒有它 SRI 檢查會失敗）", rel, src)
+					add(levelHard, "%s 載入 %s 要加 crossorigin=\"anonymous\"（沒有它 SRI 檢查會失敗）", rel, src)
 				default:
 					used[src] = true
 				}
@@ -169,7 +169,7 @@ func checkCDN(p *project, webDir string, add func(level, format string, a ...any
 					Integrity map[string]string `json:"integrity"`
 				}
 				if err := json.Unmarshal([]byte(m[1]), &im); err != nil {
-					add("error", "%s 的 import map 不是合法的 JSON：%v", rel, err)
+					add(levelHard, "%s 的 import map 不是合法的 JSON：%v", rel, err)
 					continue
 				}
 				for _, u := range im.Imports {
@@ -179,9 +179,9 @@ func checkCDN(p *project, webDir string, add func(level, format string, a ...any
 					inTags[u] = true
 					switch want, ok := declared[u]; {
 					case !ok:
-						add("error", "%s 的 import map 從外部載入 %s，但 playtogether.json 的 cdn 沒有申報", rel, u)
+						add(levelHard, "%s 的 import map 從外部載入 %s，但 playtogether.json 的 cdn 沒有申報", rel, u)
 					case im.Integrity[u] != want:
-						add("error", "%s 的 import map 要在 \"integrity\" 寫上 %s 的 SRI：%s", rel, u, want)
+						add(levelHard, "%s 的 import map 要在 \"integrity\" 寫上 %s 的 SRI：%s", rel, u, want)
 					default:
 						used[u] = true
 					}
@@ -193,13 +193,13 @@ func checkCDN(p *project, webDir string, add func(level, format string, a ...any
 			if inTags[u] {
 				continue
 			}
-			add("error", "%s 直接使用 CDN 網址 %s：只能在 HTML 的 <script>／<link> 或 import map 載入並寫 SRI（JS 裡用套件名稱 import）；字型、圖片、WASM 要打包進上傳的檔案", rel, u)
+			add(levelHard, "%s 直接使用 CDN 網址 %s：只能在 HTML 的 <script>／<link> 或 import map 載入並寫 SRI（JS 裡用套件名稱 import）；字型、圖片、WASM 要打包進上傳的檔案", rel, u)
 		}
 		return nil
 	})
 	for u := range declared {
 		if !used[u] {
-			add("warn", "playtogether.json 的 cdn 申報了 %s，但頁面沒有用到（可以刪掉）", u)
+			add(levelWarn, "playtogether.json 的 cdn 申報了 %s，但頁面沒有用到（可以刪掉）", u)
 		}
 	}
 	if len(declared) > 0 {

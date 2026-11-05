@@ -56,13 +56,13 @@ func TestNewWizard(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	// 順序：名稱 → 畫面 → 多人？→ 伺服器種類 → 伺服器語言 → 方向 → 內容分級 → AI 模式 → 確認
+	// 順序：名稱 → 畫面 → 多人？→ 伺服器種類 → 伺服器語言 → 方向 → 內容邊界 → AI 模式 → 確認
 	// 名稱不合格會重問；AI 模式亂打會重問，預設標準（加入完整的遊戲開發 skill，不加 Studios）
 	typeIn(t, "My Game", "wiz-godot", "2", "", "", "", "2", "", "9", "", "")
 	must(t, cmdNew(nil))
 	p := readProject(t, filepath.Join(dir, "wiz-godot"))
 	if p.Client != "godot" || p.Server != "go" || p.AI != "" || p.Godot != "game" || p.Orientation != "landscape" || p.Skills != "full" ||
-		p.AIMode != "standard" || p.gameServerMode() != "playtogether-managed" || !p.multiplayerEnabled() || p.ContentRating == nil || p.ContentRating.Profile != "15plus" {
+		p.AIMode != "standard" || p.gameServerMode() != "playtogether-managed" || !p.multiplayerEnabled() || projectPolicy(t, p).Content.Profile != "general" {
 		t.Fatalf("選 Godot＋標準模式：%+v", p)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "wiz-godot", ".agents/skills/godot-audio/SKILL.md")); err != nil {
@@ -72,12 +72,12 @@ func TestNewWizard(t *testing.T) {
 		t.Fatal("標準模式不該加入 Claude Code Game Studios")
 	}
 
-	// 參數指定的項目不再詢問：問多人、伺服器種類、方向、內容分級（1＝General）、AI 模式（3＝輕量）
-	typeIn(t, "", "", "", "1", "3", "y")
+	// 參數指定的項目不再詢問：問多人、伺服器種類、方向、內容邊界（3＝Strong）、AI 模式（3＝輕量）
+	typeIn(t, "", "", "", "3", "3", "y")
 	must(t, cmdNew([]string{"wiz-plain", "-client", "godot", "-server", "node"}))
 	if p := readProject(t, filepath.Join(dir, "wiz-plain")); p.Server != "node" || p.AI != "" || p.Godot != "game" || p.Orientation != "portrait" || p.Skills != "" || p.AIMode != "lightweight" ||
-		p.ContentRating.Profile != "general" || p.ContentRating.TargetAge != "all" {
-		t.Fatalf("選輕量模式、General：%+v", p)
+		projectPolicy(t, p).Content != presetProfile("strong") {
+		t.Fatalf("選輕量模式、Strong：%+v", p)
 	}
 
 	// 工作室（只限 Godot）：加入 Studios 與完整 skill
@@ -111,15 +111,15 @@ func TestNewWizard(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "wiz-web")); err == nil {
 		t.Fatal("選擇不建立時不能留下資料夾")
 	}
-	// 內容分級選 Custom：目標年齡 12+，各項按 Enter（預設超過 12+ 上限的自動降到上限，例如酒類）
-	typeIn(t, "wiz-solo", "", "2", "", "", "4", "3", "", "", "", "", "", "", "", "", "2", "")
+	// 內容邊界選 Custom：暴力選 moderate、血腥選 mild，其他按 Enter（從 general 的值開始）
+	typeIn(t, "wiz-solo", "", "2", "", "", "4", "3", "2", "", "", "", "", "", "2", "")
 	must(t, cmdNew(nil))
 	p = readProject(t, filepath.Join(dir, "wiz-solo"))
 	if p.gameServerMode() != "none" || p.multiplayerEnabled() {
 		t.Fatalf("單人遊戲應該是 none：%+v", p)
 	}
-	if r := p.ContentRating; r.Profile != "custom" || r.TargetAge != "12+" || r.Violence != "moderate" || r.Alcohol != "none" || r.Blood != "mild" {
-		t.Fatalf("自訂內容分級：%+v", r)
+	if r := projectPolicy(t, p).Content; r.Profile != "custom" || r.Violence != "moderate" || r.Blood != "mild" || r.Horror != "mild" || r.Alcohol != "none" {
+		t.Fatalf("自訂內容邊界：%+v", r)
 	}
 	// 輸入中斷（Ctrl-D）視為取消
 	typeIn(t, "wiz-eof", "2")
@@ -135,8 +135,8 @@ func TestNewWizard(t *testing.T) {
 	typeIn(t)
 	must(t, cmdNew([]string{"wiz-yes", "-y"}))
 	if p := readProject(t, filepath.Join(dir, "wiz-yes")); p.Client != "web" || p.Server != "go" || p.Orientation != "portrait" || p.AIMode != "lightweight" || p.Skills != "" ||
-		p.ContentRating.Profile != "15plus" {
-		t.Fatalf("-y 應用預設值（內容分級和精靈的預設相同）：%+v", p)
+		projectPolicy(t, p).Content.Profile != "general" {
+		t.Fatalf("-y 應用預設值（內容邊界和精靈的預設相同，general）：%+v", p)
 	}
 	// 只指定 -ai studios（舊參數＝自訂）：一定是 Godot，不再問 AI 模式
 	typeIn(t, "", "", "", "", "", "")

@@ -143,7 +143,7 @@ func TestLatestSDKRejectsGarbage(t *testing.T) {
 
 func hasFinding(fs []finding, level, sub string) bool {
 	for _, f := range fs {
-		if f.level == level && strings.Contains(f.msg, sub) {
+		if (f.level == level || level == "error" && isErrorLevel(f.level)) && strings.Contains(f.msg, sub) {
 			return true
 		}
 	}

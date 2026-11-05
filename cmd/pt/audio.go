@@ -47,13 +47,13 @@ func checkAudioSources(p *project, webDir string, add func(level, format string,
 	}
 	raw, err := os.ReadFile(p.path("art/SOURCES.md"))
 	if err != nil {
-		add("error", "有 %d 個音檔，但找不到 art/SOURCES.md：每個音效與音樂都要記錄來源與授權（見 PLAYTOGETHER.md「音效與音樂」）", len(files))
+		add(levelSchema, "有 %d 個音檔，但找不到 art/SOURCES.md：每個音效與音樂都要記錄來源與授權（見 PLAYTOGETHER.md「音效與音樂」）", len(files))
 		return
 	}
 	sources := string(raw)
 	for _, f := range files {
 		if !strings.Contains(sources, filepath.Base(f)) {
-			add("error", "音檔 %s 沒有記錄在 art/SOURCES.md：請寫上來源、授權（證明網址）與日期；直播用的音樂授權不清楚，直播主的錄影可能被聲明版權", f)
+			add(levelSchema, "音檔 %s 沒有記錄在 art/SOURCES.md：請寫上來源、授權（證明網址）與日期；直播用的音樂授權不清楚，直播主的錄影可能被聲明版權", f)
 		}
 	}
 }

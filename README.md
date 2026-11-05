@@ -34,7 +34,7 @@ make verify                      # 啟動驗證：伺服器測試、在模擬模
 
 伺服器範本內建斷線重連骨架（`server/session.go`、`server/session.mjs`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入；前端範本會自動重新連線。
 
-`PLAYTOGETHER.md` 的「素材」一節建議用 Codex 生成圖片：整套素材共用風格卡 `art/STYLE.md`（範本附一套明亮派對風格：形狀、線條、平塗上色、調色盤色碼、光線、排除項目），先做一張樣板，其他素材都用 `-i` 參考樣板生成，降低「每張各自生成」的 AI 感；生成前同時讀 `docs/content/CONTENT_RATING.md`（內容分級）、提示詞寫明平台硬性規則、看過再用，每個素材記錄在 `art/SOURCES.md`。範本內建程式合成的預設音效（網頁版 `web/sfx.js`、Godot 版 `main.gd`，沒有音檔），並接上平台的「遊戲聲音」開關；要用音檔或音樂時照「音效與音樂」一節的來源順序（程式合成 → CC0 → AI 生成付費方案 → 確認沒有登記 Content ID 的免費音樂）。
+`PLAYTOGETHER.md` 的「素材」一節建議用 Codex 生成圖片：整套素材共用風格卡 `art/STYLE.md`（範本附一套明亮派對風格：形狀、線條、平塗上色、調色盤色碼、光線、排除項目），先做一張樣板，其他素材都用 `-i` 參考樣板生成，降低「每張各自生成」的 AI 感；生成前同時讀 `docs/content/CONTENT_PROFILE.md`（內容邊界）與 `GAMEPLAY_ECONOMY.md`（玩法宣告）、提示詞寫明平台硬性規則、看過再用，每個素材記錄在 `art/SOURCES.md`。範本內建程式合成的預設音效（網頁版 `web/sfx.js`、Godot 版 `main.gd`，沒有音檔），並接上平台的「遊戲聲音」開關；要用音檔或音樂時照「音效與音樂」一節的來源順序（程式合成 → CC0 → AI 生成付費方案 → 確認沒有登記 Content ID 的免費音樂）。
 
 新專案附有 `Makefile`（`make` 列出所有指令：`dev`、`server`、`verify`、`check`、`keys`、`upload`，Godot 另有 `build`、`clean`），每個指令都只是包裝 `pt`。
 
@@ -90,21 +90,48 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 
 `pt check` 依宣告的架構判斷：`none` 不要求 `serverUrl`；`multiplayer.enabled: true` 卻是 `none` 會被擋（多人遊戲需要經核准的連線架構）。舊專案沒有這兩個欄位時，當成多人＋`playtogether-managed`，結果和以前相同。
 
-### 內容分級（`-rating`）
+### 內容邊界與政策宣告（`-profile`、`-table-game`）
 
-開發者依遊戲內容選擇分級，AI 依分級工作。設定在 `playtogether.json` 的 `contentRating`，`pt new` 依它產生 `docs/content/CONTENT_RATING.md`（所有 AI 模式都有）。**這是開發期間的內容邊界／目標分級，不等於正式分級結果；最終分級依實際內容與玩聚審核決定。**
+`playtogether.json` 記錄開發者的宣告，`pt new` 依它產生 `docs/content/CONTENT_PROFILE.md` 與 `docs/content/GAMEPLAY_ECONOMY.md`（所有 AI 模式都有），AI 依它工作：
 
-| `-rating` | 目標年齡 | 內容 |
+```
+Platform Audience（platformAudience）：玩聚使用者 18+，是平台的使用者資格，不是遊戲內容分級
+Content Profile（contentProfile）：開發期間的內容邊界（呈現強度），不是正式分級
+Sensitive Content（sensitiveContent）：歷史迫害、政治壓迫、歧視描寫等敏感題材
+Gameplay Policy（gameplay）：牌、骰子、籌碼、虛擬下注、牌桌類型
+Economy Policy（economy）：現實經濟價值
+        ↓
+pt check：PASS／REVIEW_REQUIRED／ERROR
+        ↓
+玩聚平台審核：唯一的最終准駁者（上架、正式分級、警語、標籤、玩法是否接受）
+```
+
+| `-profile` | 內容 |
+| --- | --- |
+| `general`（預設） | 休閒、益智、家庭與派對：輕度衝突、低恐怖、沒有血腥與成人題材 |
+| `moderate` | 中度戰鬥、恐怖、犯罪故事、少量血跡、酒吧場景、輕度粗話 |
+| `strong` | 較強恐怖與戰鬥、較明顯血跡、成人故事題材、較強語言、非露骨性暗示 |
+| `custom` | 在終端機逐項設定暴力、血腥、恐怖、性內容、粗俗語言、酒、菸；非互動時回錯誤 |
+
+- **內容邊界是上限，不是要求**：AI 不會主動加入這些內容。`general`、`moderate`、`strong` 是固定值，要調整個別項目就改成 `custom`。**AI 不能自行提高內容邊界**：要加入超出邊界的內容時先提出 `CONTENT_PROFILE_CHANGE_REQUEST`，開發者同意後才改。
+- **牌桌不是博彩**（Table Game ≠ Real-Money Gambling）：牌、骰子、籌碼、Bet／Call／Raise／Fold／All-in 本身不違規。`-table-game card|poker|mahjong|dice|board|slot|roulette|baccarat|other` 建立牌桌遊戲（只填常用的起始值，不含分級或准駁）。
+- **描寫仇恨 ≠ 鼓吹仇恨**：歷史、政治、批判性的描寫是需要平台審核的題材，鼓吹仇恨才是硬性規則。
+- `-rating` 是 v0.14 的舊寫法：`general`、`12plus`（= `moderate`）、`15plus`（= `strong`）、`custom`。
+
+`pt check` 的結果：
+
+| 等級 | 內容 | `pt upload` |
 | --- | --- | --- |
-| `general` | 全年齡 | 全齡休閒、益智、家庭與派對 |
-| `12plus` | 12+（輔12方向） | 輕度戰鬥、輕度恐怖、幻想暴力、少量粗話 |
-| `15plus`（預設） | 15+（輔15方向） | 可依設定包含較強的恐怖、犯罪題材、酒類、中度暴力、少量血跡（玩聚目前接受的上限） |
-| `custom` | 自選 | 在終端機逐項設定目標年齡與暴力、血腥、恐怖、性內容、粗俗語言、酒、菸、隨機機制（不能超過 15+ 方向）；非互動時回錯誤 |
+| `ERROR_HARD_RULE` | 平台硬性規則：真實金錢下注、可購買下注本金、提領、兌換、可轉讓現實價值、付費隨機獎勵、鼓吹仇恨、平台不收的內容；私鑰、廣告／追蹤 SDK、WebRTC、付款、麥克風、未申報的 CDN 等平台與安全架構規則 | 擋下，**`-skip-check` 不能略過** |
+| `ERROR_SCHEMA` | 宣告錯誤或自相矛盾：缺欄位、拼錯的鍵、preset 被手改、牌桌欄位矛盾、音效沒記錄來源 | 擋下，**`-skip-check` 不能略過** |
+| `ERROR_BUILD` | 建置或本機設定：還沒匯出、沒有載入 SDK、`serverUrl`／`platform` 沒填或不一致 | 擋下，`-skip-check` 可以略過 |
+| `REVIEW_REQUIRED` | 需要玩聚平台人工審核：撲克、麻將、吃角子老虎、輪盤、類百家樂、虛擬下注、虛擬籌碼、賭場風格、跨局或每日贈送籌碼、商業模式涉及真實金錢、敏感題材 | 可以送審，**不代表已批准** |
+| `WARNING` | 舊格式、文件不同步、建議事項 | 繼續 |
 
-- **分級是上限，不是要求**：AI 不會因為是 15+ 就主動加入暴力、血腥、酒類、性暗示、粗俗語言；要加入超過分級的內容時，AI 提出 `CONTENT_RATING_CHANGE_REQUEST`，由開發者決定。
-- **玩聚平台硬性規則**（`PLAYTOGETHER.md`）任何分級都不能覆蓋：玩聚目前最高接受 15+ 方向（不接受限制級 18+）、真實金錢下注、下注押注、付費抽獎或轉蛋、模擬賭博（`gambling.realMoney`、`wagering`、`paidRandomReward` 一律 `false`，`simulated` 一律 `none`）、性化未成年人、未授權的真實品牌與可辨識的真人。骰子、桌遊牌具、隨機事件、隨機掉落等一般機制可以（`gambling.chanceMechanics`）；遊戲可以有未成年角色。
-- `art/STYLE.md` 只管視覺風格，產生素材前同時讀 `PLAYTOGETHER.md` 與 `CONTENT_RATING.md`。
-- `pt check` 只檢查設定的格式、平台上限與硬性規則，不判斷遊戲實際內容，也不推論法律分級。舊專案沒有 `contentRating` 時只提醒，不擋上傳。
+- `pt check` 只檢查設定檔，不判斷遊戲實際內容，不推論法律分級，也不做關鍵字偵測；`pt check -json` 輸出結果給 CI 與 AI 工具。
+- 需要審核與硬性規則的清單內建在 `pt`（政策資料），玩聚平台政策改變時隨新版 `pt` 更新。
+- v0.14 的 `contentRating` 仍可讀取：依 v0.14 的規則驗證，一般只有遷移提醒，但明確的真錢下注、付費抽獎仍是硬性規則，不合法的舊值是宣告錯誤；建議用 `pt new -profile …` 建暫存專案，把 `platformAudience`、`contentProfile`、`sensitiveContent`、`gameplay`、`economy` 與 `docs/content/` 複製過去。
+- `art/STYLE.md` 只管視覺風格，產生素材前同時讀 `PLAYTOGETHER.md`、`CONTENT_PROFILE.md` 與 `GAMEPLAY_ECONOMY.md`。
 
 | 選項 | 可用值 | 說明 |
 | --- | --- | --- |
@@ -112,7 +139,8 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 | `-server` | `go`（預設）、`node` | 遊戲伺服器（兌換啟動碼、判定勝負）|
 | `-template` | `web-go`、`web-node`、`godot-go`、`godot-node` | 舊寫法，等於同時指定上面兩個 |
 | `-game-server` | `playtogether-managed`（預設）、`external`、`none` | 遊戲伺服器架構（見上方）；同時決定 `multiplayer.enabled`（`none` 是單人） |
-| `-rating` | `general`、`12plus`、`15plus`（預設）、`custom` | 內容分級（見上方）；`-y`、非互動與 CI 沒指定時也用 `15plus` |
+| `-profile` | `general`（預設）、`moderate`、`strong`、`custom` | 內容邊界（見上方）；`-y`、非互動與 CI 沒指定時也用 `general`（`-rating` 是舊寫法） |
+| `-table-game` | `none`（預設）、`card`、`poker`、`mahjong`、`dice`、`board`、`slot`、`roulette`、`baccarat`、`other` | 牌桌玩法（見上方）；是否能上架由玩聚平台審核決定 |
 | `-mode` | `standard`、`studio`、`lightweight`、`custom` | AI 開發模式（見上方）；`studio` 沒指定畫面時自動用 Godot |
 | `-skills` | `full`、`core`、`none` | 自訂：遊戲開發 skill 的範圍 |
 | `-ai` | `studios`、`none` | 自訂：加入 Claude Code Game Studios（只限 Godot；只指定它時自動用 Godot） |
@@ -128,23 +156,24 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 
 不確定參數怎麼選時，可以先從遊戲類型決定。下面的指令都是起點，不需要先了解 Game Studios、skill 或其他 AI 內部工具；專案建立後，在資料夾裡啟動 Claude Code（`claude`）或 Codex，直接用自然語言描述要做的遊戲即可。
 
-內容分級（`-rating`）是開發期間的**內容上限，不是要求**，也不等於正式分級結果：選 `15plus` 不代表 AI 會主動加入恐怖、暴力或酒類，只代表遊戲需要時可以用到這個程度。不確定時選較低的分級，之後要提高再改 `playtogether.json`。
+內容邊界（`-profile`）是開發期間的**內容上限，不是要求**，也不等於正式分級結果：選 `strong` 不代表 AI 會主動加入恐怖、暴力或酒類，只代表遊戲需要時可以用到這個程度。不確定時用預設的 `general`，之後要提高時由開發者修改 `playtogether.json`（AI 會先提出 `CONTENT_PROFILE_CHANGE_REQUEST`）。
 
-| 遊戲類型 | 建議畫面 | `gameServer.mode` | 內容分級 | 建議 AI 模式 | 起始指令 |
+| 遊戲類型 | 建議畫面 | `gameServer.mode` | 內容邊界 | 建議 AI 模式 | 起始指令 |
 | --- | --- | --- | --- | --- | --- |
-| 單人休閒／益智／節奏 | Web | `none` | `general` | `standard` | `pt new -client web -game-server none -rating general -mode standard my-game` |
-| 敘事／恐怖解謎／RPG | Godot | `none` | `15plus` | `studio` | `pt new -client godot -game-server none -rating 15plus -mode studio haunted-game` |
-| 多人派對／合作 | Web 或 Godot | `playtogether-managed` | `general` | `standard` | `pt new -client web -game-server playtogether-managed -rating general -mode standard party-game` |
-| 即時競技／動作對戰 | Godot | `playtogether-managed` | `12plus` | `standard` | `pt new -client godot -game-server playtogether-managed -rating 12plus -mode standard arena-game` |
-| 已有自己的 Game Server | 依既有遊戲 | `external` | 依既有內容 | `standard` | `pt new -client web -game-server external -rating 15plus -mode standard existing-game` |
-| 快速驗證玩法／Prototype | Web | `none` | `general` | `standard` | `pt new -client web -game-server none -rating general -mode standard prototype-game` |
+| 單人休閒／益智／節奏 | Web | `none` | `general` | `standard` | `pt new -client web -game-server none -profile general -mode standard my-game` |
+| 敘事／恐怖解謎／RPG | Godot | `none` | `strong` | `studio` | `pt new -client godot -game-server none -profile strong -mode studio haunted-game` |
+| 多人派對／合作 | Web 或 Godot | `playtogether-managed` | `general` | `standard` | `pt new -client web -game-server playtogether-managed -profile general -mode standard party-game` |
+| 即時競技／動作對戰 | Godot | `playtogether-managed` | `moderate` | `standard` | `pt new -client godot -game-server playtogether-managed -profile moderate -mode standard arena-game` |
+| 已有自己的 Game Server | 依既有遊戲 | `external` | 依既有內容 | `standard` | `pt new -client web -game-server external -profile strong -mode standard existing-game` |
+| 快速驗證玩法／Prototype | Web | `none` | `general` | `standard` | `pt new -client web -game-server none -profile general -mode standard prototype-game` |
+| 牌桌／卡牌（撲克、麻將） | Web | `playtogether-managed` | `general` | `standard` | `pt new -client web -game-server playtogether-managed -profile general -table-game poker -mode standard poker-night` |
 
 ### 單人休閒、益智、節奏遊戲
 
 先用 Web 做最小可玩版本通常最快：
 
 ```sh
-pt new -client web -game-server none -rating general -mode standard my-puzzle
+pt new -client web -game-server none -profile general -mode standard my-puzzle
 cd my-puzzle
 claude
 ```
@@ -160,7 +189,7 @@ claude
 這類遊戲通常需要較多世界觀、關卡、謎題與故事規劃，建議用 Godot + `studio`：
 
 ```sh
-pt new -client godot -game-server none -rating 15plus -mode studio haunted-school
+pt new -client godot -game-server none -profile strong -mode studio haunted-school
 cd haunted-school
 claude
 ```
@@ -169,7 +198,7 @@ claude
 
 > 我要做一款 20～30 分鐘的心理恐怖解謎遊戲，以台灣校園為背景。先規劃核心體驗、故事真相、第一組謎題與 playable vertical slice，再開始實作。
 
-恐怖、犯罪題材需要 `15plus`；暴力、血腥的程度仍以 `docs/content/CONTENT_RATING.md` 為上限，玩聚不接受限制級（18+）。
+恐怖、犯罪題材建議 `strong`；暴力、血腥的程度以 `docs/content/CONTENT_PROFILE.md` 為上限。描寫歷史或政治迫害時在 `sensitiveContent` 宣告（需要平台審核，不是錯誤）；玩聚不收限制級內容。
 
 開發者不需要自己選 Game Studios 的 agent、skill 或 slash command；Claude 會依 `CLAUDE.md` 與 `docs/ai/AI_WORKFLOW.md` 自動判斷何時先規劃、何時進入實作。
 
@@ -180,7 +209,7 @@ claude
 如果沒有既有後端，先用玩聚範本 Game Server：
 
 ```sh
-pt new -client web -game-server playtogether-managed -rating general -mode standard party-game
+pt new -client web -game-server playtogether-managed -profile general -mode standard party-game
 cd party-game
 claude
 ```
@@ -196,7 +225,7 @@ claude
 需要較多角色控制、碰撞、動畫或即時操作時，可以從 Godot 開始：
 
 ```sh
-pt new -client godot -game-server playtogether-managed -rating 12plus -mode standard arena-game
+pt new -client godot -game-server playtogether-managed -profile moderate -mode standard arena-game
 cd arena-game
 claude
 ```
@@ -212,7 +241,7 @@ claude
 第三方遊戲已經有後端時，不需要遷移到玩聚範本伺服器：
 
 ```sh
-pt new -client web -game-server external -rating 15plus -mode standard existing-game
+pt new -client web -game-server external -profile strong -mode standard existing-game
 cd existing-game
 claude
 ```
@@ -221,14 +250,14 @@ claude
 
 > 這個專案已有正式 Game Server。先閱讀現有 protocol、登入、session 與測試方式，保留目前架構，只補上 PlayTogether 需要的啟動碼兌換、SDK 與平台生命週期整合。
 
-`external` 模式下，`server/` 仍會產生，但只作為玩聚整合參考與本機模擬；正式環境使用開發者自己的 Game Server，`serverUrl` 填它的對外網址。`-rating` 依既有遊戲的實際內容選（範例用預設的 `15plus`）。
+`external` 模式下，`server/` 仍會產生，但只作為玩聚整合參考與本機模擬；正式環境使用開發者自己的 Game Server，`serverUrl` 填它的對外網址。`-profile` 依既有遊戲的實際內容選（範例用 `strong`）。
 
 ### 快速驗證新玩法
 
 還不確定遊戲值不值得做完整版本時，先用 Web + `standard` 做最小 Prototype：
 
 ```sh
-pt new -client web -game-server none -rating general -mode standard prototype-game
+pt new -client web -game-server none -profile general -mode standard prototype-game
 cd prototype-game
 claude
 ```
@@ -241,7 +270,7 @@ claude
 
 **概念 → 核心循環 → 最小可玩版本 → 實際遊玩 → 再決定是否擴充**
 
-> **CI／自動化提醒**：`pt new -y`、非互動環境或 CI 在沒有明確指定 `-mode` 時，預設使用 `lightweight`，不下載任何第三方 AI 內容；需要 skill 或 studio 時請明確指定 `-mode standard` 或 `-mode studio`。沒有指定 `-rating` 時預設 `15plus`（和精靈相同）；`-rating custom` 只能在終端機逐項設定。
+> **CI／自動化提醒**：`pt new -y`、非互動環境或 CI 在沒有明確指定 `-mode` 時，預設使用 `lightweight`，不下載任何第三方 AI 內容；需要 skill 或 studio 時請明確指定 `-mode standard` 或 `-mode studio`。沒有指定 `-profile` 時預設 `general`（和精靈相同）；`-profile custom` 只能在終端機逐項設定。
 
 ## 指令
 

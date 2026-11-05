@@ -200,17 +200,17 @@ func checkGodot(p *project, add func(level, format string, a ...any)) {
 	game := p.path(gdir)
 	preset, err := os.ReadFile(filepath.Join(game, "export_presets.cfg"))
 	if err != nil {
-		add("error", "找不到 %s（網頁匯出設定）", path.Join(gdir, "export_presets.cfg"))
+		add(levelBuild, "找不到 %s（網頁匯出設定）", path.Join(gdir, "export_presets.cfg"))
 	} else {
 		cfg := string(preset)
 		if !strings.Contains(cfg, "variant/thread_support=false") {
-			add("error", "Godot 網頁匯出要關閉執行緒支援（variant/thread_support=false）：開啟時需要跨來源隔離，在玩聚的 iframe 裡無法使用")
+			add(levelBuild, "Godot 網頁匯出要關閉執行緒支援（variant/thread_support=false）：開啟時需要跨來源隔離，在玩聚的 iframe 裡無法使用")
 		}
 		if strings.Contains(cfg, "vram_texture_compression/for_mobile=true") {
-			add("warn", "行動裝置 VRAM 壓縮已開啟：需要先在專案設定啟用 ETC2/ASTC 匯入，否則匯出會失敗")
+			add(levelWarn, "行動裝置 VRAM 壓縮已開啟：需要先在專案設定啟用 ETC2/ASTC 匯入，否則匯出會失敗")
 		}
 		if !strings.Contains(cfg, "playtogether-sdk-godot.iife.js") {
-			add("error", "匯出設定的 Head Include 沒有載入 playtogether-sdk-godot.iife.js")
+			add(levelBuild, "匯出設定的 Head Include 沒有載入 playtogether-sdk-godot.iife.js")
 		}
 	}
 	_ = filepath.WalkDir(game, func(path string, d os.DirEntry, err error) error {
@@ -226,25 +226,25 @@ func checkGodot(p *project, add func(level, format string, a ...any)) {
 		raw, err := os.ReadFile(path)
 		rel, _ := filepath.Rel(p.dir, path)
 		if err == nil && strings.Contains(string(raw), "JavaScriptBridge.eval") {
-			add("error", "%s 使用 JavaScriptBridge.eval：需要 unsafe-eval，請改用 JavaScriptBridge.get_interface", rel)
+			add(levelHard, "%s 使用 JavaScriptBridge.eval：需要 unsafe-eval，請改用 JavaScriptBridge.get_interface", rel)
 		}
 		if err == nil && strings.Contains(string(raw), "WebRTC") {
-			add("error", "%s 使用 WebRTC（WebRTCPeerConnection／WebRTCMultiplayerPeer）：玩聚不允許遊戲自己建立點對點連線，請透過遊戲伺服器", rel)
+			add(levelHard, "%s 使用 WebRTC（WebRTCPeerConnection／WebRTCMultiplayerPeer）：玩聚不允許遊戲自己建立點對點連線，請透過遊戲伺服器", rel)
 		}
 		return nil
 	})
 	if raw, err := os.ReadFile(filepath.Join(game, "config.gd")); err == nil {
 		cfg := string(raw)
 		if p.ServerURL != "" && !strings.Contains(cfg, strings.TrimRight(p.ServerURL, "/")) {
-			add("error", "%s 的 SERVER_URL 不是 %s：上傳後遊戲會找不到遊戲伺服器", path.Join(gdir, "config.gd"), p.ServerURL)
+			add(levelBuild, "%s 的 SERVER_URL 不是 %s：上傳後遊戲會找不到遊戲伺服器", path.Join(gdir, "config.gd"), p.ServerURL)
 		}
 		if strings.HasPrefix(p.Platform, "http") && !strings.Contains(cfg, strings.TrimRight(p.Platform, "/")) {
-			add("error", "%s 的 PLATFORM_ORIGINS 沒有 %s：SDK 會拒絕平台的訊息", path.Join(gdir, "config.gd"), p.Platform)
+			add(levelBuild, "%s 的 PLATFORM_ORIGINS 沒有 %s：SDK 會拒絕平台的訊息", path.Join(gdir, "config.gd"), p.Platform)
 		}
 	}
 	web := p.path(p.Web)
 	if _, err := os.Stat(filepath.Join(web, "playtogether-sdk-godot.iife.js")); err != nil {
-		add("error", "%s 裡沒有 playtogether-sdk-godot.iife.js：請用 pt build 匯出（會自動放上）", p.Web)
+		add(levelBuild, "%s 裡沒有 playtogether-sdk-godot.iife.js：請用 pt build 匯出（會自動放上）", p.Web)
 	}
 }
 
@@ -259,12 +259,12 @@ func checkOrientation(p *project, webDir string, add func(level, format string, 
 		return // pt v0.8 以前建立的專案沒有這個欄位
 	}
 	if !slices.Contains(orientations, p.Orientation) {
-		add("error", "playtogether.json 的 orientation 只能是 portrait、landscape 或 any（目前是 %q）", p.Orientation)
+		add(levelBuild, "playtogether.json 的 orientation 只能是 portrait、landscape 或 any（目前是 %q）", p.Orientation)
 		return
 	}
 	declared := func(file, raw string) {
 		if m := orientationVal.FindStringSubmatch(raw); m != nil && m[1] != p.Orientation {
-			add("warn", "%s 的畫面方向是 %s，playtogether.json 是 %s：兩邊要一致", file, m[1], p.Orientation)
+			add(levelWarn, "%s 的畫面方向是 %s，playtogether.json 是 %s：兩邊要一致", file, m[1], p.Orientation)
 		}
 	}
 	if p.Client == "godot" {
@@ -279,7 +279,7 @@ func checkOrientation(p *project, webDir string, add func(level, format string, 
 			}
 			w, h := size["width"], size["height"]
 			if (p.Orientation == "portrait" && w > h) || (p.Orientation == "landscape" && h > w) {
-				add("warn", "Godot 的畫面大小是 %d×%d，和 playtogether.json 的方向（%s）不符：專案設定 → 顯示 → 視窗", w, h, p.Orientation)
+				add(levelWarn, "Godot 的畫面大小是 %d×%d，和 playtogether.json 的方向（%s）不符：專案設定 → 顯示 → 視窗", w, h, p.Orientation)
 			}
 		}
 		return

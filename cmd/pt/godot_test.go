@@ -69,7 +69,7 @@ func TestCheckGodot(t *testing.T) {
 	p.Platform, p.ServerURL = "https://pt.example", "https://game.example.com"
 	has := func(fs []finding, sub string) bool {
 		for _, f := range fs {
-			if f.level == "error" && strings.Contains(f.msg, sub) {
+			if isErrorLevel(f.level) && strings.Contains(f.msg, sub) {
 				return true
 			}
 		}
@@ -161,7 +161,7 @@ func TestGodotEngineWebRTC(t *testing.T) {
 			other = f.level
 		}
 	}
-	if engine != "info" || other != "error" {
+	if engine != "info" || other != levelHard {
 		t.Fatalf("引擎檔應是 info、其他檔案仍是 error：%q %q", engine, other)
 	}
 }

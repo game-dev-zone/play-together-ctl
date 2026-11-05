@@ -451,7 +451,7 @@ func TestCheckGameServer(t *testing.T) {
 		p := &project{Multiplayer: c.multi, GameServer: c.gs, ServerURL: c.serverURL}
 		var errs []string
 		gotURL := checkGameServer(p, func(level, format string, a ...any) {
-			if level == "error" {
+			if isErrorLevel(level) {
 				errs = append(errs, format)
 			}
 		})
@@ -471,7 +471,7 @@ func TestCheckGameServer(t *testing.T) {
 		p, _ := findProject()
 		found := false
 		for _, f := range checkProject(p, p.path(p.Web)) {
-			if f.level == "error" && strings.Contains(f.msg, "serverUrl") {
+			if isErrorLevel(f.level) && strings.Contains(f.msg, "serverUrl") {
 				found = true
 			}
 		}
@@ -616,15 +616,15 @@ func TestEntryPointPrecedence(t *testing.T) {
 	}
 	for _, p := range []string{"e-std", "e-studio"} {
 		agents := readFile(t, dir, p, "AGENTS.md")
-		if !order(agents, "PLAYTOGETHER.md", "docs/ai/AI_WORKFLOW.md", "docs/ai/PROJECT_CONTEXT.md", "docs/content/CONTENT_RATING.md", "docs/ai/CURRENT_TASK.md") || !strings.Contains(agents, "以它為準") {
+		if !order(agents, "PLAYTOGETHER.md", "docs/ai/AI_WORKFLOW.md", "docs/ai/PROJECT_CONTEXT.md", "docs/content/CONTENT_PROFILE.md", "docs/content/GAMEPLAY_ECONOMY.md", "docs/ai/CURRENT_TASK.md") || !strings.Contains(agents, "以它為準") {
 			t.Errorf("%s 的 AGENTS.md 閱讀順序不對：\n%s", p, agents)
 		}
 		claude := readFile(t, dir, p, "CLAUDE.md")
-		if !order(claude, "@PLAYTOGETHER.md", "@docs/ai/AI_WORKFLOW.md", "@docs/ai/PROJECT_CONTEXT.md", "@docs/content/CONTENT_RATING.md") || !strings.Contains(claude, "自動路由") {
+		if !order(claude, "@PLAYTOGETHER.md", "@docs/ai/AI_WORKFLOW.md", "@docs/ai/PROJECT_CONTEXT.md", "@docs/content/CONTENT_PROFILE.md", "@docs/content/GAMEPLAY_ECONOMY.md") || !strings.Contains(claude, "自動路由") {
 			t.Errorf("%s 的 CLAUDE.md 要負責自動路由並依序匯入：\n%s", p, claude)
 		}
 		wf := readFile(t, dir, p, "docs/ai/AI_WORKFLOW.md")
-		if !order(wf, "1. `PLAYTOGETHER.md`（平台規則", "2. 專案特定限制", "3. 內容分級", "5. 遊戲願景") || !strings.Contains(wf, "`PLAYTOGETHER.md` 永遠優先") {
+		if !order(wf, "1. `PLAYTOGETHER.md`（平台規則", "2. 專案特定限制", "3. 內容邊界與玩法宣告", "5. 遊戲願景") || !strings.Contains(wf, "`PLAYTOGETHER.md` 永遠優先") {
 			t.Errorf("%s 的權威順序不對", p)
 		}
 		for _, f := range []string{"README.md", "CLAUDE.md"} {

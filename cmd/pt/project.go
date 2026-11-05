@@ -29,7 +29,7 @@ import (
 	"time"
 )
 
-//go:embed templates assets
+//go:embed templates assets policy
 var embedded embed.FS
 
 const projectFile = "playtogether.json"
@@ -72,12 +72,19 @@ type project struct {
 	// 多人與遊戲伺服器架構（v0.13 起；舊專案沒有時視為多人＋playtogether-managed）。AI 改連線前一定要先確認
 	Multiplayer *multiplayerConfig `json:"multiplayer,omitempty"`
 	GameServer  *gameServerConfig  `json:"gameServer,omitempty"`
-	// 內容分級（v0.14 起；開發期間的內容邊界，不是正式分級結果；content_rating.go）。舊專案沒有時 pt check 只警告
+	// 政策宣告（v0.15 起；policy.go）：讀成原始 JSON，pt check 再嚴格解析（才能抓到缺欄位、未知鍵、型別錯誤）
+	PlatformAudience json.RawMessage `json:"platformAudience,omitempty"`
+	ContentProfile   json.RawMessage `json:"contentProfile,omitempty"`
+	SensitiveContent json.RawMessage `json:"sensitiveContent,omitempty"`
+	Gameplay         json.RawMessage `json:"gameplay,omitempty"`
+	Economy          json.RawMessage `json:"economy,omitempty"`
+	// v0.14 的內容分級（舊格式，content_rating.go）：只有舊專案有，pt check 依舊規則驗證並提醒改用 v0.15
 	ContentRating *contentRating `json:"contentRating,omitempty"`
 	// 從 CDN 載入的程式與樣式（pt cdn add 加入）；pt upload 申報給平台
 	CDN []cdnAsset `json:"cdn,omitempty"`
 
 	dir string // playtogether.json 所在的資料夾
+	raw []byte // playtogether.json 的原始內容（檢查重複鍵、拼錯的宣告鍵）
 }
 
 // godotDir 是 Godot 專案相對於專案根目錄的位置
@@ -101,7 +108,7 @@ func findProject() (*project, error) {
 			if err := json.Unmarshal(raw, &p); err != nil {
 				return nil, fmt.Errorf("%s 格式錯誤：%w", filepath.Join(dir, projectFile), err)
 			}
-			p.dir = dir
+			p.dir, p.raw = dir, raw
 			if p.Web == "" {
 				p.Web = "web"
 			}
@@ -158,7 +165,9 @@ func cmdNew(args []string) error {
 	skills := fs.String("skills", "", "自訂（-mode custom）：AI 遊戲開發 skill（awesome-gamedev-agent-skills 精選）core、full（core 加上畫面引擎的 skill）或 none")
 	gameServer := fs.String("game-server", "", "遊戲伺服器架構：playtogether-managed（預設：玩聚範本伺服器）、external（你已經有自己的遊戲伺服器）、none（單人或畫面端就能玩，正式遊玩不需要遊戲伺服器）")
 	orientation := fs.String("orientation", "portrait", "畫面方向：portrait（直式）、landscape（橫式）或 any（兩者都支援）")
-	rating := fs.String("rating", "", "內容分級（開發期間的內容上限，不是正式分級）：general、12plus、15plus（預設，玩聚接受的上限）、custom（在終端機逐項設定）")
+	profile := fs.String("profile", "", "內容邊界（開發期間的內容上限，不是正式分級）：general（預設）、moderate、strong、custom（在終端機逐項設定）")
+	rating := fs.String("rating", "", "舊的寫法（v0.14）：general、12plus（= moderate）、15plus（= strong）、custom；請改用 -profile")
+	table := fs.String("table-game", "none", "牌桌玩法：none（預設）、card、poker、mahjong、dice、board、slot、roulette、baccarat、other（是否能上架由玩聚平台審核決定）")
 	yes := fs.Bool("y", false, "不詢問，沒指定的項目用預設值")
 	_ = fs.Parse(reorder(args))
 	set := map[string]bool{}
@@ -201,8 +210,24 @@ func cmdNew(args []string) error {
 	if *gameServer != "" && !slices.Contains(gameServerModes, *gameServer) {
 		return fmt.Errorf("-game-server 只能是 playtogether-managed、external 或 none（目前是 %q）", *gameServer)
 	}
-	if *rating != "" && !slices.Contains(ratingProfiles, *rating) {
-		return fmt.Errorf("-rating 只能是 general、12plus、15plus 或 custom（目前是 %q；玩聚目前最高接受 15+ 方向）", *rating)
+	if *rating != "" {
+		if *profile != "" {
+			return errors.New("-profile 和 -rating 只能指定一個（-rating 是舊的寫法）")
+		}
+		n, ok := legacyProfileNames[*rating]
+		if !ok {
+			return fmt.Errorf("-rating 只能是 general、12plus、15plus 或 custom（目前是 %q）；請改用 -profile general|moderate|strong|custom", *rating)
+		}
+		if n != *rating {
+			fmt.Printf("提醒：-rating %s 是舊的寫法，改用 -profile %s\n", *rating, n)
+		}
+		*profile = n
+	}
+	if *profile != "" && !slices.Contains(profiles, *profile) {
+		return fmt.Errorf("-profile 只能是 general、moderate、strong 或 custom（目前是 %q）", *profile)
+	}
+	if !slices.Contains(tableCategories, *table) {
+		return fmt.Errorf("-table-game 只能是 %s（目前是 %q）", strings.Join(tableCategories, "、"), *table)
 	}
 	aiMode, aiVal, skillsVal, err := resolveAIMode(*mode, *ai, *skills, set)
 	if err != nil {
@@ -238,9 +263,9 @@ func cmdNew(args []string) error {
 		}
 	}
 	canAsk := !*yes && interactive() && !ciEnv()
-	var rc *contentRating
-	if canAsk && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || aiMode == "" || !set["game-server"] || *rating == "" || *rating == "custom") {
-		if name, err = newWizard(name, client, server, orientation, gameServer, rating, &rc, &aiMode, ai, skills, set, ccgs, gds, checkName); err != nil {
+	var cp *contentProfile
+	if canAsk && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || aiMode == "" || !set["game-server"] || *profile == "" || *profile == "custom") {
+		if name, err = newWizard(name, client, server, orientation, gameServer, profile, &cp, *table, &aiMode, ai, skills, set, ccgs, gds, checkName); err != nil {
 			if errors.Is(err, errCanceled) {
 				fmt.Println()
 				return errors.New("已取消，沒有建立任何檔案")
@@ -262,17 +287,18 @@ func cmdNew(args []string) error {
 	if *gameServer == "" {
 		*gameServer = defaultGameServer
 	}
-	if rc == nil {
+	if cp == nil {
 		// -y、非互動、CI：沒指定時用預設（和精靈的預設相同）；custom 要逐項設定，不能用某個預設頂替
-		if *rating == "" {
-			*rating = defaultRating
+		if *profile == "" {
+			*profile = defaultProfile
 		}
-		if *rating == "custom" {
-			return errors.New("-rating custom 需要在終端機逐項設定；或先用 general、12plus、15plus 建立，再修改 playtogether.json 的 contentRating")
+		if *profile == "custom" {
+			return errors.New("-profile custom 需要在終端機逐項設定；或先用 general、moderate、strong 建立，再把 playtogether.json 的 contentProfile 改成 custom 並調整")
 		}
-		r := ratingPreset(*rating)
-		rc = &r
+		c := presetProfile(*profile)
+		cp = &c
 	}
+	pl := defaultPolicy(*cp, *table)
 	studios := *ai == "studios"
 	if *ai == "" {
 		*ai = "none"
@@ -299,10 +325,13 @@ func cmdNew(args []string) error {
 		"Skills":      map[bool]string{true: *skills, false: ""}[withSkills],
 		"Orientation": *orientation, "OrientationLabel": orientationLabel[*orientation],
 		"AIMode": aiMode, "AIModeLabel": aiModeLabel[aiMode], "GameServer": *gameServer,
-		"ContentRatingJSON": ratingJSON(*rc), "RatingProfile": rc.Profile, "RatingLabel": ratingLabel[rc.Profile], "TargetAgeLabel": targetAgeLabel[rc.TargetAge],
+		"PolicyJSON":    policyJSON(pl),
 		"Multiplayer":   map[bool]string{true: "true", false: ""}[*gameServer != "none"],
 		"SkillsLabel":   map[string]string{"full": "完整（通用＋" + map[string]string{"web": "網頁引擎", "godot": "Godot"}[*client] + "）", "core": "通用", "none": ""}[*skills],
 		"SkillsVersion": gds.Version + "（commit " + gds.Commit[:7] + "）", "StudiosVersion": ccgs.Version + "（commit " + ccgs.Commit[:7] + "）"}
+	for k, v := range policySummary(pl) {
+		data[k] = v
+	}
 	files := map[string][]byte{}
 	render := func(src, dst string) error {
 		return fs2Walk("templates/"+src, func(rel string, content []byte) error {
@@ -332,7 +361,8 @@ func cmdNew(args []string) error {
 			return err
 		}
 	}
-	files["docs/content/CONTENT_RATING.md"] = []byte(contentRatingDoc(name, *rc))
+	files["docs/content/CONTENT_PROFILE.md"] = []byte(contentProfileDoc(name, pl))
+	files["docs/content/GAMEPLAY_ECONOMY.md"] = []byte(gameplayEconomyDoc(name, pl))
 	files[".gitignore"] = files["gitignore"]
 	delete(files, "gitignore")
 	if *client == "godot" && godotDir == "." {
@@ -380,7 +410,10 @@ func cmdNew(args []string) error {
 	if err := os.MkdirAll(filepath.Join(name, "keys"), 0o700); err != nil {
 		return err
 	}
-	fmt.Printf("已建立 %s（畫面 %s、伺服器 %s、%s、%s、內容分級 %s、AI 模式 %s、SDK %s）\n\n", name, *client, *server, orientationLabel[*orientation], gameServerLabel[*gameServer], ratingLabel[rc.Profile], aiModeLabel[aiMode], sdkVersion())
+	fmt.Printf("已建立 %s（畫面 %s、伺服器 %s、%s、%s、內容邊界 %s、AI 模式 %s、SDK %s）\n\n", name, *client, *server, orientationLabel[*orientation], gameServerLabel[*gameServer], profileLabel[pl.Content.Profile], aiModeLabel[aiMode], sdkVersion())
+	if _, review := reviewReasons(pl); len(review) > 0 {
+		fmt.Printf("需要玩聚平台人工審核（可以開發與送審，不代表已批准）：%s\n\n", strings.Join(review, "；"))
+	}
 	fmt.Println("下一步：")
 	fmt.Printf("  cd %s\n", name)
 	if *client == "godot" {
@@ -420,9 +453,9 @@ var (
 	gameServerLabel  = map[string]string{"playtogether-managed": "多人（玩聚範本伺服器）", "external": "多人（自己的遊戲伺服器）", "none": "不需要遊戲伺服器"}
 )
 
-const newUsage = "用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-game-server playtogether-managed|external|none] [-rating general|12plus|15plus|custom] [-mode standard|studio|lightweight|custom] [-skills none|core|full] [-ai studios|none] <專案名稱>"
+const newUsage = "用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-game-server playtogether-managed|external|none] [-profile general|moderate|strong|custom] [-table-game none|card|poker|mahjong|dice|board|slot|roulette|baccarat|other] [-mode standard|studio|lightweight|custom] [-skills none|core|full] [-ai studios|none] <專案名稱>"
 
-func newWizard(name string, client, server, orientation, gameServer, rating *string, rc **contentRating, aiMode, ai, skills *string, set map[string]bool, ccgs, gds ccgsManifest, checkName func(string) error) (string, error) {
+func newWizard(name string, client, server, orientation, gameServer, profile *string, cp **contentProfile, table string, aiMode, ai, skills *string, set map[string]bool, ccgs, gds ccgsManifest, checkName func(string) error) (string, error) {
 	var err error
 	fmt.Println("建立玩聚遊戲專案（直接按 Enter 用預設值，Ctrl-C 取消）")
 	fmt.Println()
@@ -479,13 +512,13 @@ func newWizard(name string, client, server, orientation, gameServer, rating *str
 			return "", err
 		}
 	}
-	if *rating == "" || *rating == "custom" {
-		if *rc, err = askContentRating(rating); err != nil {
+	if *profile == "" || *profile == "custom" {
+		if *cp, err = askContentProfile(profile); err != nil {
 			return "", err
 		}
 	} else {
-		r := ratingPreset(*rating)
-		*rc = &r
+		c := presetProfile(*profile)
+		*cp = &c
 	}
 	if *aiMode == "" {
 		engine := map[string]string{"web": "Phaser、PixiJS、three.js", "godot": "Godot"}[*client]
@@ -534,8 +567,11 @@ func newWizard(name string, client, server, orientation, gameServer, rating *str
 	} else {
 		flags = " -mode " + *aiMode
 	}
-	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s -game-server %s -rating %s%s %s", *client, *server, *orientation, *gameServer, *rating, flags, name)
-	fmt.Printf("即將建立 %s：畫面 %s、%s、伺服器 %s、%s、內容分級 %s、AI 模式 %s\n", name, *client, gameServerLabel[*gameServer], *server, orientationLabel[*orientation], ratingLabel[*rating], aiModeLabel[*aiMode])
+	if table != "none" {
+		flags += " -table-game " + table
+	}
+	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s -game-server %s -profile %s%s %s", *client, *server, *orientation, *gameServer, *profile, flags, name)
+	fmt.Printf("即將建立 %s：畫面 %s、%s、伺服器 %s、%s、內容邊界 %s、AI 模式 %s\n", name, *client, gameServerLabel[*gameServer], *server, orientationLabel[*orientation], profileLabel[*profile], aiModeLabel[*aiMode])
 	fmt.Printf("（下次可以直接執行：%s）\n", cmd)
 	ok, err := confirm("確定建立？", true)
 	if err != nil {
@@ -871,13 +907,14 @@ func openBrowser(u string) {
 // ---------- pt check ----------
 
 type finding struct {
-	level string // error、warn
+	level string // hard、schema、build、review、warn、info（policy.go 的 level 常數）
 	msg   string
 }
 
 var (
-	scriptSrc = regexp.MustCompile(`(?i)<script[^>]+src=["']([^"']+)["']`)
-	trackers  = []string{"googletagmanager.com", "google-analytics.com", "doubleclick.net", "googlesyndication.com", "connect.facebook.net",
+	scriptSrc     = regexp.MustCompile(`(?i)<script[^>]+src=["']([^"']+)["']`)
+	privateKeyPEM = regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`)
+	trackers      = []string{"googletagmanager.com", "google-analytics.com", "doubleclick.net", "googlesyndication.com", "connect.facebook.net",
 		"hotjar.com", "clarity.ms", "mixpanel.com", "segment.com", "amplitude.com", "adsbygoogle"}
 )
 
@@ -889,14 +926,14 @@ func checkProject(p *project, webDir string) []finding {
 	index, err := os.ReadFile(filepath.Join(webDir, "index.html"))
 	if err != nil {
 		if p != nil && p.Client == "godot" {
-			add("error", "還沒有匯出網頁版：先執行 pt build（pt upload 會自動執行）")
+			add(levelBuild, "還沒有匯出網頁版：先執行 pt build（pt upload 會自動執行）")
 		} else {
-			add("error", "%s 根目錄沒有 index.html", webDir)
+			add(levelBuild, "%s 根目錄沒有 index.html", webDir)
 		}
 	} else {
 		html := string(index)
 		if !strings.Contains(html, "playtogether-sdk") {
-			add("error", "index.html 沒有載入玩聚 SDK（playtogether-sdk.iife.js 或 playtogether-sdk-godot.iife.js）")
+			add(levelBuild, "index.html 沒有載入玩聚 SDK（playtogether-sdk.iife.js 或 playtogether-sdk-godot.iife.js）")
 		}
 	}
 	// 外部程式與樣式：一律要申報、寫 SRI（cdn.go）
@@ -916,7 +953,7 @@ func checkProject(p *project, webDir string) []finding {
 		rel, _ := filepath.Rel(webDir, p)
 		base := strings.ToLower(d.Name())
 		if strings.HasSuffix(base, ".key") || strings.HasSuffix(base, ".pem") || base == ".env" || strings.HasPrefix(base, ".env.") {
-			add("error", "上傳資料夾裡有私鑰或密鑰檔案：%s（不能上傳）", rel)
+			add(levelHard, "上傳資料夾裡有私鑰或密鑰檔案：%s（不能上傳）", rel)
 		}
 		ext := strings.ToLower(filepath.Ext(base))
 		if ext != ".js" && ext != ".mjs" && ext != ".html" {
@@ -929,7 +966,7 @@ func checkProject(p *project, webDir string) []finding {
 		s := string(raw)
 		for _, t := range trackers {
 			if strings.Contains(s, t) {
-				add("error", "%s 含有廣告、追蹤或分析工具（%s），審核不接受", rel, t)
+				add(levelHard, "%s 含有廣告、追蹤或分析工具（%s）：遊戲不能自己加入廣告、追蹤、分析 SDK", rel, t)
 			}
 		}
 		if strings.Contains(s, "RTCPeerConnection") {
@@ -937,19 +974,28 @@ func checkProject(p *project, webDir string) []finding {
 				// Godot 的網頁引擎檔本身就含 WebRTC 支援；遊戲有沒有用到改在 GDScript 檢查（checkGodot）
 				add("info", "%s 是 Godot 引擎檔，內含 WebRTC 支援程式碼（不影響審核；遊戲本身不要使用 WebRTC）", rel)
 			} else {
-				add("error", "%s 使用 WebRTC（RTCPeerConnection），玩聚不允許遊戲自己建立點對點連線", rel)
+				add(levelHard, "%s 使用 WebRTC（RTCPeerConnection），玩聚不允許遊戲自己建立點對點連線", rel)
 			}
 		}
 		if strings.Contains(s, "SharedWorker") {
-			add("error", "%s 使用 SharedWorker，玩聚不允許", rel)
+			add(levelHard, "%s 使用 SharedWorker，玩聚不允許", rel)
+		}
+		if privateKeyPEM.MatchString(s) {
+			add(levelHard, "%s 裡有私鑰（-----BEGIN … PRIVATE KEY-----）：私鑰只能放在遊戲伺服器，不能進前端或上傳", rel)
+		}
+		if strings.Contains(s, "PaymentRequest") || strings.Contains(s, "js.stripe.com") {
+			add(levelHard, "%s 使用付款功能（PaymentRequest 或金流 SDK）：遊戲 iframe 沒有付款能力，不能自己接付款（商業模式涉及真實金錢時宣告 economy.realMoney，由平台審核）", rel)
+		}
+		if strings.Contains(s, "getUserMedia") && !isGodotEngineJS(webDir, rel, s) {
+			add(levelHard, "%s 使用 getUserMedia：遊戲不能自己使用麥克風或相機（語音由玩聚平台外殼處理）", rel)
 		}
 		return nil
 	})
 	if files == 0 {
-		add("error", "%s 是空的", webDir)
+		add(levelBuild, "%s 是空的", webDir)
 	}
 	if total > 50<<20 {
-		add("warn", "檔案總共 %.0f MB，超過建議的 50 MB，手機首次載入會很慢", float64(total)/(1<<20))
+		add(levelWarn, "檔案總共 %.0f MB，超過建議的 50 MB，手機首次載入會很慢", float64(total)/(1<<20))
 	}
 
 	if p == nil {
@@ -959,36 +1005,35 @@ func checkProject(p *project, webDir string) []finding {
 		checkGodot(p, add)
 	}
 	if msg := sdkNotice(p); msg != "" {
-		add("warn", "%s", msg)
+		add(levelWarn, "%s", msg)
 	}
 	checkOrientation(p, webDir, add)
 	checkAudioSources(p, webDir, add)
 	if !strings.HasPrefix(p.Platform, "http") || strings.Contains(p.Platform, "（") {
-		add("error", "playtogether.json 的 platform 還沒填（玩聚建立遊戲後會給你平台網址）")
+		add(levelBuild, "playtogether.json 的 platform 還沒填（玩聚建立遊戲後會給你平台網址）")
 	}
-	checkContentRating(p.ContentRating, add)
-	checkContentRatingDoc(p, add)
+	checkPolicy(p, add)
 	if checkGameServer(p, add) {
 		if p.ServerURL == "" {
 			msg := "playtogether.json 的 serverUrl 還沒填：上傳後遊戲畫面和遊戲伺服器在不同網址，要填遊戲伺服器的對外網址"
 			if p.gameServerMode() == "external" {
 				msg = "playtogether.json 的 serverUrl 還沒填：要填你自己的遊戲伺服器的對外網址"
 			}
-			add("error", "%s", msg)
+			add(levelBuild, "%s", msg)
 		} else if u, err := url.Parse(p.ServerURL); err != nil || u.Host == "" {
-			add("error", "playtogether.json 的 serverUrl 格式錯誤：%s", p.ServerURL)
+			add(levelBuild, "playtogether.json 的 serverUrl 格式錯誤：%s", p.ServerURL)
 		} else if u.Scheme != "https" && u.Scheme != "wss" && !isLocal(u.Hostname()) {
-			add("error", "遊戲伺服器要用 https:// 或 wss://（目前是 %s）", p.ServerURL)
+			add(levelHard, "遊戲伺服器要用 https:// 或 wss://（目前是 %s）", p.ServerURL)
 		}
 	}
 	// 入門範本的 web/config.js：要和 playtogether.json 一致
 	if raw, err := os.ReadFile(filepath.Join(webDir, "config.js")); err == nil {
 		cfg := string(raw)
 		if p.ServerURL != "" && !strings.Contains(cfg, strings.TrimRight(p.ServerURL, "/")) {
-			add("error", "web/config.js 的 serverUrl 不是 %s：上傳後前端會找不到遊戲伺服器", p.ServerURL)
+			add(levelBuild, "web/config.js 的 serverUrl 不是 %s：上傳後前端會找不到遊戲伺服器", p.ServerURL)
 		}
 		if strings.HasPrefix(p.Platform, "http") && !strings.Contains(cfg, strings.TrimRight(p.Platform, "/")) {
-			add("error", "web/config.js 的 platformOrigins 沒有 %s：SDK 會拒絕平台的訊息", p.Platform)
+			add(levelBuild, "web/config.js 的 platformOrigins 沒有 %s：SDK 會拒絕平台的訊息", p.Platform)
 		}
 	}
 	return out
@@ -1001,6 +1046,7 @@ func isLocal(host string) bool {
 func cmdCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
 	local := fs.Bool("local", false, "本機開發：platform、serverUrl（宣告的遊戲伺服器架構需要時）還沒填只提醒，不算錯誤（上傳前仍要填）")
+	asJSON := fs.Bool("json", false, "用 JSON 輸出結果（給 CI 與 AI 工具讀）")
 	_ = fs.Parse(reorder(args))
 	p, err := findProject()
 	if err != nil {
@@ -1016,36 +1062,108 @@ func cmdCheck(args []string) error {
 	fs2 := checkProject(p, webDir)
 	if *local {
 		for i, f := range fs2 {
-			if f.level == "error" && strings.Contains(f.msg, "還沒填") {
-				fs2[i].level = "info"
+			if f.level == levelBuild && strings.Contains(f.msg, "還沒填") {
+				fs2[i].level = levelInfo
 			}
 		}
 	}
-	if printFindings(fs2) {
+	var r checkResult
+	if *asJSON {
+		r = summarize(fs2)
+		out := []map[string]string{}
+		for _, f := range fs2 {
+			out = append(out, map[string]string{"severity": severityName[f.level], "message": f.msg})
+		}
+		raw, _ := json.MarshalIndent(map[string]any{"result": r.overall(), "findings": out}, "", "  ")
+		fmt.Println(string(raw))
+	} else {
+		r = printFindings(fs2)
+	}
+	if r.blocking() || r.build {
 		return errors.New("檢查沒有通過")
 	}
 	return nil
 }
 
-// printFindings 印出結果，回傳是否有錯誤。
-func printFindings(fs []finding) bool {
-	bad, warned := false, false
+// checkResult 是各等級是否出現。
+type checkResult struct{ hard, schema, build, review, warn bool }
+
+// blocking：硬性規則與宣告錯誤，-skip-check 也不能略過。
+func (r checkResult) blocking() bool { return r.hard || r.schema }
+
+func (r checkResult) overall() string {
+	switch {
+	case r.hard:
+		return "ERROR_HARD_RULE"
+	case r.schema:
+		return "ERROR_SCHEMA"
+	case r.build:
+		return "ERROR_BUILD"
+	case r.review:
+		return "REVIEW_REQUIRED"
+	case r.warn:
+		return "WARNING"
+	}
+	return "PASS"
+}
+
+var severityName = map[string]string{levelHard: "ERROR_HARD_RULE", levelSchema: "ERROR_SCHEMA", levelBuild: "ERROR_BUILD",
+	levelReview: "REVIEW_REQUIRED", levelWarn: "WARNING", levelInfo: "INFO"}
+
+func summarize(fs []finding) checkResult {
+	var r checkResult
 	for _, f := range fs {
-		mark := "・" // info：說明，不需要處理
 		switch f.level {
-		case "error":
-			mark, bad = "✗", true
-		case "warn":
-			mark, warned = "！", true
+		case levelHard:
+			r.hard = true
+		case levelSchema:
+			r.schema = true
+		case levelBuild:
+			r.build = true
+		case levelReview:
+			r.review = true
+		case levelWarn:
+			r.warn = true
 		}
-		fmt.Println(mark, f.msg)
 	}
-	if !bad && !warned {
-		fmt.Println("✓ 檢查通過")
-	} else if !bad {
-		fmt.Println("✓ 沒有錯誤（有提醒，請確認）")
+	return r
+}
+
+// printFindings 依等級分組印出結果，最後一行是整體結果。
+func printFindings(fs []finding) checkResult {
+	groups := []struct{ level, mark, title string }{
+		{levelHard, "✗", "平台硬性規則（-skip-check 不能略過）"},
+		{levelSchema, "✗", "宣告錯誤（-skip-check 不能略過）"},
+		{levelBuild, "✗", "建置與本機設定"},
+		{levelReview, "?", "需要玩聚平台人工審核（可以送審，不代表已批准）"},
+		{levelWarn, "！", "提醒"},
+		{levelInfo, "・", "說明"},
 	}
-	return bad
+	for _, g := range groups {
+		first := true
+		for _, f := range fs {
+			if f.level != g.level {
+				continue
+			}
+			if first {
+				fmt.Printf("%s：\n", g.title)
+				first = false
+			}
+			fmt.Println(" ", g.mark, f.msg)
+		}
+	}
+	r := summarize(fs)
+	switch r.overall() {
+	case "PASS":
+		fmt.Println("✓ 檢查通過（PASS）")
+	case "WARNING":
+		fmt.Println("✓ 沒有錯誤（WARNING：有提醒，請確認）")
+	case "REVIEW_REQUIRED":
+		fmt.Println("✓ 沒有錯誤（REVIEW_REQUIRED：上面的項目需要玩聚平台人工審核，結果由平台決定）")
+	default:
+		fmt.Printf("✗ 檢查沒有通過（%s）\n", r.overall())
+	}
+	return r
 }
 
 // exportSDK 把內嵌的 SDK 全部寫到 dir（不是 pt new 建立的既有專案用）：

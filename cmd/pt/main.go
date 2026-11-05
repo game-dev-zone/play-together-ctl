@@ -96,7 +96,10 @@ func usage() {
          [-orientation portrait|landscape|any]  畫面方向：直式（預設）、橫式、兩者都支援
          [-game-server playtogether-managed|external|none]
                                                 遊戲伺服器架構：玩聚範本伺服器（預設）、自己的遊戲伺服器、不需要
-         [-rating general|12plus|15plus|custom]  內容分級（開發期間的內容上限，不是正式分級）：預設 15plus
+         [-profile general|moderate|strong|custom]
+                                                內容邊界（開發期間的內容上限，不是正式分級）：預設 general（-rating 是舊寫法）
+         [-table-game none|card|poker|mahjong|dice|board|slot|roulette|baccarat|other]
+                                                牌桌玩法；是否能上架由玩聚平台審核決定
          [-mode standard|studio|lightweight|custom]
                                                 AI 開發模式；-y、非互動與 CI 沒指定時用 lightweight（不下載）
          [-skills none|core|full] [-ai studios] 自訂（-mode custom）：遊戲開發 skill、Claude Code Game Studios
@@ -105,9 +108,11 @@ func usage() {
          [-players N]                           玩家分頁數（預設：多人專案 2、單人專案 1）
          [-smoke]                               啟動驗證：啟動、確認首頁與 SDK 載入得到後結束（不開瀏覽器）
   pt build                                      Godot 專案：用 Godot 無頭模式匯出網頁版到 build/
-  pt check [-local] [建置資料夾]                上傳前檢查（對照審核準則）；-local：platform、serverUrl（需要時）還沒填不算錯誤
+  pt check [-local] [-json] [建置資料夾]        上傳前檢查：ERROR_HARD_RULE／ERROR_SCHEMA／ERROR_BUILD／REVIEW_REQUIRED／WARNING；
+                                                -local：platform、serverUrl（需要時）還沒填不算錯誤；-json：JSON 輸出
   pt keygen -purpose upload|server [-out 檔案]   產生金鑰；在專案裡預設寫到 keys/<用途>.key
   pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定（含畫面方向、CDN 申報）從 playtogether.json 讀
+         [-skip-check]                          略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查
   pt cdn add <網址>                             從 jsDelivr／cdnjs 載入固定版本的程式或樣式：算出 SRI、記到 playtogether.json、印出要貼的標籤
   pt sdk status                                 檢查專案的 SDK、這個 pt 內嵌的 SDK、最新版 pt 的 SDK
   pt sdk update [-force]                        把專案裡的 SDK 更新成這個 pt 內嵌的版本（不會降版，除非 -force）
@@ -178,7 +183,7 @@ func upload(args []string) error {
 	notes := fs.String("notes", "", "版本說明（給審核者看）")
 	connect := fs.String("connect", "", "遊戲會連線的外部來源，逗號分隔（或 PT_CONNECT_ORIGINS）")
 	wait := fs.Duration("wait", 5*time.Minute, "等待檢查結果的時間（0 表示不等）")
-	skipCheck := fs.Bool("skip-check", false, "不執行上傳前檢查（不建議）")
+	skipCheck := fs.Bool("skip-check", false, "略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查")
 	noBuild := fs.Bool("no-build", false, "Godot 專案：不重新匯出，直接上傳現有的 build/")
 	orientation := fs.String("orientation", "", "畫面方向 portrait|landscape|any（在 pt new 建立的專案裡預設讀 playtogether.json）")
 	_ = fs.Parse(reorder(args))
@@ -224,11 +229,19 @@ func upload(args []string) error {
 			return err
 		}
 	}
-	if !*skipCheck {
-		fmt.Println("上傳前檢查：")
-		if printFindings(checkProject(p, dir)) {
-			return errors.New("檢查沒有通過，請修正後再上傳（確定要略過時加 -skip-check）")
-		}
+	fmt.Println("上傳前檢查：")
+	res := printFindings(checkProject(p, dir))
+	switch {
+	case res.blocking():
+		// 硬性規則與宣告錯誤：-skip-check 也不能略過，訊息不提示這個旗標
+		return errors.New("有平台硬性規則或宣告錯誤，不能上傳：請修正後再上傳")
+	case res.build && !*skipCheck:
+		return errors.New("檢查沒有通過，請修正後再上傳（只剩建置／本機設定的錯誤；確定要略過時加 -skip-check）")
+	case res.build:
+		fmt.Println("已依 -skip-check 略過建置／本機設定的錯誤（平台硬性規則與宣告一致性已檢查）")
+	}
+	if res.review {
+		fmt.Println("這個版本有需要玩聚平台人工審核的項目（見上方）：可以送審，但不代表已批准；上架、正式分級、警語與標籤由玩聚平台審核決定。")
 	}
 	priv, err := readKey(kfile)
 	if err != nil {

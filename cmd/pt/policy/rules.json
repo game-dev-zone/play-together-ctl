@@ -1,0 +1,29 @@
+{
+  "version": "2026-11-05",
+  "note": "玩聚平台政策資料：哪些宣告是平台硬性規則（hard）、哪些需要平台人工審核（review）。由平台產品／審核政策負責人決定，pt 維護者同步；只寫條件與原因，不寫分級、不寫准駁。政策變更影響分類時要立即發新版 pt。",
+  "rules": [
+    {"id": "real-money-wagering", "field": "economy.realMoneyWagering", "values": ["true"], "level": "hard", "category": "經濟", "reason": "真實金錢下注（含用有現實價值的資產下注）"},
+    {"id": "purchasable-stake", "field": "economy.purchasableStake", "values": ["true"], "level": "hard", "category": "經濟", "reason": "可購買的下注本金或籌碼（含用平台點數換得）"},
+    {"id": "withdrawable-value", "field": "economy.withdrawableValue", "values": ["true"], "level": "hard", "category": "經濟", "reason": "可提領（cash-out）"},
+    {"id": "redeemable-value", "field": "economy.redeemableValue", "values": ["true"], "level": "hard", "category": "經濟", "reason": "可兌換現金、商品或有現實經濟價值的東西"},
+    {"id": "transferable-real-world-value", "field": "economy.transferableRealWorldValue", "values": ["true"], "level": "hard", "category": "經濟", "reason": "玩家之間可轉讓具現實價值的資產"},
+    {"id": "paid-random-reward", "field": "economy.paidRandomReward", "values": ["true"], "level": "hard", "category": "經濟", "reason": "付費隨機獎勵（付費抽獎、點數抽獎、付費轉蛋）"},
+    {"id": "hate-advocacy", "field": "sensitiveContent.hateAdvocacy", "values": ["true"], "level": "hard", "category": "內容", "reason": "鼓吹對受保護群體的仇恨、歧視或騷擾"},
+    {"id": "protected-class-violence", "field": "sensitiveContent.encourageProtectedClassViolence", "values": ["true"], "level": "hard", "category": "內容", "reason": "把傷害真實受保護群體當成目標或獎勵、煽動暴力"},
+    {"id": "explicit-sexual-content", "field": "contentProfile.sexualContent", "values": ["moderate", "explicit"], "level": "hard", "category": "內容", "reason": "露骨的性內容或裸露（玩聚不收限制級內容）"},
+    {"id": "extreme-gore", "field": "contentProfile.blood", "values": ["strong"], "level": "hard", "category": "內容", "reason": "大量寫實血腥、肢解（玩聚不收限制級內容）"},
+
+    {"id": "real-money-business", "field": "economy.realMoney", "values": ["true"], "level": "review", "category": "經濟", "reason": "商業模式涉及真實金錢（不是下注；技術上遊戲仍不能自己接付款）"},
+    {"id": "virtual-wagering", "field": "gameplay.tableGame.virtualWagering", "values": ["allowed"], "level": "review", "category": "玩法", "reason": "虛擬下注玩法"},
+    {"id": "virtual-chips", "field": "gameplay.tableGame.scoreTokens", "values": ["allowed"], "level": "review", "category": "玩法", "reason": "虛擬籌碼或計分 token"},
+    {"id": "table-category", "field": "gameplay.tableGame.category", "values": ["poker", "mahjong", "slot", "roulette", "baccarat", "other"], "level": "review", "category": "玩法", "reason": "牌桌類型（是否接受、正式分級、警語、標籤、上架文案由平台決定）"},
+    {"id": "casino-like", "field": "gameplay.tableGame.presentation", "values": ["casinoLike"], "level": "review", "category": "玩法", "reason": "賭場風格呈現"},
+    {"id": "persistent-chips", "field": "gameplay.tableGame.tokenPersistence", "values": ["persistent"], "level": "review", "category": "玩法", "reason": "跨局累積的籌碼"},
+    {"id": "daily-chips", "field": "gameplay.tableGame.freeTokenSources", "values": ["daily"], "level": "review", "category": "玩法", "reason": "每日贈送籌碼（社交賭場型經濟）"},
+    {"id": "ad-reward-chips", "field": "gameplay.tableGame.freeTokenSources", "values": ["adReward"], "level": "review", "category": "玩法", "reason": "看廣告取得籌碼（技術上遊戲仍不能自己加入廣告 SDK）"},
+    {"id": "historical-persecution", "field": "sensitiveContent.historicalPersecution", "values": ["true"], "level": "review", "category": "內容", "reason": "歷史迫害、戰爭、殖民、人權侵害等歷史題材"},
+    {"id": "political-repression", "field": "sensitiveContent.politicalRepression", "values": ["true"], "level": "review", "category": "內容", "reason": "威權統治、白色恐怖、政治監禁等政治題材"},
+    {"id": "discrimination-depiction", "field": "sensitiveContent.discriminationDepiction", "values": ["true"], "level": "review", "category": "內容", "reason": "劇情或批判性敘事中呈現的歧視"},
+    {"id": "hate-speech-depiction", "field": "sensitiveContent.hateSpeechDepiction", "values": ["true"], "level": "review", "category": "內容", "reason": "角色台詞或史料中的仇恨、歧視言論"}
+  ]
+}

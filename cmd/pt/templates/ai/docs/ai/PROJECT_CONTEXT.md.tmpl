@@ -30,13 +30,22 @@
 範本附的示範玩法會連到 `server/`；做正式玩法時，改成不需要遊戲伺服器的畫面端玩法。可信任的分數、獎勵、經濟這類功能需要權威機制，見 `AI_WORKFLOW.md`「遊戲伺服器架構」。
 [[- end]]
 
-## 內容分級
+## 使用者資格、內容與玩法宣告
 
-| 項目 | 內容 |
-| --- | --- |
-| Content Rating Profile | [[.RatingLabel]]（`[[.RatingProfile]]`） |
-| 目標年齡（Target Age） | [[.TargetAgeLabel]] |
-| 詳細內容邊界 | [`docs/content/CONTENT_RATING.md`](../content/CONTENT_RATING.md)（開發期間的內容上限，不是正式分級結果；改分級走 `CONTENT_RATING_CHANGE_REQUEST`） |
+```
+Platform Audience: 18+（平台使用者資格，不是內容分級）
+Content Profile: [[.ProfileName]]（開發期間的內容邊界，不是正式分級）
+Sensitive Content: [[.SensitiveSummary]]
+Table Game: [[.TableGameSummary]]
+Cards / Dice / Score Tokens: [[.TableAssets]]
+Virtual Wagering: [[.VirtualWagering]]
+Token Persistence: [[.TokenSummary]]
+Economy: 全部 false（真實金錢下注、可購買下注本金、提領、兌換、可轉讓現實價值、付費隨機獎勵是平台硬性規則）
+pt Validation: [[.ValidationSummary]]
+Final decision: PlayTogether Platform Review
+```
+
+詳細內容：[`docs/content/CONTENT_PROFILE.md`](../content/CONTENT_PROFILE.md)（[[.ProfileLabel]]）、[`docs/content/GAMEPLAY_ECONOMY.md`](../content/GAMEPLAY_ECONOMY.md)。改內容邊界走 `CONTENT_PROFILE_CHANGE_REQUEST`，改玩法、經濟或敏感題材走 `GAMEPLAY_POLICY_CHANGE_REQUEST`（`AI_WORKFLOW.md`）。
 
 ## 技術
 
@@ -63,7 +72,8 @@
 | --- | --- |
 | `PLAYTOGETHER.md` | 玩聚平台規則（最高優先） |
 | `docs/ai/AI_WORKFLOW.md` | AI 工作流程 |
-| `docs/content/CONTENT_RATING.md` | 內容分級（內容上限） |
+| `docs/content/CONTENT_PROFILE.md` | 內容邊界（開發期間的內容上限）與敏感題材 |
+| `docs/content/GAMEPLAY_ECONOMY.md` | 玩法與經濟宣告、需要平台審核的項目 |
 [[- if .AI]]
 | `docs/ai/CURRENT_TASK.md` | 目前的工作契約 |
 | `docs/ai/DECISIONS.md` | 設計變更請求紀錄 |

@@ -193,7 +193,7 @@ func TestNewStudios(t *testing.T) {
 	pp, _ := findProject()
 	var problems []string
 	checkGodot(pp, func(level, format string, a ...any) {
-		if level == "error" && !strings.Contains(format, "playtogether-sdk-godot.iife.js") {
+		if isErrorLevel(level) && !strings.Contains(format, "playtogether-sdk-godot.iife.js") {
 			problems = append(problems, format)
 		}
 	})

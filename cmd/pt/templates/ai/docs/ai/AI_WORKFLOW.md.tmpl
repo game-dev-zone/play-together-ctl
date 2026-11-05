@@ -11,7 +11,7 @@
 1. `PLAYTOGETHER.md`：玩聚平台規則，**最高優先**
 2. `docs/ai/AI_WORKFLOW.md`（本文件）
 3. `docs/ai/PROJECT_CONTEXT.md`：專案背景、**多人與遊戲伺服器架構**
-4. `docs/content/CONTENT_RATING.md`：內容分級（這個專案的內容上限）
+4. `docs/content/CONTENT_PROFILE.md`（內容邊界）與 `docs/content/GAMEPLAY_ECONOMY.md`（玩法與經濟宣告）
 5. `docs/ai/CURRENT_TASK.md`：有的話，就是目前的工作契約
 
 提出架構變更前，先看過現有的專案。
@@ -20,7 +20,7 @@
 
 1. `PLAYTOGETHER.md`（平台規則，含玩聚平台硬性規則）
 2. 專案特定限制（`PROJECT_CONTEXT.md` 的「不能改」，含遊戲伺服器架構）
-3. 內容分級（`docs/content/CONTENT_RATING.md`）
+3. 內容邊界與玩法宣告（`docs/content/CONTENT_PROFILE.md`、`docs/content/GAMEPLAY_ECONOMY.md`）
 4. 專案背景（`PROJECT_CONTEXT.md` 其他內容）
 5. 遊戲願景、故事設定、設計文件[[if .AI]]（`design/`）[[end]]
 6. `CURRENT_TASK.md`
@@ -124,31 +124,55 @@ Codex 不執行 Claude Code Game Studios 的流程。Codex 可以：讀 Studios 
 [[end]]
 實作層（包含 Codex）**不得自行重新定義**遊戲願景、故事設定、謎題意圖、玩法規則、進度、關卡意圖；需要改時提出設計變更請求。
 
-## 內容分級（Content Rating Authority）
+## 內容邊界與政策宣告（Content Profile Authority）
 
-內容分級是 project-authoritative（以專案宣告為準）：`docs/content/CONTENT_RATING.md`，依 `playtogether.json` 的 `contentRating` 產生。
+宣告是 project-authoritative（以專案宣告為準）：`playtogether.json` 的 `contentProfile`、`sensitiveContent`、`gameplay`、`economy`，文件是 `docs/content/CONTENT_PROFILE.md` 與 `docs/content/GAMEPLAY_ECONOMY.md`。
 
-- 加入可能影響分級的內容（暴力、血腥、恐怖、性暗示、粗俗語言、酒、菸、犯罪題材、隨機機制）**之前**，先讀它。
-- 分級是**上限，不是要求**：不要因為專案是 15+ 方向，就主動加入暴力、血腥、酒類、性暗示、粗俗語言或賭博元素。只在遊戲設計需要、開發者要求時使用，而且不超過分級。
-- 玩聚平台硬性規則（`PLAYTOGETHER.md`）永遠優先，任何分級都不能覆蓋；超過硬性規則的內容不要提出變更請求，直接說明不可行。
-- 這是開發期間的內容邊界，不是正式分級結果；不要宣稱遊戲依法屬於某個級別。
+**玩聚平台審核才是最終准駁者**。你和 `pt` 都不決定：正式分級、能否上架、警語、App 文案、遊戲標籤，以及 Poker、Mahjong、Slot、Roulette 等玩法是否接受。不要宣稱遊戲屬於某個法定級別，也不要宣稱已獲平台批准。
 
-要加入超過目前分級的內容時，**不要直接改分級，也不要先加內容**，提出：
+| 情況 | 你的做法 |
+| --- | --- |
+| **平台硬性規則**（`PLAYTOGETHER.md`） | **不實作**。說明原因並提出替代設計（例如每局重置、不能購買、不能兌換的籌碼） |
+| **需要平台審核**（`pt check` 的 REVIEW_REQUIRED） | 可以開發；明確提醒開發者需要玩聚平台審核；不宣稱已批准、不說「可以上架」 |
+| **要加入超出內容邊界的內容** | **不自動提高 profile**：提出 `CONTENT_PROFILE_CHANGE_REQUEST`，開發者同意後由開發者修改 `contentProfile`（或明確授權你修改），重新產生 `CONTENT_PROFILE.md`，再實作 |
+| **既有內容已經超出內容邊界** | 降低內容以符合邊界，或提出 `CONTENT_PROFILE_CHANGE_REQUEST`；不得靜默放寬 |
+| **玩法、經濟或敏感題材宣告要改**（例如改成撲克、加入籌碼、加入政治迫害題材） | 提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`，開發者同意後才改宣告與文件 |
+| **`pt check` 失敗** | 修正實作或依上面的流程申請變更；不得為了通過檢查而修改宣告 |
+
+禁止的流程：先做出超出內容邊界的內容 → 發現 `pt check` 失敗 → 自動把 `general` 改成 `strong`。
+
+原則：
+
+- 內容邊界是**上限，不是要求**：不要主動加入暴力、血腥、恐怖、酒、菸、性暗示、粗俗語言，也不要主動加入籌碼商店、每日送籌碼這類經濟設計。只在遊戲設計需要、開發者要求時使用，而且不超過宣告。
+- **Table Game ≠ Real-Money Gambling**：牌桌、牌、骰子、虛擬籌碼、Bet／Call／Raise／Fold／All-in 等玩法本身不違規。判斷時先檢查是否存在：真實金錢下注、可購買的下注本金、可提領、可兌換、可轉讓的現實價值、付費隨機獎勵。
+- **描寫仇恨 ≠ 鼓吹仇恨**：歷史、教育、紀實、敘事、批判性內容可以描寫仇恨、迫害、歧視、政治暴力與威權統治（例如描寫威權時代政治迫害的恐怖遊戲）；這類題材正常進入設計流程、宣告 `sensitiveContent`（需要平台審核），呈現強度依內容邊界。不要因為涉及政治迫害或歧視就拒絕開發。但不得主動把真實受保護群體描寫成應被仇恨、迫害或消滅的對象，也不得把傷害真實受保護群體設計成目標或獎勵（硬性規則）。
+- 商業模式涉及真實金錢（`economy.realMoney`）需要審核，但技術上遊戲仍不能自己接付款；看廣告取得籌碼需要審核，但遊戲仍不能自己加入廣告 SDK。
 
 ```
-CONTENT_RATING_CHANGE_REQUEST
-Current Rating:
+CONTENT_PROFILE_CHANGE_REQUEST
+Current Profile:
 Requested Content:
 Current Limit:
 Required Change:
 Reason:
 Player-facing Impact:
-Platform Impact:（是否仍在玩聚接受的 15+ 方向以內、上架分級是否會改變）
+Platform Review Impact:（是否會變成需要平台審核的項目）
 Alternatives:
 Recommendation:
 ```
 
-開發者同意後，由開發者修改 `playtogether.json` 的 `contentRating` 並更新 `CONTENT_RATING.md`，再開始做。
+```
+GAMEPLAY_POLICY_CHANGE_REQUEST
+Current Declaration:（gameplay、economy、sensitiveContent 的相關欄位）
+Requested Change:
+Reason:
+Hard Rule Check:（是否涉及真實金錢下注、可購買下注本金、提領、兌換、可轉讓現實價值、付費隨機獎勵、鼓吹仇恨）
+Platform Review Impact:
+Alternatives:
+Recommendation:
+```
+
+（`CONTENT_RATING_CHANGE_REQUEST` 是 v0.14 的舊名，等同 `CONTENT_PROFILE_CHANGE_REQUEST`。）
 
 ## 設計變更請求
 

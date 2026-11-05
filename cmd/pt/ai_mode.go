@@ -184,12 +184,12 @@ AI 會自動選擇適合的設計與實作流程。`
 func checkGameServer(p *project, add func(level, format string, a ...any)) bool {
 	mode := p.gameServerMode()
 	if !slices.Contains(gameServerModes, mode) {
-		add("error", "playtogether.json 的 gameServer.mode 只能是 playtogether-managed、external 或 none（目前是 %q）", mode)
+		add(levelSchema, "playtogether.json 的 gameServer.mode 只能是 playtogether-managed、external 或 none（目前是 %q）", mode)
 		return false
 	}
 	if mode == "none" {
 		if p.multiplayerEnabled() {
-			add("error", "多人遊戲（multiplayer.enabled: true）需要經核准的連線架構：gameServer.mode 要是 playtogether-managed 或 external（目前是 none）；不要自己加上引擎內建的多人連線")
+			add(levelHard, "多人遊戲（multiplayer.enabled: true）需要經核准的連線架構：gameServer.mode 要是 playtogether-managed 或 external（目前是 none）；不要自己加上引擎內建的多人連線")
 			return false
 		}
 		if p.ServerURL != "" {
