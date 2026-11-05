@@ -128,21 +128,23 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 
 不確定參數怎麼選時，可以先從遊戲類型決定。下面的指令都是起點，不需要先了解 Game Studios、skill 或其他 AI 內部工具；專案建立後，在資料夾裡啟動 Claude Code（`claude`）或 Codex，直接用自然語言描述要做的遊戲即可。
 
-| 遊戲類型 | 建議畫面 | `gameServer.mode` | 建議 AI 模式 | 起始指令 |
-| --- | --- | --- | --- | --- |
-| 單人休閒／益智／節奏 | Web | `none` | `standard` | `pt new -client web -game-server none -mode standard my-game` |
-| 敘事／恐怖解謎／RPG | Godot | `none` | `studio` | `pt new -client godot -game-server none -mode studio haunted-game` |
-| 多人派對／合作 | Web 或 Godot | `playtogether-managed` | `standard` | `pt new -client web -game-server playtogether-managed -mode standard party-game` |
-| 即時競技／動作對戰 | Godot | `playtogether-managed` | `standard` | `pt new -client godot -game-server playtogether-managed -mode standard arena-game` |
-| 已有自己的 Game Server | 依既有遊戲 | `external` | `standard` | `pt new -client web -game-server external -mode standard existing-game` |
-| 快速驗證玩法／Prototype | Web | `none` | `standard` | `pt new -client web -game-server none -mode standard prototype-game` |
+內容分級（`-rating`）是開發期間的**內容上限，不是要求**，也不等於正式分級結果：選 `15plus` 不代表 AI 會主動加入恐怖、暴力或酒類，只代表遊戲需要時可以用到這個程度。不確定時選較低的分級，之後要提高再改 `playtogether.json`。
+
+| 遊戲類型 | 建議畫面 | `gameServer.mode` | 內容分級 | 建議 AI 模式 | 起始指令 |
+| --- | --- | --- | --- | --- | --- |
+| 單人休閒／益智／節奏 | Web | `none` | `general` | `standard` | `pt new -client web -game-server none -rating general -mode standard my-game` |
+| 敘事／恐怖解謎／RPG | Godot | `none` | `15plus` | `studio` | `pt new -client godot -game-server none -rating 15plus -mode studio haunted-game` |
+| 多人派對／合作 | Web 或 Godot | `playtogether-managed` | `general` | `standard` | `pt new -client web -game-server playtogether-managed -rating general -mode standard party-game` |
+| 即時競技／動作對戰 | Godot | `playtogether-managed` | `12plus` | `standard` | `pt new -client godot -game-server playtogether-managed -rating 12plus -mode standard arena-game` |
+| 已有自己的 Game Server | 依既有遊戲 | `external` | 依既有內容 | `standard` | `pt new -client web -game-server external -rating 15plus -mode standard existing-game` |
+| 快速驗證玩法／Prototype | Web | `none` | `general` | `standard` | `pt new -client web -game-server none -rating general -mode standard prototype-game` |
 
 ### 單人休閒、益智、節奏遊戲
 
 先用 Web 做最小可玩版本通常最快：
 
 ```sh
-pt new -client web -game-server none -mode standard my-puzzle
+pt new -client web -game-server none -rating general -mode standard my-puzzle
 cd my-puzzle
 claude
 ```
@@ -158,7 +160,7 @@ claude
 這類遊戲通常需要較多世界觀、關卡、謎題與故事規劃，建議用 Godot + `studio`：
 
 ```sh
-pt new -client godot -game-server none -mode studio haunted-school
+pt new -client godot -game-server none -rating 15plus -mode studio haunted-school
 cd haunted-school
 claude
 ```
@@ -166,6 +168,8 @@ claude
 接著可以直接說：
 
 > 我要做一款 20～30 分鐘的心理恐怖解謎遊戲，以台灣校園為背景。先規劃核心體驗、故事真相、第一組謎題與 playable vertical slice，再開始實作。
+
+恐怖、犯罪題材需要 `15plus`；暴力、血腥的程度仍以 `docs/content/CONTENT_RATING.md` 為上限，玩聚不接受限制級（18+）。
 
 開發者不需要自己選 Game Studios 的 agent、skill 或 slash command；Claude 會依 `CLAUDE.md` 與 `docs/ai/AI_WORKFLOW.md` 自動判斷何時先規劃、何時進入實作。
 
@@ -176,7 +180,7 @@ claude
 如果沒有既有後端，先用玩聚範本 Game Server：
 
 ```sh
-pt new -client web -game-server playtogether-managed -mode standard party-game
+pt new -client web -game-server playtogether-managed -rating general -mode standard party-game
 cd party-game
 claude
 ```
@@ -192,7 +196,7 @@ claude
 需要較多角色控制、碰撞、動畫或即時操作時，可以從 Godot 開始：
 
 ```sh
-pt new -client godot -game-server playtogether-managed -mode standard arena-game
+pt new -client godot -game-server playtogether-managed -rating 12plus -mode standard arena-game
 cd arena-game
 claude
 ```
@@ -208,7 +212,7 @@ claude
 第三方遊戲已經有後端時，不需要遷移到玩聚範本伺服器：
 
 ```sh
-pt new -client web -game-server external -mode standard existing-game
+pt new -client web -game-server external -rating 15plus -mode standard existing-game
 cd existing-game
 claude
 ```
@@ -217,14 +221,14 @@ claude
 
 > 這個專案已有正式 Game Server。先閱讀現有 protocol、登入、session 與測試方式，保留目前架構，只補上 PlayTogether 需要的啟動碼兌換、SDK 與平台生命週期整合。
 
-`external` 模式下，`server/` 仍會產生，但只作為玩聚整合參考與本機模擬；正式環境使用開發者自己的 Game Server，`serverUrl` 填它的對外網址。
+`external` 模式下，`server/` 仍會產生，但只作為玩聚整合參考與本機模擬；正式環境使用開發者自己的 Game Server，`serverUrl` 填它的對外網址。`-rating` 依既有遊戲的實際內容選（範例用預設的 `15plus`）。
 
 ### 快速驗證新玩法
 
 還不確定遊戲值不值得做完整版本時，先用 Web + `standard` 做最小 Prototype：
 
 ```sh
-pt new -client web -game-server none -mode standard prototype-game
+pt new -client web -game-server none -rating general -mode standard prototype-game
 cd prototype-game
 claude
 ```
@@ -237,7 +241,7 @@ claude
 
 **概念 → 核心循環 → 最小可玩版本 → 實際遊玩 → 再決定是否擴充**
 
-> **CI／自動化提醒**：`pt new -y`、非互動環境或 CI 在沒有明確指定 `-mode` 時，預設使用 `lightweight`，不下載任何第三方 AI 內容。需要 skill 或 studio 時請明確指定 `-mode standard` 或 `-mode studio`。
+> **CI／自動化提醒**：`pt new -y`、非互動環境或 CI 在沒有明確指定 `-mode` 時，預設使用 `lightweight`，不下載任何第三方 AI 內容；需要 skill 或 studio 時請明確指定 `-mode standard` 或 `-mode studio`。沒有指定 `-rating` 時預設 `15plus`（和精靈相同）；`-rating custom` 只能在終端機逐項設定。
 
 ## 指令
 
