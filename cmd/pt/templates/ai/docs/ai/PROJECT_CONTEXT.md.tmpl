@@ -30,6 +30,14 @@
 範本附的示範玩法會連到 `server/`；做正式玩法時，改成不需要遊戲伺服器的畫面端玩法。可信任的分數、獎勵、經濟這類功能需要權威機制，見 `AI_WORKFLOW.md`「遊戲伺服器架構」。
 [[- end]]
 
+## 內容分級
+
+| 項目 | 內容 |
+| --- | --- |
+| Content Rating Profile | [[.RatingLabel]]（`[[.RatingProfile]]`） |
+| 目標年齡（Target Age） | [[.TargetAgeLabel]] |
+| 詳細內容邊界 | [`docs/content/CONTENT_RATING.md`](../content/CONTENT_RATING.md)（開發期間的內容上限，不是正式分級結果；改分級走 `CONTENT_RATING_CHANGE_REQUEST`） |
+
 ## 技術
 
 | 項目 | 內容 |
@@ -55,6 +63,7 @@
 | --- | --- |
 | `PLAYTOGETHER.md` | 玩聚平台規則（最高優先） |
 | `docs/ai/AI_WORKFLOW.md` | AI 工作流程 |
+| `docs/content/CONTENT_RATING.md` | 內容分級（內容上限） |
 [[- if .AI]]
 | `docs/ai/CURRENT_TASK.md` | 目前的工作契約 |
 | `docs/ai/DECISIONS.md` | 設計變更請求紀錄 |

@@ -34,7 +34,7 @@ make verify                      # 啟動驗證：伺服器測試、在模擬模
 
 伺服器範本內建斷線重連骨架（`server/session.go`、`server/session.mjs`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入；前端範本會自動重新連線。
 
-`PLAYTOGETHER.md` 的「素材」一節建議用 Codex 生成圖片：整套素材共用風格卡 `art/STYLE.md`（範本附一套明亮派對風格：形狀、線條、平塗上色、調色盤色碼、光線、排除項目），先做一張樣板，其他素材都用 `-i` 參考樣板生成，降低「每張各自生成」的 AI 感；提示詞要寫明禁止事項、看過再用，每個素材記錄在 `art/SOURCES.md`。範本內建程式合成的預設音效（網頁版 `web/sfx.js`、Godot 版 `main.gd`，沒有音檔），並接上平台的「遊戲聲音」開關；要用音檔或音樂時照「音效與音樂」一節的來源順序（程式合成 → CC0 → AI 生成付費方案 → 確認沒有登記 Content ID 的免費音樂）。
+`PLAYTOGETHER.md` 的「素材」一節建議用 Codex 生成圖片：整套素材共用風格卡 `art/STYLE.md`（範本附一套明亮派對風格：形狀、線條、平塗上色、調色盤色碼、光線、排除項目），先做一張樣板，其他素材都用 `-i` 參考樣板生成，降低「每張各自生成」的 AI 感；生成前同時讀 `docs/content/CONTENT_RATING.md`（內容分級）、提示詞寫明平台硬性規則、看過再用，每個素材記錄在 `art/SOURCES.md`。範本內建程式合成的預設音效（網頁版 `web/sfx.js`、Godot 版 `main.gd`，沒有音檔），並接上平台的「遊戲聲音」開關；要用音檔或音樂時照「音效與音樂」一節的來源順序（程式合成 → CC0 → AI 生成付費方案 → 確認沒有登記 Content ID 的免費音樂）。
 
 新專案附有 `Makefile`（`make` 列出所有指令：`dev`、`server`、`verify`、`check`、`keys`、`upload`，Godot 另有 `build`、`clean`），每個指令都只是包裝 `pt`。
 
@@ -90,12 +90,29 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 
 `pt check` 依宣告的架構判斷：`none` 不要求 `serverUrl`；`multiplayer.enabled: true` 卻是 `none` 會被擋（多人遊戲需要經核准的連線架構）。舊專案沒有這兩個欄位時，當成多人＋`playtogether-managed`，結果和以前相同。
 
+### 內容分級（`-rating`）
+
+開發者依遊戲內容選擇分級，AI 依分級工作。設定在 `playtogether.json` 的 `contentRating`，`pt new` 依它產生 `docs/content/CONTENT_RATING.md`（所有 AI 模式都有）。**這是開發期間的內容邊界／目標分級，不等於正式分級結果；最終分級依實際內容與玩聚審核決定。**
+
+| `-rating` | 目標年齡 | 內容 |
+| --- | --- | --- |
+| `general` | 全年齡 | 全齡休閒、益智、家庭與派對 |
+| `12plus` | 12+（輔12方向） | 輕度戰鬥、輕度恐怖、幻想暴力、少量粗話 |
+| `15plus`（預設） | 15+（輔15方向） | 可依設定包含較強的恐怖、犯罪題材、酒類、中度暴力、少量血跡（玩聚目前接受的上限） |
+| `custom` | 自選 | 在終端機逐項設定目標年齡與暴力、血腥、恐怖、性內容、粗俗語言、酒、菸、隨機機制（不能超過 15+ 方向）；非互動時回錯誤 |
+
+- **分級是上限，不是要求**：AI 不會因為是 15+ 就主動加入暴力、血腥、酒類、性暗示、粗俗語言；要加入超過分級的內容時，AI 提出 `CONTENT_RATING_CHANGE_REQUEST`，由開發者決定。
+- **玩聚平台硬性規則**（`PLAYTOGETHER.md`）任何分級都不能覆蓋：玩聚目前最高接受 15+ 方向（不接受限制級 18+）、真實金錢下注、下注押注、付費抽獎或轉蛋、模擬賭博（`gambling.realMoney`、`wagering`、`paidRandomReward` 一律 `false`，`simulated` 一律 `none`）、性化未成年人、未授權的真實品牌與可辨識的真人。骰子、桌遊牌具、隨機事件、隨機掉落等一般機制可以（`gambling.chanceMechanics`）；遊戲可以有未成年角色。
+- `art/STYLE.md` 只管視覺風格，產生素材前同時讀 `PLAYTOGETHER.md` 與 `CONTENT_RATING.md`。
+- `pt check` 只檢查設定的格式、平台上限與硬性規則，不判斷遊戲實際內容，也不推論法律分級。舊專案沒有 `contentRating` 時只提醒，不擋上傳。
+
 | 選項 | 可用值 | 說明 |
 | --- | --- | --- |
 | `-client` | `web`（預設）、`godot` | 遊戲前端。`web` 產生 `web/`；`godot` 產生 Godot 專案 `game/`，匯出到 `build/` |
 | `-server` | `go`（預設）、`node` | 遊戲伺服器（兌換啟動碼、判定勝負）|
 | `-template` | `web-go`、`web-node`、`godot-go`、`godot-node` | 舊寫法，等於同時指定上面兩個 |
 | `-game-server` | `playtogether-managed`（預設）、`external`、`none` | 遊戲伺服器架構（見上方）；同時決定 `multiplayer.enabled`（`none` 是單人） |
+| `-rating` | `general`、`12plus`、`15plus`（預設）、`custom` | 內容分級（見上方）；`-y`、非互動與 CI 沒指定時也用 `15plus` |
 | `-mode` | `standard`、`studio`、`lightweight`、`custom` | AI 開發模式（見上方）；`studio` 沒指定畫面時自動用 Godot |
 | `-skills` | `full`、`core`、`none` | 自訂：遊戲開發 skill 的範圍 |
 | `-ai` | `studios`、`none` | 自訂：加入 Claude Code Game Studios（只限 Godot；只指定它時自動用 Godot） |

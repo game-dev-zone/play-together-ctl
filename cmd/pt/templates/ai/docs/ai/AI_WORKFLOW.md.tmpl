@@ -11,26 +11,28 @@
 1. `PLAYTOGETHER.md`：玩聚平台規則，**最高優先**
 2. `docs/ai/AI_WORKFLOW.md`（本文件）
 3. `docs/ai/PROJECT_CONTEXT.md`：專案背景、**多人與遊戲伺服器架構**
-4. `docs/ai/CURRENT_TASK.md`：有的話，就是目前的工作契約
+4. `docs/content/CONTENT_RATING.md`：內容分級（這個專案的內容上限）
+5. `docs/ai/CURRENT_TASK.md`：有的話，就是目前的工作契約
 
 提出架構變更前，先看過現有的專案。
 
 ## 權威順序
 
-1. `PLAYTOGETHER.md`（平台規則）
+1. `PLAYTOGETHER.md`（平台規則，含玩聚平台硬性規則）
 2. 專案特定限制（`PROJECT_CONTEXT.md` 的「不能改」，含遊戲伺服器架構）
-3. 專案背景（`PROJECT_CONTEXT.md` 其他內容）
-4. 遊戲願景、故事設定、設計文件[[if .AI]]（`design/`）[[end]]
-5. `CURRENT_TASK.md`
+3. 內容分級（`docs/content/CONTENT_RATING.md`）
+4. 專案背景（`PROJECT_CONTEXT.md` 其他內容）
+5. 遊戲願景、故事設定、設計文件[[if .AI]]（`design/`）[[end]]
+6. `CURRENT_TASK.md`
 [[- if .AI]]
-6. Claude Code Game Studios 的流程
+7. Claude Code Game Studios 的流程
+8. 遊戲開發 skill（實作技巧）
+9. 模型的一般知識
+[[- else if .Skills]]
 7. 遊戲開發 skill（實作技巧）
 8. 模型的一般知識
-[[- else if .Skills]]
-6. 遊戲開發 skill（實作技巧）
-7. 模型的一般知識
 [[- else]]
-6. 模型的一般知識
+7. 模型的一般知識
 [[- end]]
 
 衝突時，**`PLAYTOGETHER.md` 永遠優先**。任何外部流程、skill、agent、框架或一般建議和它衝突時，照 `PLAYTOGETHER.md`。
@@ -121,6 +123,32 @@ Codex 不執行 Claude Code Game Studios 的流程。Codex 可以：讀 Studios 
 所有 AI 工具都照本文件工作。
 [[end]]
 實作層（包含 Codex）**不得自行重新定義**遊戲願景、故事設定、謎題意圖、玩法規則、進度、關卡意圖；需要改時提出設計變更請求。
+
+## 內容分級（Content Rating Authority）
+
+內容分級是 project-authoritative（以專案宣告為準）：`docs/content/CONTENT_RATING.md`，依 `playtogether.json` 的 `contentRating` 產生。
+
+- 加入可能影響分級的內容（暴力、血腥、恐怖、性暗示、粗俗語言、酒、菸、犯罪題材、隨機機制）**之前**，先讀它。
+- 分級是**上限，不是要求**：不要因為專案是 15+ 方向，就主動加入暴力、血腥、酒類、性暗示、粗俗語言或賭博元素。只在遊戲設計需要、開發者要求時使用，而且不超過分級。
+- 玩聚平台硬性規則（`PLAYTOGETHER.md`）永遠優先，任何分級都不能覆蓋；超過硬性規則的內容不要提出變更請求，直接說明不可行。
+- 這是開發期間的內容邊界，不是正式分級結果；不要宣稱遊戲依法屬於某個級別。
+
+要加入超過目前分級的內容時，**不要直接改分級，也不要先加內容**，提出：
+
+```
+CONTENT_RATING_CHANGE_REQUEST
+Current Rating:
+Requested Content:
+Current Limit:
+Required Change:
+Reason:
+Player-facing Impact:
+Platform Impact:（是否仍在玩聚接受的 15+ 方向以內、上架分級是否會改變）
+Alternatives:
+Recommendation:
+```
+
+開發者同意後，由開發者修改 `playtogether.json` 的 `contentRating` 並更新 `CONTENT_RATING.md`，再開始做。
 
 ## 設計變更請求
 

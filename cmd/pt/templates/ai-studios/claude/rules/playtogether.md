@@ -18,5 +18,6 @@ paths:
 - 不要用 `JavaScriptBridge.eval`；`HTTPRequest` 用 `config.gd` 的完整網址。
 - `export_presets.cfg`：`variant/thread_support=false`、行動裝置 VRAM 壓縮關閉、Head Include 載入 `playtogether-sdk-godot.iife.js`，不要改。
 - 中文用 `fonts/` 的字型。
-- 不要加入任何分析、追蹤、廣告 SDK；不要有賭博、博弈或可兌換現金或財物的機制。
+- 不要加入任何分析、追蹤、廣告 SDK；遵守 `PLAYTOGETHER.md` 的玩聚平台硬性規則（真實金錢下注、下注押注、付費抽獎轉蛋、模擬賭博都不可以）。
+- 內容不超過 `docs/content/CONTENT_RATING.md` 的分級（上限，不是要求）；超過時提出 `CONTENT_RATING_CHANGE_REQUEST`。
 - 改完跑 `pt check`，再用 `pt dev` 實際玩一次。

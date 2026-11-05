@@ -72,6 +72,8 @@ type project struct {
 	// 多人與遊戲伺服器架構（v0.13 起；舊專案沒有時視為多人＋playtogether-managed）。AI 改連線前一定要先確認
 	Multiplayer *multiplayerConfig `json:"multiplayer,omitempty"`
 	GameServer  *gameServerConfig  `json:"gameServer,omitempty"`
+	// 內容分級（v0.14 起；開發期間的內容邊界，不是正式分級結果；content_rating.go）。舊專案沒有時 pt check 只警告
+	ContentRating *contentRating `json:"contentRating,omitempty"`
 	// 從 CDN 載入的程式與樣式（pt cdn add 加入）；pt upload 申報給平台
 	CDN []cdnAsset `json:"cdn,omitempty"`
 
@@ -156,6 +158,7 @@ func cmdNew(args []string) error {
 	skills := fs.String("skills", "", "自訂（-mode custom）：AI 遊戲開發 skill（awesome-gamedev-agent-skills 精選）core、full（core 加上畫面引擎的 skill）或 none")
 	gameServer := fs.String("game-server", "", "遊戲伺服器架構：playtogether-managed（預設：玩聚範本伺服器）、external（你已經有自己的遊戲伺服器）、none（單人或畫面端就能玩，正式遊玩不需要遊戲伺服器）")
 	orientation := fs.String("orientation", "portrait", "畫面方向：portrait（直式）、landscape（橫式）或 any（兩者都支援）")
+	rating := fs.String("rating", "", "內容分級（開發期間的內容上限，不是正式分級）：general、12plus、15plus（預設，玩聚接受的上限）、custom（在終端機逐項設定）")
 	yes := fs.Bool("y", false, "不詢問，沒指定的項目用預設值")
 	_ = fs.Parse(reorder(args))
 	set := map[string]bool{}
@@ -198,6 +201,9 @@ func cmdNew(args []string) error {
 	if *gameServer != "" && !slices.Contains(gameServerModes, *gameServer) {
 		return fmt.Errorf("-game-server 只能是 playtogether-managed、external 或 none（目前是 %q）", *gameServer)
 	}
+	if *rating != "" && !slices.Contains(ratingProfiles, *rating) {
+		return fmt.Errorf("-rating 只能是 general、12plus、15plus 或 custom（目前是 %q；玩聚目前最高接受 15+ 方向）", *rating)
+	}
 	aiMode, aiVal, skillsVal, err := resolveAIMode(*mode, *ai, *skills, set)
 	if err != nil {
 		return err
@@ -231,8 +237,10 @@ func cmdNew(args []string) error {
 			return err
 		}
 	}
-	if !*yes && interactive() && !ciEnv() && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || aiMode == "" || !set["game-server"]) {
-		if name, err = newWizard(name, client, server, orientation, gameServer, &aiMode, ai, skills, set, ccgs, gds, checkName); err != nil {
+	canAsk := !*yes && interactive() && !ciEnv()
+	var rc *contentRating
+	if canAsk && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || aiMode == "" || !set["game-server"] || *rating == "" || *rating == "custom") {
+		if name, err = newWizard(name, client, server, orientation, gameServer, rating, &rc, &aiMode, ai, skills, set, ccgs, gds, checkName); err != nil {
 			if errors.Is(err, errCanceled) {
 				fmt.Println()
 				return errors.New("已取消，沒有建立任何檔案")
@@ -253,6 +261,17 @@ func cmdNew(args []string) error {
 	}
 	if *gameServer == "" {
 		*gameServer = defaultGameServer
+	}
+	if rc == nil {
+		// -y、非互動、CI：沒指定時用預設（和精靈的預設相同）；custom 要逐項設定，不能用某個預設頂替
+		if *rating == "" {
+			*rating = defaultRating
+		}
+		if *rating == "custom" {
+			return errors.New("-rating custom 需要在終端機逐項設定；或先用 general、12plus、15plus 建立，再修改 playtogether.json 的 contentRating")
+		}
+		r := ratingPreset(*rating)
+		rc = &r
 	}
 	studios := *ai == "studios"
 	if *ai == "" {
@@ -280,6 +299,7 @@ func cmdNew(args []string) error {
 		"Skills":      map[bool]string{true: *skills, false: ""}[withSkills],
 		"Orientation": *orientation, "OrientationLabel": orientationLabel[*orientation],
 		"AIMode": aiMode, "AIModeLabel": aiModeLabel[aiMode], "GameServer": *gameServer,
+		"ContentRatingJSON": ratingJSON(*rc), "RatingProfile": rc.Profile, "RatingLabel": ratingLabel[rc.Profile], "TargetAgeLabel": targetAgeLabel[rc.TargetAge],
 		"Multiplayer":   map[bool]string{true: "true", false: ""}[*gameServer != "none"],
 		"SkillsLabel":   map[string]string{"full": "完整（通用＋" + map[string]string{"web": "網頁引擎", "godot": "Godot"}[*client] + "）", "core": "通用", "none": ""}[*skills],
 		"SkillsVersion": gds.Version + "（commit " + gds.Commit[:7] + "）", "StudiosVersion": ccgs.Version + "（commit " + ccgs.Commit[:7] + "）"}
@@ -312,6 +332,7 @@ func cmdNew(args []string) error {
 			return err
 		}
 	}
+	files["docs/content/CONTENT_RATING.md"] = []byte(contentRatingDoc(name, *rc))
 	files[".gitignore"] = files["gitignore"]
 	delete(files, "gitignore")
 	if *client == "godot" && godotDir == "." {
@@ -359,7 +380,7 @@ func cmdNew(args []string) error {
 	if err := os.MkdirAll(filepath.Join(name, "keys"), 0o700); err != nil {
 		return err
 	}
-	fmt.Printf("已建立 %s（畫面 %s、伺服器 %s、%s、%s、AI 模式 %s、SDK %s）\n\n", name, *client, *server, orientationLabel[*orientation], gameServerLabel[*gameServer], aiModeLabel[aiMode], sdkVersion())
+	fmt.Printf("已建立 %s（畫面 %s、伺服器 %s、%s、%s、內容分級 %s、AI 模式 %s、SDK %s）\n\n", name, *client, *server, orientationLabel[*orientation], gameServerLabel[*gameServer], ratingLabel[rc.Profile], aiModeLabel[aiMode], sdkVersion())
 	fmt.Println("下一步：")
 	fmt.Printf("  cd %s\n", name)
 	if *client == "godot" {
@@ -391,7 +412,7 @@ func cmdNew(args []string) error {
 	return nil
 }
 
-// newWizard 逐步詢問專案名稱、畫面、多人與遊戲伺服器、伺服器語言、方向、AI 開發模式，最後確認。回傳空名稱表示開發者選擇不建立。
+// newWizard 逐步詢問專案名稱、畫面、多人與遊戲伺服器、伺服器語言、方向、內容分級、AI 開發模式，最後確認。回傳空名稱表示開發者選擇不建立。
 var (
 	orientationLabel = map[string]string{"portrait": "直式", "landscape": "橫式", "any": "直式橫式都支援"}
 	aiModeLabel      = map[string]string{"lightweight": "輕量", "standard": "標準", "studio": "工作室", "custom": "自訂"}
@@ -399,9 +420,9 @@ var (
 	gameServerLabel  = map[string]string{"playtogether-managed": "多人（玩聚範本伺服器）", "external": "多人（自己的遊戲伺服器）", "none": "不需要遊戲伺服器"}
 )
 
-const newUsage = "用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-game-server playtogether-managed|external|none] [-mode standard|studio|lightweight|custom] [-skills none|core|full] [-ai studios|none] <專案名稱>"
+const newUsage = "用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-game-server playtogether-managed|external|none] [-rating general|12plus|15plus|custom] [-mode standard|studio|lightweight|custom] [-skills none|core|full] [-ai studios|none] <專案名稱>"
 
-func newWizard(name string, client, server, orientation, gameServer *string, aiMode, ai, skills *string, set map[string]bool, ccgs, gds ccgsManifest, checkName func(string) error) (string, error) {
+func newWizard(name string, client, server, orientation, gameServer, rating *string, rc **contentRating, aiMode, ai, skills *string, set map[string]bool, ccgs, gds ccgsManifest, checkName func(string) error) (string, error) {
 	var err error
 	fmt.Println("建立玩聚遊戲專案（直接按 Enter 用預設值，Ctrl-C 取消）")
 	fmt.Println()
@@ -458,6 +479,14 @@ func newWizard(name string, client, server, orientation, gameServer *string, aiM
 			return "", err
 		}
 	}
+	if *rating == "" || *rating == "custom" {
+		if *rc, err = askContentRating(rating); err != nil {
+			return "", err
+		}
+	} else {
+		r := ratingPreset(*rating)
+		*rc = &r
+	}
 	if *aiMode == "" {
 		engine := map[string]string{"web": "Phaser、PixiJS、three.js", "godot": "Godot"}[*client]
 		opts := []option{{"standard", "標準（建議）", "大部分遊戲適合：平台規則＋手感、介面、音效、素材、效能與 " + engine + " 的實作知識。Claude Code、Codex 都能用，額外 token 很少"}}
@@ -505,8 +534,8 @@ func newWizard(name string, client, server, orientation, gameServer *string, aiM
 	} else {
 		flags = " -mode " + *aiMode
 	}
-	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s -game-server %s%s %s", *client, *server, *orientation, *gameServer, flags, name)
-	fmt.Printf("即將建立 %s：畫面 %s、%s、伺服器 %s、%s、AI 模式 %s\n", name, *client, gameServerLabel[*gameServer], *server, orientationLabel[*orientation], aiModeLabel[*aiMode])
+	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s -game-server %s -rating %s%s %s", *client, *server, *orientation, *gameServer, *rating, flags, name)
+	fmt.Printf("即將建立 %s：畫面 %s、%s、伺服器 %s、%s、內容分級 %s、AI 模式 %s\n", name, *client, gameServerLabel[*gameServer], *server, orientationLabel[*orientation], ratingLabel[*rating], aiModeLabel[*aiMode])
 	fmt.Printf("（下次可以直接執行：%s）\n", cmd)
 	ok, err := confirm("確定建立？", true)
 	if err != nil {
@@ -937,6 +966,8 @@ func checkProject(p *project, webDir string) []finding {
 	if !strings.HasPrefix(p.Platform, "http") || strings.Contains(p.Platform, "（") {
 		add("error", "playtogether.json 的 platform 還沒填（玩聚建立遊戲後會給你平台網址）")
 	}
+	checkContentRating(p.ContentRating, add)
+	checkContentRatingDoc(p, add)
 	if checkGameServer(p, add) {
 		if p.ServerURL == "" {
 			msg := "playtogether.json 的 serverUrl 還沒填：上傳後遊戲畫面和遊戲伺服器在不同網址，要填遊戲伺服器的對外網址"

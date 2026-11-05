@@ -96,6 +96,7 @@ func usage() {
          [-orientation portrait|landscape|any]  畫面方向：直式（預設）、橫式、兩者都支援
          [-game-server playtogether-managed|external|none]
                                                 遊戲伺服器架構：玩聚範本伺服器（預設）、自己的遊戲伺服器、不需要
+         [-rating general|12plus|15plus|custom]  內容分級（開發期間的內容上限，不是正式分級）：預設 15plus
          [-mode standard|studio|lightweight|custom]
                                                 AI 開發模式；-y、非互動與 CI 沒指定時用 lightweight（不下載）
          [-skills none|core|full] [-ai studios] 自訂（-mode custom）：遊戲開發 skill、Claude Code Game Studios
