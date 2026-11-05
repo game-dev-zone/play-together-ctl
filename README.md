@@ -28,7 +28,7 @@ go install github.com/game-dev-zone/play-together-ctl/cmd/pt@latest
 ```sh
 pt new                           # 逐步選擇名稱、畫面（網頁或 Godot）、多人與遊戲伺服器、方向、AI 開發模式
 cd my-party-game
-pt dev                           # 本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
+pt dev                           # 本機模擬模式：啟動參考伺服器並開啟玩家分頁（多人專案 2 個、單人專案 1 個）
 make verify                      # 啟動驗證：伺服器測試、在模擬模式實際啟動一次、檢查要上傳的檔案
 ```
 
@@ -86,7 +86,7 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 | --- | --- | --- |
 | `playtogether-managed`（預設） | 多人遊戲，用玩聚範本伺服器的架構 | 正式遊戲伺服器的起點，要部署並填 `serverUrl` |
 | `external` | 多人遊戲，你已經有自己的遊戲伺服器 | 整合參考與本機模擬，**不需要部署**；`serverUrl` 填你的伺服器 |
-| `none` | 單人或畫面端就能玩（解謎、敘事、冒險、節奏、休閒等） | 本機模擬與參考，**不需要部署**；`serverUrl` 留空 |
+| `none` | 單人或畫面端就能玩（解謎、敘事、冒險、節奏、休閒等） | 本機模擬與參考，**不需要部署**；`serverUrl` 留空，也不需要遊戲伺服器金鑰（只要上傳金鑰） |
 
 `pt check` 依宣告的架構判斷：`none` 不要求 `serverUrl`；`multiplayer.enabled: true` 卻是 `none` 會被擋（多人遊戲需要經核准的連線架構）。舊專案沒有這兩個欄位時，當成多人＋`playtogether-managed`，結果和以前相同。
 
@@ -112,9 +112,9 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 | 指令 | 說明 |
 | --- | --- |
 | `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-game-server playtogether-managed\|external\|none] [-mode standard\|studio\|lightweight\|custom] [-skills none\|core\|full] [-ai studios] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定、AI 工作流程）；`-orientation` 選直式、橫式或兩者都支援（預設直式） |
-| `pt dev [-addr 127.0.0.1:8090] [-players 2] [-smoke]` | 本機模擬模式（Godot 專案會先匯出）；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
+| `pt dev [-addr 127.0.0.1:8090] [-players N] [-smoke]` | 本機模擬模式（Godot 專案會先匯出）：啟動範本／參考伺服器並開啟玩家分頁，預設多人專案 2 個、單人專案（`multiplayer.enabled: false`）1 個，`-players` 可以明確指定；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
-| `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器架構與網址設定、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒 |
+| `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器架構與網址設定、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒；`gameServer.mode: none` 不需要 `serverUrl` |
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；公鑰交給玩聚登記，私鑰只在你手上 |
 | `pt upload -version <版本> [-notes 說明] [-no-build] [-orientation portrait\|landscape\|any]` | 上傳版本（設定從 `playtogether.json` 讀，包括畫面方向；Godot 專案先匯出；上傳前自動檢查） |
 | `pt sdk status` | 比較專案的 SDK、這個 `pt` 內嵌的 SDK、最新版 `pt` 內嵌的 SDK，並列出被修改過的 SDK 檔案 |

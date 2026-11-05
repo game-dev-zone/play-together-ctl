@@ -4,6 +4,6 @@ window.GAME_CONFIG = {
   platformOrigins: ['[[.Platform]]'],
   // 畫面方向：portrait（直式）、landscape（橫式）、any（兩者都支援）；要和 playtogether.json 的 orientation 一致
   orientation: '[[.Orientation]]',
-  // 遊戲伺服器網址；空白表示和前端同一個來源（只適用本機 pt dev）。上傳前要改成你的遊戲伺服器網址
+  // 遊戲伺服器網址；空白表示和前端同一個來源（只適用本機 pt dev）。[[if eq .GameServer "none"]]此模式沒有正式遊戲伺服器，上傳時保持空白[[else]]上傳前要改成你的遊戲伺服器網址[[end]]
   serverUrl: '',
 };

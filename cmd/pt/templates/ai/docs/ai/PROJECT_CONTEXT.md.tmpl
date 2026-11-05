@@ -38,7 +38,7 @@
 | 範本伺服器語言 | [[if eq .Server "go"]]Go[[else]]Node.js[[end]] |
 | 畫面方向 | [[.OrientationLabel]]（`[[.Orientation]]`） |
 | 玩聚 SDK | [[.SDKVersion]]（`pt sdk update` 更新） |
-| 玩聚整合 | 平台網址 `platform`、遊戲伺服器網址 `serverUrl`、金鑰 ID 都在 `playtogether.json`（玩聚建立遊戲後填寫） |
+| 玩聚整合 | [[if eq .GameServer "none"]]平台網址 `platform` 與上傳金鑰 ID `uploadKeyId` 在 `playtogether.json`（玩聚建立遊戲後填寫）；不需要遊戲伺服器金鑰與 `serverUrl`[[else]]平台網址 `platform`、遊戲伺服器網址 `serverUrl`、上傳金鑰與遊戲伺服器金鑰 ID 都在 `playtogether.json`（玩聚建立遊戲後填寫）[[end]] |
 
 ## AI 開發設定
 

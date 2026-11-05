@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -320,6 +321,110 @@ func TestNewGameServerModes(t *testing.T) {
 	}
 	if r := readFile(t, dir, "gs-none", "README.md"); !strings.Contains(r, "不需要部署") {
 		t.Fatal("none 的 README 要寫明 server/ 不需要部署")
+	}
+}
+
+// 單人遊戲（none）不需要遊戲伺服器金鑰：README、Makefile、PROJECT_CONTEXT 都不要求；其他模式照舊兩把
+func TestServerKeyByGameServerMode(t *testing.T) {
+	requireEmbeddedSDK(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	must(t, cmdNew([]string{"k-none", "-game-server", "none"}))
+	must(t, cmdNew([]string{"k-managed"}))
+	must(t, cmdNew([]string{"k-ext", "-game-server", "external"}))
+
+	readme := readFile(t, dir, "k-none", "README.md")
+	setup := readme[strings.Index(readme, "## 接上玩聚"):strings.Index(readme, "## 資料夾")]
+	if !strings.Contains(setup, "pt keygen -purpose upload") || !strings.Contains(setup, "不需要遊戲伺服器金鑰") ||
+		strings.Contains(setup, "`serverKeyId`、") || strings.Contains(setup, "（`uploadKeyId`、`serverKeyId`") {
+		t.Fatalf("none 的 README 只要求上傳金鑰：\n%s", setup)
+	}
+	mk := readFile(t, dir, "k-none", "Makefile")
+	if strings.Contains(mk, "-purpose server") || !strings.Contains(mk, "-purpose upload") {
+		t.Fatalf("none 的 make keys 只產生上傳金鑰：\n%s", mk)
+	}
+	if ctx := readFile(t, dir, "k-none", "docs/ai/PROJECT_CONTEXT.md"); !strings.Contains(ctx, "不需要遊戲伺服器金鑰") {
+		t.Fatal("none 的 PROJECT_CONTEXT 要寫明不需要遊戲伺服器金鑰")
+	}
+	for _, name := range []string{"k-managed", "k-ext"} {
+		r := readFile(t, dir, name, "README.md")
+		if !strings.Contains(r, "pt keygen -purpose upload") || !strings.Contains(r, "pt keygen -purpose server") || !strings.Contains(r, "`serverKeyId`") {
+			t.Errorf("%s 的 README 要要求兩把金鑰", name)
+		}
+		if m := readFile(t, dir, name, "Makefile"); !strings.Contains(m, "-purpose server") || !strings.Contains(m, "-purpose upload") {
+			t.Errorf("%s 的 make keys 要產生兩把金鑰", name)
+		}
+	}
+	if !strings.Contains(readFile(t, dir, "k-ext", "README.md"), "放到你自己的遊戲伺服器") {
+		t.Fatal("external 要說明遊戲伺服器金鑰的私鑰放在自己的伺服器")
+	}
+
+	// serverUrl 的文案依宣告的架構：none 明確說不需要；其他照舊要求
+	if !strings.Contains(setup, "此模式沒有正式遊戲伺服器") || !strings.Contains(setup, "不需要 `serverUrl`") {
+		t.Fatalf("none 的 README 要明確說沒有正式遊戲伺服器、不需要 serverUrl：\n%s", setup)
+	}
+	for _, f := range []string{"README.md", "Makefile", "PLAYTOGETHER.md"} {
+		if s := readFile(t, dir, "k-none", f); strings.Contains(s, "serverUrl 都要填好") || strings.Contains(s, "`serverUrl` 都要填好") {
+			t.Errorf("none 的 %s 不能說 serverUrl 必填", f)
+		}
+	}
+	if !strings.Contains(mk, "此模式不需要 serverUrl") || !strings.Contains(readFile(t, dir, "k-none", "web/config.js"), "上傳時保持空白") {
+		t.Fatal("none 的 make check 說明與 config.js 要說明不需要 serverUrl")
+	}
+	for _, name := range []string{"k-managed", "k-ext"} {
+		if !strings.Contains(readFile(t, dir, name, "Makefile"), "platform、serverUrl 都要填好") ||
+			!strings.Contains(readFile(t, dir, name, "README.md"), "`platform`、`serverUrl` 都要填好") ||
+			!strings.Contains(readFile(t, dir, name, "web/config.js"), "上傳前要改成你的遊戲伺服器網址") {
+			t.Errorf("%s 仍要說明 serverUrl 必填", name)
+		}
+	}
+	// external 的 server/ 仍是參考與本機模擬伺服器
+	if !strings.Contains(readFile(t, dir, "k-ext", "docs/ai/PROJECT_CONTEXT.md"), "不是你的正式遊戲伺服器") {
+		t.Fatal("external 的 server/ 要寫明是參考與本機模擬")
+	}
+	// 三種模式都保留範本伺服器與驗證流程
+	for _, name := range []string{"k-none", "k-managed", "k-ext"} {
+		if !exists(dir, name, "server") || !strings.Contains(readFile(t, dir, name, "Makefile"), "$(PT) dev -smoke") {
+			t.Errorf("%s 要保留 server/ 與 pt dev -smoke", name)
+		}
+	}
+	// 玩家分頁數的文案：單人一個、多人兩個
+	if !strings.Contains(readFile(t, dir, "k-none", "README.md"), "打開一個玩家分頁") || strings.Contains(readFile(t, dir, "k-none", "README.md"), "兩個玩家") {
+		t.Fatal("單人專案的 README 應該寫打開一個玩家分頁")
+	}
+	if !strings.Contains(readFile(t, dir, "k-managed", "README.md"), "打開兩個玩家分頁") {
+		t.Fatal("多人專案的 README 應該寫打開兩個玩家分頁")
+	}
+}
+
+// pt dev 的玩家分頁數：沒指定時多人 2、單人 1；明確指定的值照用（單人也可以 -players 2）
+func TestDevPlayersDefault(t *testing.T) {
+	multi := &project{Multiplayer: &multiplayerConfig{true}, GameServer: &gameServerConfig{"playtogether-managed"}}
+	single := &project{Multiplayer: &multiplayerConfig{false}, GameServer: &gameServerConfig{"none"}}
+	legacy := &project{} // 舊專案：視為多人
+	for _, c := range []struct {
+		name string
+		p    *project
+		flag int
+		want int
+	}{
+		{"多人預設", multi, -1, 2},
+		{"單人預設", single, -1, 1},
+		{"舊專案預設", legacy, -1, 2},
+		{"單人明確指定 2", single, 2, 2},
+		{"多人明確指定 1", multi, 1, 1},
+		{"不開瀏覽器", single, 0, 0},
+	} {
+		if got := devPlayers(c.p, c.flag); got != c.want {
+			t.Errorf("%s：得到 %d，應為 %d", c.name, got, c.want)
+		}
+	}
+	// 旗標的預設值是「沒指定」，才分得出開發者有沒有明確給 -players
+	fs := flag.NewFlagSet("dev", flag.ContinueOnError)
+	players := fs.Int("players", -1, "")
+	must(t, fs.Parse([]string{"-players", "2"}))
+	if devPlayers(single, *players) != 2 {
+		t.Fatal("單人專案明確指定 -players 2 要開兩個")
 	}
 }
 

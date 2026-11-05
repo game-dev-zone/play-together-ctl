@@ -9,13 +9,13 @@ VERSION ?=
 NOTES ?=
 
 help:
-	@echo "make dev       本機模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版、[[end]]啟動遊戲伺服器、打開兩個玩家分頁"
+	@echo "make dev       本機模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版、[[end]]啟動[[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else]]參考伺服器[[end]]、打開[[if .Multiplayer]]兩個玩家分頁[[else]]一個玩家分頁[[end]]"
 	@echo "make server    只啟動遊戲伺服器（模擬模式，不開瀏覽器）"[[if eq .Client "godot"]]
 	@echo "make build     匯出 Godot 網頁版到 build/"[[end]]
 	@echo "make test      遊戲伺服器的檢查與測試"
 	@echo "make verify    啟動驗證：[[if eq .Client "godot"]]匯出、[[end]]伺服器測試、檢查要上傳的檔案、在模擬模式實際啟動一次（不需要金鑰）"
-	@echo "make check     上傳前的完整檢查（platform、serverUrl 都要填好）"
-	@echo "make keys      產生還沒有的金鑰（keys/upload.key、keys/server.key），印出要交給玩聚的公鑰"
+	@echo "make check     上傳前的完整檢查（[[if eq .GameServer "none"]]platform 要填好；此模式不需要 serverUrl[[else]]platform、serverUrl 都要填好[[end]]）"
+	@echo "make keys      產生還沒有的金鑰（[[if eq .GameServer "none"]]keys/upload.key；不需要遊戲伺服器金鑰[[else]]keys/upload.key、keys/server.key[[end]]），印出要交給玩聚的公鑰"
 	@echo "make upload VERSION=1.0.0 NOTES=\"說明\"   上傳一個版本"[[if eq .Client "godot"]]
 	@echo "make clean     刪除匯出結果 build/"[[end]]
 
@@ -47,7 +47,9 @@ verify: test
 
 keys:
 	@test -f keys/upload.key || $(PT) keygen -purpose upload
+[[- if ne .GameServer "none"]]
 	@test -f keys/server.key || $(PT) keygen -purpose server
+[[- end]]
 
 upload:
 	@test -n "$(VERSION)" || { echo "請指定版本：make upload VERSION=1.0.0 NOTES=\"說明\""; exit 1; }

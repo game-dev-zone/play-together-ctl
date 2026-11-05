@@ -5,7 +5,7 @@
 ## 本機開發
 
 ```sh
-pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版、[[end]]啟動遊戲伺服器、打開兩個玩家分頁
+pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版、[[end]]啟動[[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else]]參考伺服器（只用於本機模擬）[[end]]、打開[[if .Multiplayer]]兩個玩家分頁[[else]]一個玩家分頁[[end]]
 ```
 
 不需要金鑰、不需要連線到玩聚。[[if eq .Client "godot"]]
@@ -22,8 +22,8 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 | `make dev` | 本機模擬模式（`pt dev`） |
 | `make server` | 只啟動遊戲伺服器，不開瀏覽器（`pt dev -players 0`） |
 | `make verify` | **啟動驗證，每次改完跑**：伺服器測試、[[if eq .Client "godot"]]匯出、[[end]]在模擬模式實際啟動一次並確認首頁與 SDK 載入得到（`pt dev -smoke`）、檢查要上傳的檔案（`pt check -local`）。不需要金鑰 |
-| `make check` | 上傳前的完整檢查（`pt check`；`platform`、`serverUrl` 都要填好） |
-| `make keys` | 產生還沒有的金鑰（已經有的不會覆蓋） |
+| `make check` | 上傳前的完整檢查（`pt check`；[[if eq .GameServer "none"]]`platform` 要填好；此模式不需要 `serverUrl`[[else]]`platform`、`serverUrl` 都要填好[[end]]） |
+| `make keys` | 產生還沒有的金鑰（[[if eq .GameServer "none"]]只有上傳金鑰 `keys/upload.key`；這個模式不需要遊戲伺服器金鑰[[else]]上傳金鑰與遊戲伺服器金鑰[[end]]；已經有的不會覆蓋） |
 | `make upload VERSION=1.0.0 NOTES="說明"` | 上傳一個版本 |
 [[- if eq .Client "godot"]]
 | `make build`、`make clean` | 匯出 Godot 網頁版到 `build/`、刪除匯出結果 |
@@ -31,8 +31,13 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 
 ## 接上玩聚
 
-1. 產生金鑰，把公鑰交給玩聚登記：`pt keygen -purpose upload`、`pt keygen -purpose server`（私鑰寫在 `keys/`，不會進版控）。
+[[- if eq .GameServer "none"]]
+1. 產生**上傳金鑰**，把公鑰交給玩聚登記：`pt keygen -purpose upload`（私鑰寫在 `keys/`，不會進版控）。此模式沒有正式遊戲伺服器（production Game Server），因此**不需要遊戲伺服器金鑰**（不用執行 `pt keygen -purpose server`），`serverKeyId` 留空，也**不需要 `serverUrl`**。之後改成多人遊戲（`gameServer.mode` 改成 `playtogether-managed` 或 `external`）時再產生。
+2. 玩聚建立遊戲後，把上傳金鑰 ID、平台網址填進 `playtogether.json`（`uploadKeyId`、`platform`）。
+[[- else]]
+1. 產生金鑰，把公鑰交給玩聚登記：`pt keygen -purpose upload`（上傳版本用）、`pt keygen -purpose server`（[[if eq .GameServer "external"]]你自己的遊戲伺服器[[else]]遊戲伺服器[[end]]向玩聚兌換啟動碼、回報一局用）。私鑰寫在 `keys/`，不會進版控[[if eq .GameServer "external"]]；遊戲伺服器金鑰的私鑰要放到你自己的遊戲伺服器[[end]]。
 2. 玩聚建立遊戲後，把金鑰 ID、平台網址填進 `playtogether.json`（`uploadKeyId`、`serverKeyId`、`platform`）。
+[[- end]]
 [[- if eq .GameServer "playtogether-managed"]]
 3. 部署遊戲伺服器（`server/`），把對外網址填進 `playtogether.json` 的 `serverUrl`，以及[[if eq .Client "godot"]] `[[.GodotPrefix]]config.gd` 的 `SERVER_URL`[[else]] `web/config.js` 的 `serverUrl`[[end]]。
 [[- else if eq .GameServer "external"]]

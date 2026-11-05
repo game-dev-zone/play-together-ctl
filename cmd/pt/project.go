@@ -363,14 +363,14 @@ func cmdNew(args []string) error {
 	fmt.Println("下一步：")
 	fmt.Printf("  cd %s\n", name)
 	if *client == "godot" {
-		fmt.Println("  pt dev        # 匯出 Godot 網頁版並用本機模擬模式打開兩個玩家分頁（需要 Godot 4.3 以上與網頁匯出範本）")
+		fmt.Printf("  pt dev        # 匯出 Godot 網頁版並用本機模擬模式打開%s（需要 Godot 4.3 以上與網頁匯出範本）\n", devTabsLabel[*gameServer != "none"])
 		if studios {
 			fmt.Println("  用 Godot 編輯器打開專案根目錄修改遊戲")
 		} else {
 			fmt.Println("  用 Godot 編輯器打開 game/ 修改遊戲")
 		}
 	} else {
-		fmt.Println("  pt dev        # 本機模擬模式，打開兩個玩家分頁")
+		fmt.Printf("  pt dev        # 本機模擬模式，打開%s\n", devTabsLabel[*gameServer != "none"])
 	}
 	fmt.Println("  make verify   # 啟動驗證：伺服器測試、檢查要上傳的檔案、在模擬模式實際啟動一次（make 列出所有指令）")
 	fmt.Println("接上玩聚的步驟見 README.md。")
@@ -395,6 +395,7 @@ func cmdNew(args []string) error {
 var (
 	orientationLabel = map[string]string{"portrait": "直式", "landscape": "橫式", "any": "直式橫式都支援"}
 	aiModeLabel      = map[string]string{"lightweight": "輕量", "standard": "標準", "studio": "工作室", "custom": "自訂"}
+	devTabsLabel     = map[bool]string{true: "兩個玩家分頁", false: "一個玩家分頁"}
 	gameServerLabel  = map[string]string{"playtogether-managed": "多人（玩聚範本伺服器）", "external": "多人（自己的遊戲伺服器）", "none": "不需要遊戲伺服器"}
 )
 
@@ -659,7 +660,7 @@ func (p *project) save() error {
 func cmdDev(args []string) error {
 	fs := flag.NewFlagSet("dev", flag.ExitOnError)
 	addr := fs.String("addr", "", "本機位址（預設 playtogether.json 的 devAddr）")
-	players := fs.Int("players", 2, "要打開幾個玩家分頁（0 表示不開瀏覽器）")
+	players := fs.Int("players", -1, "要打開幾個玩家分頁（預設：多人專案 2、單人專案 1；0 表示不開瀏覽器）")
 	smoke := fs.Bool("smoke", false, "啟動驗證：啟動遊戲伺服器、確認首頁與 SDK 載入得到，然後結束（不開瀏覽器）")
 	_ = fs.Parse(args)
 	p, err := findProject()
@@ -669,6 +670,7 @@ func cmdDev(args []string) error {
 	if p == nil {
 		return errors.New("找不到 playtogether.json：請在用 pt new 建立的專案裡執行")
 	}
+	*players = devPlayers(p, *players)
 	if *addr == "" && *smoke {
 		// 啟動驗證用隨機的空埠，不和正在跑的 pt dev 搶
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -967,7 +969,7 @@ func isLocal(host string) bool {
 
 func cmdCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	local := fs.Bool("local", false, "本機開發：platform、serverUrl 還沒填只提醒，不算錯誤（上傳前仍要填）")
+	local := fs.Bool("local", false, "本機開發：platform、serverUrl（宣告的遊戲伺服器架構需要時）還沒填只提醒，不算錯誤（上傳前仍要填）")
 	_ = fs.Parse(reorder(args))
 	p, err := findProject()
 	if err != nil {

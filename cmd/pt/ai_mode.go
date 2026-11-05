@@ -199,3 +199,14 @@ func checkGameServer(p *project, add func(level, format string, a ...any)) bool 
 	}
 	return true
 }
+
+// devPlayers：pt dev 預設開幾個玩家分頁。沒有明確指定（-players 小於 0）時，多人專案 2 個、單人專案 1 個；明確指定的值一律照用。
+func devPlayers(p *project, flagValue int) int {
+	if flagValue >= 0 {
+		return flagValue
+	}
+	if p.multiplayerEnabled() {
+		return 2
+	}
+	return 1
+}

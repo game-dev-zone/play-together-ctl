@@ -11,7 +11,7 @@
 | `[[.GodotPath]]` | Godot 4 專案（[[if eq .GodotDir "."]]專案根目錄；[[end]]`project.godot`、網頁匯出設定 `export_presets.cfg`、玩聚外掛 `addons/playtogether`、中文字型 `fonts/`、平台與伺服器網址 `config.gd`） |
 | `build/` | `pt build` 匯出的網頁版，上傳的就是它（不進版控） |
 [[- else]]
-| `web/` | 遊戲畫面（HTML／JS），上傳的就是這個資料夾；`config.js` 放平台與遊戲伺服器網址 |
+| `web/` | 遊戲畫面（HTML／JS），上傳的就是這個資料夾；`config.js` 放平台[[if ne .GameServer "none"]]與遊戲伺服器[[end]]網址 |
 [[- end]]
 | `server/` | [[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else if eq .GameServer "external"]]範本遊戲伺服器（**整合參考與本機模擬，不是你的正式遊戲伺服器**）[[else]]範本遊戲伺服器（**本機模擬與參考，正式遊玩不需要**）[[end]]（[[if eq .Server "go"]]Go[[else]]Node.js[[end]]）：兌換啟動碼、判定分數與勝負、回報一局。`[[if eq .Server "go"]]session.go[[else]]session.mjs[[end]]` 是斷線重連骨架（座位、token、離線、向玩聚查房間）：換玩法時改 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]` 的遊戲物件（`view`、`canFree`、`leave`、`abort`），不要拿掉骨架；`view` 只能放這位玩家看得到的資料 |
 | `playtogether.json` | `pt` 的專案設定 |
@@ -22,7 +22,7 @@
 
 | 指令 | 用途 |
 | --- | --- |
-| `pt dev` | 本機模擬模式（不需要金鑰、不連玩聚），打開兩個玩家分頁[[if eq .Client "godot"]]；會先匯出 Godot 網頁版[[end]] |
+| `pt dev` | 本機模擬模式（不需要金鑰、不連玩聚），打開[[if .Multiplayer]]兩個玩家分頁[[else]]一個玩家分頁[[end]]（`-players` 可以改）[[if eq .Client "godot"]]；會先匯出 Godot 網頁版[[end]] |
 [[- if eq .Client "godot"]]
 | `pt build` | 用 Godot 無頭模式匯出網頁版到 `build/` |
 [[- end]]
@@ -47,7 +47,7 @@
 4. **畫面端回報的資料不得用於玩家權益**（排名、獎勵、解鎖）。
 5. **有遊戲伺服器時，每一局要回報**：開始與結束時由遊戲伺服器呼叫回報一局（`reportRoundStart`／`reportRoundEnd`），平台用它統計成效。
 6. **語音由平台處理**：遊戲不得使用麥克風、相機、WebRTC；發言規則由遊戲伺服器送給平台。
-7. **私鑰只在遊戲伺服器**：不得出現在畫面端、版控或上傳的檔案裡。
+7. **私鑰不得外流**：[[if eq .GameServer "none"]]上傳金鑰的私鑰只在你的電腦（`keys/`）[[else]]遊戲伺服器金鑰的私鑰只在遊戲伺服器，上傳金鑰的私鑰只在你的電腦（`keys/`）[[end]]；不得出現在畫面端、版控或上傳的檔案裡。
 8. **不得用第三方服務直接替換玩聚平台 API**（房間、玩家身分、語音、回報一局等），除非開發者明確要求且平台允許。
 9. **發佈只走玩聚流程**：`pt check`、`pt upload` 與玩聚審核；不得加入和玩聚衝突的匯出、發佈、發行流程。
 

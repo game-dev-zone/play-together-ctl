@@ -100,10 +100,11 @@ func usage() {
                                                 AI 開發模式；-y、非互動與 CI 沒指定時用 lightweight（不下載）
          [-skills none|core|full] [-ai studios] 自訂（-mode custom）：遊戲開發 skill、Claude Code Game Studios
          [-y]                                   不詢問，沒指定的項目用預設值
-  pt dev [-addr 127.0.0.1:8090]                本機模擬模式：啟動遊戲伺服器、打開兩個玩家分頁
+  pt dev [-addr 127.0.0.1:8090]                本機模擬模式：啟動參考伺服器並開啟玩家分頁
+         [-players N]                           玩家分頁數（預設：多人專案 2、單人專案 1）
          [-smoke]                               啟動驗證：啟動、確認首頁與 SDK 載入得到後結束（不開瀏覽器）
   pt build                                      Godot 專案：用 Godot 無頭模式匯出網頁版到 build/
-  pt check [-local] [建置資料夾]                上傳前檢查（對照審核準則）；-local：platform、serverUrl 還沒填不算錯誤
+  pt check [-local] [建置資料夾]                上傳前檢查（對照審核準則）；-local：platform、serverUrl（需要時）還沒填不算錯誤
   pt keygen -purpose upload|server [-out 檔案]   產生金鑰；在專案裡預設寫到 keys/<用途>.key
   pt upload -version <版本> [-notes …]          上傳版本；在專案裡其他設定（含畫面方向、CDN 申報）從 playtogether.json 讀
   pt cdn add <網址>                             從 jsDelivr／cdnjs 載入固定版本的程式或樣式：算出 SRI、記到 playtogether.json、印出要貼的標籤
