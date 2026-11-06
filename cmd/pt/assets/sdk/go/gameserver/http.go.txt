@@ -175,10 +175,11 @@ func (s *Server) clientIP(r *http.Request) string {
 	return host
 }
 
-// fromProxy：反向代理通常在同一台（loopback）或內部網路（私有位址）。
+// fromProxy：反向代理通常在同一台（loopback）、內部網路（私有位址），或是雲端平台的內部位址
+// （Cloud Run 等用鏈路本地位址 169.254.0.0/16、fe80::/10 轉進來；這種位址無法從外部網路直接連進來）。
 func fromProxy(host string) bool {
 	ip := net.ParseIP(host)
-	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
 }
 
 // cors：上傳到玩聚託管後，前端在 https://<版本>.games.（平台網域），和遊戲伺服器不同來源。

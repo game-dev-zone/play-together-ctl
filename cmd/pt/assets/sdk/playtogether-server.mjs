@@ -1777,7 +1777,7 @@ function createGameServer(opts) {
 	}
 	const fromProxy = (addr) => {
 		const a = addr.replace(/^::ffff:/, "");
-		return a === "::1" || /^127\./.test(a) || /^10\./.test(a) || /^192\.168\./.test(a) || /^172\.(1[6-9]|2\d|3[01])\./.test(a) || /^f[cd][0-9a-f]{2}:/i.test(a);
+		return a === "::1" || /^127\./.test(a) || /^10\./.test(a) || /^192\.168\./.test(a) || /^169\.254\./.test(a) || /^fe[89ab][0-9a-f]:/i.test(a) || /^172\.(1[6-9]|2\d|3[01])\./.test(a) || /^f[cd][0-9a-f]{2}:/i.test(a);
 	};
 	const clientIP = (req) => {
 		const remote = req.socket.remoteAddress || "";

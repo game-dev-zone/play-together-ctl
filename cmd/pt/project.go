@@ -609,6 +609,7 @@ func sdkFiles(client, server, godotDir string) (map[string][]byte, error) {
 		return nil, fmt.Errorf("不認得的畫面類型 %q", client)
 	}
 	switch server {
+	case "none": // pt init 接入的既有專案：伺服器由開發者自己管理
 	case "go":
 		if err := fs2Walk("assets/sdk/go", func(rel string, content []byte) error {
 			out["server/third_party/playtogether-sdk-go/"+strings.TrimSuffix(rel, ".txt")] = content
@@ -688,6 +689,9 @@ func cmdSDK(args []string) error {
 	}
 	if p == nil {
 		return errors.New("找不到 playtogether.json：請在用 pt new 建立的專案裡執行")
+	}
+	if p.existing() {
+		return errors.New(existingSDKNote)
 	}
 	if err := requireAssets(); err != nil {
 		return err
@@ -814,6 +818,8 @@ func cmdDev(args []string) error {
 		}
 	case "node":
 		cmd = exec.Command("node", "main.mjs")
+	case "none":
+		return fmt.Errorf("這個專案的遊戲伺服器由你自己管理：先啟動你的伺服器與前端，再用 pt dev -no-server -site <你的遊戲網址>（本機假平台會印出伺服器要設定的環境變數）")
 	default:
 		return fmt.Errorf("pt dev 只支援 go、node 伺服器（目前是 %q）", p.Server)
 	}

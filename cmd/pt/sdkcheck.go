@@ -153,7 +153,9 @@ func sdkStatus(p *project, online bool) string {
 			ptOld = true
 		}
 	}
-	if p != nil {
+	if p != nil && p.existing() {
+		b.WriteString(existingSDKNote + "\n")
+	} else if p != nil {
 		if msg := sdkNotice(p); msg != "" {
 			b.WriteString("！" + msg + "\n")
 		} else if mod, err := modifiedSDKFiles(p); err == nil && len(mod) > 0 {
