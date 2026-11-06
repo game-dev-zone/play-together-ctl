@@ -189,7 +189,7 @@ func cmdVerifyServer(args []string) error {
 		defer os.RemoveAll(tmp)
 	}
 	cmd.Dir = p.path("server")
-	cmd.Env = append(os.Environ(), "ADDR="+addr, "WEB_DIR="+p.path(p.Web), "ROOM_SYNC="+verifyRoomSync.String(), "SEAT_HOLD=30s",
+	cmd.Env = append(os.Environ(), "ADDR="+addr, "WEB_DIR="+p.path(p.Web), "ROOM_SYNC="+verifyRoomSync.String(), "STATUS_SYNC="+verifyRoomSync.String(), "SEAT_HOLD=30s",
 		"TRUST_PROXY=1", "ALLOW_ORIGINS=https://*.games.verify.test")
 	cmd.Env = append(cmd.Env, devServerEnv(platform, keyFile)...)
 	var logs lockedBuffer
@@ -491,10 +491,32 @@ func (v *verifier) run(startAction string, roundWait time.Duration) {
 	v.check("members-poll", "定期查房間成員", poll > 0 && poll <= 3*verifyRoomSync.Seconds(),
 		fmt.Sprintf("ROOM_SYNC=%s 時平均間隔 %.1f 秒", verifyRoomSync, poll))
 
-	// 簽章：除了刻意模擬的平台連不到、時鐘偏差，所有呼叫的簽章都要通過
+	// 遊戲被平台停用：停止服務（不結束程式），解除後自動恢復（SDK 0.1.1 起的遊戲伺服器套件）
+	disableSeq := fp.lastSeq()
+	p5 := &verifyPlayer{code: "p5", ip: "10.0.0.5"}
+	v.join(p5)
+	fp.setDisabled(true)
+	stopped := until(wait, func() bool { s, _ := v.action(p5, "state"); return s == 401 })
+	stJoin, eJoin := v.post("/join", "10.0.0.6", []byte(`{"launchCode":"dev-disabled-check"}`))
+	codeJoin, _ := eJoin["error"].(string)
+	stReady := getStatus(v.base + "/readyz")
+	stHealth := getStatus(v.base + "/healthz")
+	fp.setDisabled(false)
+	resumed := until(wait, func() bool { st, _ := v.join(&verifyPlayer{code: "p6", ip: "10.0.0.6"}); return st == 200 })
+	enableSeq := fp.lastSeq()
+	if !fp.calledEndpoint(statusEndpoint) {
+		v.add("disable", "遊戲被停用時停止服務", "skip", "遊戲伺服器沒有查詢遊戲狀態（GET /v1/game/status）：執行 pt sdk update 更新遊戲伺服器套件")
+	} else {
+		v.strict("disable", "遊戲被停用時停止服務：結束房間（舊 token 401）、拒絕加入（503）、/readyz 回 503、/healthz 仍是 200",
+			stopped && stJoin == 503 && codeJoin == "game_disabled" && stReady == 503 && stHealth == 200,
+			fmt.Sprintf("舊 token %s；/join 回 %d %s；/readyz %d；/healthz %d", map[bool]string{true: "已失效", false: "仍有效"}[stopped], stJoin, codeJoin, stReady, stHealth))
+		v.strict("enable", "解除停用後自動恢復服務", resumed, fmt.Sprintf("%s 內新玩家仍加入不了", wait))
+	}
+
+	// 簽章：除了刻意模擬的平台連不到、時鐘偏差、遊戲停用，所有呼叫的簽章都要通過
 	var bad []string
 	for _, c := range fp.callsSince(0) {
-		if (c.Seq > downSeq && c.Seq <= upSeq) || (c.Seq > upSeq && c.Seq <= skewSeq) {
+		if (c.Seq > downSeq && c.Seq <= upSeq) || (c.Seq > upSeq && c.Seq <= skewSeq) || (c.Seq > disableSeq && c.Seq <= enableSeq) {
 			continue
 		}
 		if c.Status == 401 {
@@ -502,6 +524,15 @@ func (v *verifier) run(startAction string, roundWait time.Duration) {
 		}
 	}
 	v.check("signature", "所有請求的簽章都正確", len(bad) == 0, strings.Join(bad, "；"))
+}
+
+func getStatus(u string) int {
+	res, err := http.Get(u)
+	if err != nil {
+		return 0
+	}
+	res.Body.Close()
+	return res.StatusCode
 }
 
 // lastSigHint 在加入就失敗時，把假平台最後一個錯誤的說明印出來（多半是簽章或金鑰）。

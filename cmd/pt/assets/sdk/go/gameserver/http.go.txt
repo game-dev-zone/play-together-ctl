@@ -23,7 +23,15 @@ func (s *Server) Handler(fallback http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", fallback)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		// 不查玩聚：玩聚暫時連不到時遊戲伺服器本身仍然正常
+		// 程式還活著（不查玩聚；停止服務時也是 200，容器不會因此被重啟）
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		// 是否正在服務：遊戲被停用或金鑰被撤銷時 503（給監控用）
+		if reason := s.Stopped(); reason != "" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "stopped", "reason": reason})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("POST /join", s.handleJoin)
@@ -45,6 +53,12 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	out, err := s.join(r.Context(), in.LaunchCode)
 	var apiErr *playtogether.APIError
 	switch {
+	case errors.Is(err, errStopped):
+		reason := s.Stopped()
+		if reason == "" {
+			reason = "game_disabled"
+		}
+		writeError(w, http.StatusServiceUnavailable, reason)
 	case errors.Is(err, errInternal):
 		writeError(w, http.StatusInternalServerError, "internal")
 	case errors.As(err, &apiErr) && apiErr.Status < 500 && apiErr.Status != http.StatusTooManyRequests:

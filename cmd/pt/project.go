@@ -1103,8 +1103,8 @@ func checkProject(p *project, webDir string) []finding {
 			add(levelHard, "遊戲伺服器要用 https:// 或 wss://（目前是 %s）", p.ServerURL)
 		}
 	}
-	// 入門範本的 web/config.js：要和 playtogether.json 一致
-	if raw, err := os.ReadFile(filepath.Join(webDir, "config.js")); err == nil {
+	// 入門範本的 web/config.js：要和 playtogether.json 一致（pt init 接入的既有專案有自己的 config.js 格式，不檢查）
+	if raw, err := os.ReadFile(filepath.Join(webDir, "config.js")); err == nil && !p.existing() {
 		cfg := string(raw)
 		if p.ServerURL != "" && !strings.Contains(cfg, strings.TrimRight(p.ServerURL, "/")) {
 			add(levelBuild, "web/config.js 的 serverUrl 不是 %s：上傳後前端會找不到遊戲伺服器", p.ServerURL)

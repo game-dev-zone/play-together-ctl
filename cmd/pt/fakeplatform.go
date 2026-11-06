@@ -59,21 +59,22 @@ var fakeSigHints = map[string]string{
 }
 
 type fakePlatform struct {
-	mu      sync.Mutex
-	pub     ed25519.PublicKey
-	nonces  map[string]time.Time
-	skew    time.Duration // 模擬平台時鐘和遊戲伺服器的差距
-	down    bool          // 模擬平台暫時連不到：遊戲伺服器的 API 回 503
-	rooms   map[string]*fakeRoom
-	room    *fakeRoom // 目前的房間
-	players map[string]*fakePlayer
-	order   []string // 玩家代號，依加入順序
-	codes   map[string]*fakeCode
-	rounds  map[string]*fakeRound
-	calls   []fakeCall
-	seq     int
-	polls   map[string][]time.Time // 房號 → 最近幾次查成員的時間
-	now     func() time.Time
+	mu       sync.Mutex
+	pub      ed25519.PublicKey
+	nonces   map[string]time.Time
+	skew     time.Duration // 模擬平台時鐘和遊戲伺服器的差距
+	down     bool          // 模擬平台暫時連不到：遊戲伺服器的 API 回 503
+	disabled bool          // 模擬遊戲被平台停用：GET /v1/game/status 回 serving:false，其他 API 和真的平台一樣回 401 unknown_key
+	rooms    map[string]*fakeRoom
+	room     *fakeRoom // 目前的房間
+	players  map[string]*fakePlayer
+	order    []string // 玩家代號，依加入順序
+	codes    map[string]*fakeCode
+	rounds   map[string]*fakeRound
+	calls    []fakeCall
+	seq      int
+	polls    map[string][]time.Time // 房號 → 最近幾次查成員的時間
+	now      func() time.Time
 }
 
 type fakeRoom struct {
@@ -221,6 +222,43 @@ func (f *fakePlatform) openNewRoom() {
 	f.mu.Unlock()
 }
 
+// calledEndpoint：遊戲伺服器有沒有呼叫過這個 API（判斷遊戲伺服器套件的版本）。
+func (f *fakePlatform) calledEndpoint(endpoint string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range f.calls {
+		if c.Endpoint == endpoint {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *fakePlatform) setDisabled(disabled bool) {
+	f.mu.Lock()
+	f.disabled = disabled
+	f.mu.Unlock()
+}
+
+const statusEndpoint = "查遊戲狀態"
+
+// gameStatus：遊戲伺服器定期查詢遊戲狀態。停用時仍驗證得過、回 serving:false（和真的平台一樣）。
+func (f *fakePlatform) gameStatus(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.verifyLocked(w, r, statusEndpoint); !ok {
+		return
+	}
+	out := map[string]any{"gameId": "dev-game", "status": "draft", "serving": true, "reason": "", "maintenance": map[string]any{"game": false, "site": ""}}
+	result := "服務中"
+	if f.disabled {
+		out["status"], out["serving"], out["reason"] = "disabled", false, "game_disabled"
+		result = "已停用（serving: false）"
+	}
+	f.logLocked(statusEndpoint, 200, result, true)
+	f.write(w, 200, out)
+}
+
 func (f *fakePlatform) setDown(down bool) {
 	f.mu.Lock()
 	f.down = down
@@ -241,6 +279,7 @@ func (f *fakePlatform) handler(panel http.Handler) http.Handler {
 	mux.HandleFunc("GET /v1/game/rooms/{id}/members", f.members)
 	mux.HandleFunc("POST /v1/game/rounds", f.roundReport)
 	mux.HandleFunc("POST /v1/voice/policy", f.voicePolicy)
+	mux.HandleFunc("GET /v1/game/status", f.gameStatus)
 	mux.HandleFunc("GET /dev/launch-code", f.launchCode)
 	mux.HandleFunc("OPTIONS /dev/launch-code", f.launchCode)
 	if panel != nil {
@@ -285,6 +324,12 @@ func (f *fakePlatform) verifyLocked(w http.ResponseWriter, r *http.Request, endp
 		}
 		f.logLocked(endpoint, 401, code, false)
 		f.write(w, 401, map[string]string{"error": code})
+		return nil, false
+	}
+	if f.disabled && endpoint != statusEndpoint {
+		// 真的平台：停用遊戲的金鑰在其他 API 都無效
+		f.logLocked(endpoint, 401, "unknown_key（遊戲已停用）", false)
+		f.write(w, 401, map[string]string{"error": "unknown_key"})
 		return nil, false
 	}
 	return body, true
@@ -507,6 +552,13 @@ func (f *fakePlatform) launchCode(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(204)
 		return
 	}
+	f.mu.Lock()
+	disabled := f.disabled
+	f.mu.Unlock()
+	if disabled { // 停用的遊戲：平台不發啟動碼
+		f.write(w, 403, map[string]string{"error": "game_disabled"})
+		return
+	}
 	code, p, roomID, err := f.issue(r.URL.Query().Get("player"))
 	f.mu.Lock()
 	if err != nil {
@@ -550,6 +602,7 @@ type fakeState struct {
 		Kicked bool   `json:"kicked"`
 	} `json:"players"`
 	Down        bool       `json:"down"`
+	Disabled    bool       `json:"disabled"`
 	SkewSeconds int        `json:"skewSeconds"`
 	PollSeconds float64    `json:"pollSeconds"` // 最近幾次查成員的平均間隔；0 表示還沒有
 	Calls       []fakeCall `json:"calls"`
@@ -571,7 +624,7 @@ func (f *fakePlatform) state(after int) fakeState {
 			Kicked bool   `json:"kicked"`
 		}{code, p.ID, p.Name, f.room.Host == code, f.room.Joined[code], f.room.Kicked[code]})
 	}
-	s.Down, s.SkewSeconds = f.down, int(f.skew.Seconds())
+	s.Down, s.Disabled, s.SkewSeconds = f.down, f.disabled, int(f.skew.Seconds())
 	if ps := f.polls[f.room.ID]; len(ps) >= 2 {
 		s.PollSeconds = ps[len(ps)-1].Sub(ps[0]).Seconds() / float64(len(ps)-1)
 	}

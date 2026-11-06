@@ -1512,6 +1512,7 @@ function createGameServer(opts) {
 	const seatHold = positive(opts.seatHoldMs, 0) || envDuration("SEAT_HOLD", 6e4, log);
 	const roomSync = positive(opts.roomSyncMs, 0) || envDuration("ROOM_SYNC", 1e4, log);
 	const tickMs = positive(opts.tickMs, 200);
+	const statusSync = positive(opts.statusSyncMs, 0) || envDuration("STATUS_SYNC", 6e4, log);
 	const allowed = opts.allowOrigins ?? (process.env.ALLOW_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
 	const trustProxy = positive(opts.trustProxy, 0) || positive(Number.parseInt(process.env.TRUST_PROXY || "0", 10), 0);
 	const maxBody = positive(opts.maxBody, 1024);
@@ -1524,6 +1525,7 @@ function createGameServer(opts) {
 	const tokens = /* @__PURE__ */ new Map();
 	let syncFailingSince = 0;
 	let seatSeq = 0;
+	let stopReason = "";
 	const queue = [];
 	let sending = false;
 	let stopped = false;
@@ -1637,6 +1639,7 @@ function createGameServer(opts) {
 		}
 	}
 	async function join(code) {
+		if (stopReason) throw new HttpError(503, stopReason);
 		if (syncFailingSince && now() - syncFailingSince > STALE_SYNCS * roomSync) throw new HttpError(503, "platform_unavailable");
 		let ex;
 		try {
@@ -1646,6 +1649,7 @@ function createGameServer(opts) {
 			log("兌換啟動碼失敗：", e.message);
 			throw new HttpError(502, "unavailable");
 		}
+		if (stopReason) throw new HttpError(503, stopReason);
 		let room = rooms.get(ex.roomId);
 		if (room && ex.epoch < room.epoch) throw new HttpError(409, "stale_epoch");
 		let newRoom = false;
@@ -1769,6 +1773,27 @@ function createGameServer(opts) {
 		if (!failed) syncFailingSince = 0;
 		else if (!syncFailingSince) syncFailingSince = now();
 	}
+	function stopServing(reason) {
+		if (stopReason === reason) return;
+		stopReason = reason;
+		const n = rooms.size;
+		for (const room of [...rooms.values()]) endRoom(room);
+		log(`停止服務（${reason}）：結束 ${n} 個房間，拒絕新加入；/readyz 回 503。玩聚恢復這款遊戲後會自動恢復`);
+	}
+	async function checkStatus() {
+		if (!pt.getGameStatus) return;
+		try {
+			const st = await pt.getGameStatus();
+			if (!st.serving) stopServing(st.reason || "game_disabled");
+			else if (stopReason) {
+				log(`恢復服務（之前：${stopReason}）`);
+				stopReason = "";
+			}
+		} catch (e) {
+			if (e instanceof PlatformApiError && e.status === 401 && e.code === "unknown_key") stopServing("key_revoked");
+			else log("查詢遊戲狀態失敗（下次再試，不影響服務）：", e.message);
+		}
+	}
 	function tick() {
 		for (const room of [...rooms.values()]) {
 			const g = room.game;
@@ -1824,7 +1849,7 @@ function createGameServer(opts) {
 	const send = (res, status, body, extra = {}) => sendRaw(res, status, JSON.stringify(body), extra);
 	async function handle(req, res) {
 		const path = (req.url || "/").split("?")[0];
-		const api = path === "/join" || path === "/action" || path === "/healthz";
+		const api = path === "/join" || path === "/action" || path === "/healthz" || path === "/readyz";
 		const origin = req.headers.origin;
 		res.setHeader("Vary", "Origin");
 		if (origin && originAllowed(allowed, origin)) {
@@ -1843,7 +1868,15 @@ function createGameServer(opts) {
 			send(res, 200, { status: "ok" });
 			return true;
 		}
-		if (req.method !== "POST" || path === "/healthz") {
+		if (req.method === "GET" && path === "/readyz") {
+			if (stopReason) send(res, 503, {
+				status: "stopped",
+				reason: stopReason
+			});
+			else send(res, 200, { status: "ok" });
+			return true;
+		}
+		if (req.method !== "POST" || path === "/healthz" || path === "/readyz") {
 			send(res, 405, { error: "method_not_allowed" });
 			return true;
 		}
@@ -1885,6 +1918,20 @@ function createGameServer(opts) {
 	return {
 		handle,
 		start() {
+			if (pt.getGameStatus) {
+				let checking = false;
+				const run = async () => {
+					if (checking) return;
+					checking = true;
+					try {
+						await checkStatus();
+					} finally {
+						checking = false;
+					}
+				};
+				run();
+				timers.push(setInterval(run, statusSync));
+			}
 			timers.push(setInterval(sweep, 1e3));
 			timers.push(setInterval(tick, tickMs));
 			timers.push(setInterval(async () => {
@@ -1922,10 +1969,13 @@ function createGameServer(opts) {
 				}
 			}).listen(port, host);
 		},
+		stopped: () => stopReason,
 		internal: {
 			sweep,
 			syncRooms,
 			tick,
+			checkStatus,
+			stopServing,
 			rooms
 		}
 	};
@@ -2098,6 +2148,11 @@ function createServerClient(options) {
 				result
 			}, `round:${roomId}:${roundId}:end`);
 		},
+		async getGameStatus() {
+			const json = await request("GET", "/v1/game/status");
+			if (!json || typeof json.serving !== "boolean") throw new PlatformApiError(502, "bad_response");
+			return json;
+		},
 		/** 送出發言規則；同一房間同一序號重送不會重複執行 */
 		async voicePolicy(policy) {
 			const checked = voicePolicySchema.parse(policy);
@@ -2128,6 +2183,18 @@ function mockClient() {
 				epoch: 0,
 				hostPlayerId: "",
 				members: []
+			};
+		},
+		async getGameStatus() {
+			return {
+				gameId: "mock-game",
+				status: "live",
+				serving: true,
+				reason: "",
+				maintenance: {
+					game: false,
+					site: ""
+				}
 			};
 		},
 		async reportRoundStart() {},

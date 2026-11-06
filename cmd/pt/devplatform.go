@@ -89,6 +89,10 @@ func (d *devPanel) control(action, player string) error {
 		f.mu.Lock()
 		f.down = !f.down
 		f.mu.Unlock()
+	case "disable":
+		f.mu.Lock()
+		f.disabled = !f.disabled
+		f.mu.Unlock()
 	case "skew":
 		f.mu.Lock()
 		if f.skew == 0 {

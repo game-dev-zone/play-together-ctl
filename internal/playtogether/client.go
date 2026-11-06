@@ -270,3 +270,30 @@ func (c *Client) ReportRoundEnd(ctx context.Context, roomID string, epoch int, r
 	body := map[string]any{"roomId": roomID, "epoch": epoch, "roundId": roundID, "phase": "end", "result": result}
 	return c.post(ctx, "/v1/game/rounds", body, "round:"+roomID+":"+roundID+":end", nil)
 }
+
+// GameStatus 是遊戲在玩聚上的狀態（GET /v1/game/status）。
+type GameStatus struct {
+	GameID string `json:"gameId"`
+	// Status：draft、live、unlisted、disabled
+	Status string `json:"status"`
+	// Serving 為 false 時遊戲伺服器應停止服務（遊戲被停用）；Reason 是原因代碼（game_disabled）
+	Serving     bool   `json:"serving"`
+	Reason      string `json:"reason"`
+	Maintenance struct {
+		Game bool   `json:"game"` // 單一遊戲維護中（平台不讓新玩家進房，已在房間的照常）
+		Site string `json:"site"` // 全站維護：""、no_new_rooms、site_down
+	} `json:"maintenance"`
+}
+
+// GetGameStatus 查詢遊戲狀態。遊戲被停用時仍可呼叫（回 Serving=false）；金鑰撤銷時回 401 unknown_key。
+// 建議每分鐘查一次（gameserver 套件會自動查）。
+func (c *Client) GetGameStatus(ctx context.Context) (*GameStatus, error) {
+	if c.Mock {
+		return &GameStatus{Status: "live", Serving: true}, nil
+	}
+	var out GameStatus
+	if err := c.do(ctx, http.MethodGet, "/v1/game/status", nil, "", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

@@ -48,6 +48,8 @@ func TestInitExistingProject(t *testing.T) {
 		}
 	}
 
+	// 自己的 config.js 不套用範本的檢查
+	must(t, os.WriteFile(filepath.Join(dir, "dist", "config.js"), []byte("window.MY_CONFIG = { server: '' };"), 0o644))
 	// 宣告與檔案檢查可以通過（store 還沒填只是說明）
 	if err := cmdCheck([]string{"-local"}); err != nil {
 		t.Fatalf("pt check -local：%v", err)

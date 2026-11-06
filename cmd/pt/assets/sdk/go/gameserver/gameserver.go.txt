@@ -49,6 +49,12 @@ type Game interface {
 	Close()
 }
 
+// StatusPlatform 是選用介面：Platform 也實作它時（*playtogether.Client 有），套件每 StatusSync 查一次遊戲狀態，
+// 遊戲被停用或金鑰被撤銷時停止服務（docs：遊戲伺服器「停用時停止服務」）。
+type StatusPlatform interface {
+	GetGameStatus(ctx context.Context) (*playtogether.GameStatus, error)
+}
+
 // Ticker 是選用介面：Game 實作了就每 Config.TickInterval 對每個房間呼叫一次（例如時間到結束一局）。
 type Ticker interface {
 	Tick(r *Room)
@@ -77,6 +83,7 @@ type Config struct {
 	SeatHold     time.Duration // 離線多久讓出座位；0 → 環境變數 SEAT_HOLD → 60s
 	RoomSync     time.Duration // 多久向玩聚查一次房間；0 → ROOM_SYNC → 10s
 	TickInterval time.Duration // Ticker 的間隔；0 → 200ms
+	StatusSync   time.Duration // 多久查一次遊戲狀態；0 → 環境變數 STATUS_SYNC → 60s
 	AllowOrigins []string      // 允許跨來源的網址（支援 https://*.games.example.com）；nil → ALLOW_ORIGINS（逗號分隔）
 	TrustProxy   int           // 信任幾層反向代理的 X-Forwarded-For；0 → 環境變數 TRUST_PROXY → 0（不信任）
 	MaxBody      int64         // 每個請求內容的上限（位元組），超過回 413；0 → 1024
@@ -98,6 +105,7 @@ var (
 	errPlatformStale = errors.New(codePlatformUnavailable)
 	errSession       = errors.New(codeSessionExpired)
 	errInternal      = errors.New("internal") // 遊戲的 callback panic
+	errStopped       = errors.New("stopped")  // 停止服務中（遊戲被停用或金鑰被撤銷）
 	// ErrRoundActive：這個房間已經有進行中的一局。
 	ErrRoundActive = errors.New("round_active")
 	// ErrNoPlayers：開始一局時沒有玩家。
@@ -204,6 +212,8 @@ type Server struct {
 	// 向玩聚查房間開始失敗的時間；零值表示最近一次成功
 	syncFailingSince time.Time
 	syncing          atomic.Bool // 上一次查房間還沒結束時不重疊
+	// 停止服務（遊戲被停用或金鑰被撤銷）：stopReason 不是空字串時拒絕加入、所有房間已結束；查到恢復後清掉
+	stopReason string
 }
 
 type tokenRef struct{ roomID, playerID string }
@@ -221,6 +231,7 @@ func New(cfg Config) *Server {
 	}
 	cfg.SeatHold = envDuration(cfg.Logf, cfg.SeatHold, "SEAT_HOLD", 60*time.Second)
 	cfg.RoomSync = envDuration(cfg.Logf, cfg.RoomSync, "ROOM_SYNC", 10*time.Second)
+	cfg.StatusSync = envDuration(cfg.Logf, cfg.StatusSync, "STATUS_SYNC", 60*time.Second)
 	if cfg.TickInterval <= 0 {
 		cfg.TickInterval = 200 * time.Millisecond
 	}
@@ -262,7 +273,11 @@ type joined struct {
 func (s *Server) join(ctx context.Context, code string) (out *joined, err error) {
 	s.mu.Lock()
 	stale := !s.syncFailingSince.IsZero() && s.now().Sub(s.syncFailingSince) > staleSyncs*s.cfg.RoomSync
+	stopped := s.stopReason != ""
 	s.mu.Unlock()
+	if stopped {
+		return nil, errStopped
+	}
 	if stale {
 		return nil, errPlatformStale
 	}
@@ -286,6 +301,9 @@ func (s *Server) join(ctx context.Context, code string) (out *joined, err error)
 			out, err = nil, errInternal
 		}
 	}()
+	if s.stopReason != "" { // 兌換期間停止服務了：不建立房間
+		return nil, errStopped
+	}
 	r := s.rooms[ex.RoomID]
 	if r != nil && ex.Epoch < r.epoch {
 		return nil, errStaleEpoch
@@ -481,6 +499,9 @@ func (s *Server) syncRooms(ctx context.Context) {
 // Run 執行背景工作直到 ctx 結束：每秒整理座位、每 RoomSync 查房間、每 TickInterval 呼叫 Tick。
 // 一局的回報由另一個背景工作送出，不受 ctx 影響；結束程式前呼叫 Close 等它送完。
 func (s *Server) Run(ctx context.Context) {
+	if sp, ok := s.cfg.Platform.(StatusPlatform); ok {
+		go s.statusLoop(ctx, sp)
+	}
 	sweep := time.NewTicker(time.Second)
 	sync := time.NewTicker(s.cfg.RoomSync)
 	tick := time.NewTicker(s.cfg.TickInterval)
@@ -507,6 +528,75 @@ func (s *Server) Run(ctx context.Context) {
 			}()
 		}
 	}
+}
+
+// statusLoop 啟動時立即查一次遊戲狀態，之後每 StatusSync 查一次（停止服務後也繼續查，才能自動恢復）。
+func (s *Server) statusLoop(ctx context.Context, sp StatusPlatform) {
+	t := time.NewTicker(s.cfg.StatusSync)
+	defer t.Stop()
+	for {
+		c, cancel := context.WithTimeout(ctx, 10*time.Second)
+		s.checkStatus(c, sp)
+		cancel()
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// checkStatus：只有兩種情況停止服務——平台明確回 serving:false（遊戲被停用），或 401 unknown_key（金鑰撤銷、不存在）。
+// 網路錯誤、5xx、429、時鐘偏差、簽章錯誤、404（平台太舊）都不改變狀態：平台暫時有問題不能讓遊戲停擺。
+func (s *Server) checkStatus(ctx context.Context, sp StatusPlatform) {
+	st, err := sp.GetGameStatus(ctx)
+	var apiErr *playtogether.APIError
+	switch {
+	case errors.As(err, &apiErr) && apiErr.Status == 401 && apiErr.Code == "unknown_key":
+		s.stop("key_revoked")
+	case err != nil:
+		s.cfg.Logf("gameserver: 查詢遊戲狀態失敗（下次再試，不影響服務）：%v", err)
+	case !st.Serving:
+		reason := st.Reason
+		if reason == "" {
+			reason = "game_disabled"
+		}
+		s.stop(reason)
+	default:
+		s.resume()
+	}
+}
+
+// stop 停止服務：拒絕加入、結束所有房間（進行中的一局回報中止）。程式繼續執行，查到恢復時自動回來。
+func (s *Server) stop(reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopReason == reason {
+		return
+	}
+	s.stopReason = reason
+	n := len(s.rooms)
+	for _, r := range s.rooms {
+		s.endRoom(r)
+	}
+	s.cfg.Logf("gameserver: 停止服務（%s）：結束 %d 個房間，拒絕新加入；/readyz 回 503。玩聚恢復這款遊戲（或換上新金鑰並重新啟動）後會自動恢復", reason, n)
+}
+
+func (s *Server) resume() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopReason == "" {
+		return
+	}
+	s.cfg.Logf("gameserver: 恢復服務（之前：%s）", s.stopReason)
+	s.stopReason = ""
+}
+
+// Stopped 回傳停止服務的原因（game_disabled、key_revoked）；正常服務時是空字串。
+func (s *Server) Stopped() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stopReason
 }
 
 // Close 等待還沒送出的一局回報（最多到 ctx 的期限），然後停止回報的背景工作。通常在 Run 的 ctx 結束後呼叫。

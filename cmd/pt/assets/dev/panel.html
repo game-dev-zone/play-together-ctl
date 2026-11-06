@@ -58,6 +58,7 @@
       <div class="row" style="margin-bottom:8px">
         <button id="down" data-act="down" title="平台 API 回 503：遊戲伺服器應該讓已在房間的人繼續玩、一段時間後拒絕新加入">平台連不到</button>
         <button id="skew" data-act="skew" title="平台時鐘快 6 分鐘：所有簽章會被拒絕（clock_skew）">時鐘偏差 6 分鐘</button>
+        <button id="disable" data-act="disable" class="danger" title="平台停用這款遊戲：遊戲伺服器查到後應停止服務（結束房間、拒絕加入、/readyz 回 503），解除後自動恢復">停用遊戲</button>
       </div>
       <div id="health"></div>
     </section>
@@ -117,6 +118,8 @@
     $('room').textContent = `房號 ${s.room.id}・第 ${s.room.epoch} 局・${s.room.open ? '開放中' : '已關閉'}`;
     $('down').classList.toggle('on', s.down);
     $('down').textContent = s.down ? '平台連不到（點一下恢復）' : '平台連不到';
+    $('disable').classList.toggle('on', s.disabled);
+    $('disable').textContent = s.disabled ? '遊戲已停用（點一下解除）' : '停用遊戲';
     $('skew').classList.toggle('on', s.skewSeconds !== 0);
     $('skew').textContent = s.skewSeconds !== 0 ? '時鐘偏差 6 分鐘（點一下恢復）' : '時鐘偏差 6 分鐘';
 
