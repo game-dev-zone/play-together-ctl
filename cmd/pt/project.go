@@ -1093,7 +1093,9 @@ func checkProject(p *project, webDir string) []finding {
 	checkPolicy(p, add)
 	checkStore(p, add)
 	if checkGameServer(p, add) {
-		if p.ServerURL == "" {
+		if p.ServerURL == "" && p.hostedServer() {
+			// 玩聚代管：每個房間的伺服器網址由 SDK 握手提供（launch.serverUrl），不用填
+		} else if p.ServerURL == "" {
 			msg := "playtogether.json 的 serverUrl 還沒填：上傳後遊戲畫面和遊戲伺服器在不同網址，要填遊戲伺服器的對外網址"
 			if p.gameServerMode() == "external" {
 				msg = "playtogether.json 的 serverUrl 還沒填：要填你自己的遊戲伺服器的對外網址"
