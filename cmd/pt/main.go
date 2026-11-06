@@ -81,6 +81,8 @@ func main() {
 		err = cmdContent(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
+	case "store":
+		err = cmdStore(os.Args[2:])
 	case "login":
 		err = cmdLogin(os.Args[2:])
 	case "register":
@@ -134,10 +136,19 @@ func usage() {
   pt upload -version <版本> [-notes …]          上傳版本與上架資料（store/）；在專案裡其他設定（含畫面方向、CDN 申報、宣告）從 playtogether.json 讀
          [-no-listing] [-listing-only]          只上傳版本／只上傳上架資料
   pt status                                     版本與上架資料的審核狀態、退件原因、正式分級
+  pt store screenshot                           用本機 Chrome／Chromium 無頭模式擷取實際遊戲畫面，存成上架截圖（store/screenshots/）：
+                                                依畫面方向模擬手機（直式 360×640、橫式 640×360 CSS px），輸出剛好 1080×1920／1920×1080；
+                                                檔名接在既有截圖後面（不覆寫）；全黑或全白的不存檔。先啟動遊戲（例如 pt dev -mock）
+         [-url 網址] [-wait 5s]                 遊戲網址（預設 http://<devAddr>/；用 pt dev 時傳它印出的玩家分頁網址）、載入後等多久
+         [-n 張數] [-interval 3s]               擷取多張：每張重新載入，第 i 張多等 (i-1)×interval
+         [-locale en] [-o 資料夾] [-replace]    英文介面專用（store/screenshots/en/）、輸出資料夾、從 01 開始覆寫
+         [-orientation portrait|landscape] [-chrome 路徑]
+                                                畫面方向（預設依 playtogether.json；any 時直式）、Chrome 執行檔（或 PT_CHROME）
   pt login [-api 平台網址] [-register]          在瀏覽器確認後取得送審授權（30 天）；之後 pt upload 會在檢查通過後直接送審（-no-submit 不送審）
                                                 -register：另外取得建立遊戲與管理金鑰的權限（團隊擁有者、管理者；7 天）
   pt init [-name 代號] [-web 資料夾] [-game-server external|none] [-y]
-                                                把不是 pt new 建立的既有專案接上玩聚（只新增 playtogether.json、宣告文件、store/，不動原本的程式）
+                                                把不是 pt new 建立的既有專案接上玩聚（只新增 playtogether.json、宣告文件、store/、
+                                                準備上架資料的 AI skill，不動原本的程式）；已經接上的專案重跑時只補上缺少的 skill
   pt register [-title 名稱]                     建立草稿遊戲並登記金鑰（沒有私鑰會自動產生），金鑰 ID 寫回 playtogether.json
   pt logout                                     刪除這台電腦上的送審授權
          [-skip-check]                          略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查

@@ -378,6 +378,10 @@ func cmdNew(args []string) error {
 	for k, v := range sdk {
 		files[k] = v
 	}
+	// pt 自己的 skill（準備上架資料等）：所有 AI 模式都放；先放進來，第三方 skill 撞名時會停止
+	if err := addPtSkills(files); err != nil {
+		return err
+	}
 	if studios {
 		// 先下載並驗證完，才開始寫入檔案（失敗時不留下半個專案）
 		fmt.Printf("下載 %s %s（commit %s）並驗證每個檔案…\n", ccgs.Name, ccgs.Version, ccgs.Commit[:7])

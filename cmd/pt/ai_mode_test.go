@@ -96,8 +96,23 @@ func TestNewAIModes(t *testing.T) {
 	}
 
 	// 1. 輕量：只有平台規則與工作流程契約
-	if exists(dir, "m-light", ".claude") || exists(dir, "m-light", ".agents") || exists(dir, "m-light", "docs/ai/CURRENT_TASK.md") {
-		t.Fatal("輕量模式不該有 skill、Studios、CURRENT_TASK")
+	if exists(dir, "m-light", ".claude/rules") || exists(dir, "m-light", "THIRD_PARTY") || exists(dir, "m-light", "docs/ai/CURRENT_TASK.md") {
+		t.Fatal("輕量模式不該有第三方 skill、Studios、CURRENT_TASK")
+	}
+	// 輕量模式也有 pt 自己的上架資料 skill，而且只有它
+	for _, root := range []string{".claude/skills", ".agents/skills"} {
+		entries, _ := os.ReadDir(filepath.Join(dir, "m-light", root))
+		if len(entries) != 1 || entries[0].Name() != "playtogether-store" || !exists(dir, "m-light", root+"/playtogether-store/SKILL.md") {
+			t.Fatalf("輕量模式的 %s 只能有 playtogether-store：%v", root, entries)
+		}
+	}
+	// 所有模式都有 pt 自己的上架資料 skill
+	for _, p := range []string{"m-std-web", "m-std-godot", "m-studio"} {
+		for _, root := range []string{".claude/skills", ".agents/skills"} {
+			if !exists(dir, p, root+"/playtogether-store/SKILL.md") {
+				t.Errorf("%s 少了 %s/playtogether-store", p, root)
+			}
+		}
 	}
 	// 所有模式都有 AI_WORKFLOW 與 PROJECT_CONTEXT
 	for _, p := range []string{"m-light", "m-std-web", "m-std-godot", "m-studio"} {

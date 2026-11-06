@@ -28,7 +28,8 @@ func TestInitExistingProject(t *testing.T) {
 	if p.Name != "my-old-game" || p.Web != "dist" || p.Server != "none" || !p.existing() || p.gameServerMode() != "none" || p.Platform != "https://pt.example" || p.SDKVersion != "" {
 		t.Fatalf("playtogether.json：%+v", p)
 	}
-	for _, f := range []string{"docs/content/CONTENT_PROFILE.md", "docs/content/GAMEPLAY_ECONOMY.md", "store/listing.json"} {
+	for _, f := range []string{"docs/content/CONTENT_PROFILE.md", "docs/content/GAMEPLAY_ECONOMY.md", "store/listing.json",
+		".claude/skills/playtogether-store/SKILL.md", ".agents/skills/playtogether-store/SKILL.md"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Errorf("沒有產生 %s", f)
 		}
@@ -61,9 +62,22 @@ func TestInitExistingProject(t *testing.T) {
 	if s := sdkStatus(p, false); !strings.Contains(s, "pt init") {
 		t.Fatalf("pt sdk status：%s", s)
 	}
-	// 再執行一次：不重複接入
-	if err := cmdInit([]string{"-y"}); err == nil || !strings.Contains(err.Error(), "已經有 playtogether.json") {
-		t.Fatalf("重複執行：%v", err)
+	// 再執行一次：不重新接入，只補上 pt 提供、但缺少的檔案（skill），不覆寫開發者改過的
+	before, _ := os.ReadFile(filepath.Join(dir, projectFile))
+	must(t, os.Remove(filepath.Join(dir, ".agents/skills/playtogether-store/SKILL.md")))
+	must(t, os.WriteFile(filepath.Join(dir, ".claude/skills/playtogether-store/SKILL.md"), []byte("我改過的\n"), 0o644))
+	must(t, cmdInit([]string{"-y"}))
+	if raw, _ := os.ReadFile(filepath.Join(dir, ".agents/skills/playtogether-store/SKILL.md")); !strings.Contains(string(raw), "name: playtogether-store") {
+		t.Fatal("重跑 pt init 要補上缺少的 skill")
+	}
+	if raw, _ := os.ReadFile(filepath.Join(dir, ".claude/skills/playtogether-store/SKILL.md")); string(raw) != "我改過的\n" {
+		t.Fatal("重跑 pt init 不能覆寫開發者改過的 skill")
+	}
+	if after, _ := os.ReadFile(filepath.Join(dir, projectFile)); string(after) != string(before) {
+		t.Fatal("重跑 pt init 不能改 playtogether.json")
+	}
+	if raw, _ := os.ReadFile(filepath.Join(dir, "store", "README.md")); string(raw) != "自己的\n" {
+		t.Fatal("重跑 pt init 不能覆寫 store/README.md")
 	}
 	// 子資料夾也不能再接一次
 	must(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))

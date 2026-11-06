@@ -2,9 +2,10 @@ package main
 
 // pt init：把不是 pt new 建立的既有專案接上玩聚。只新增玩聚需要的設定，不動原本的程式碼：
 //
-//	playtogether.json（template: existing、server: none）、docs/content/ 的宣告文件、store/ 上架資料範本、.gitignore 的 keys/
+//	playtogether.json（template: existing、server: none）、docs/content/ 的宣告文件、store/ 上架資料範本、.gitignore 的 keys/、
+//	pt 自己的 skill（.claude/skills/、.agents/skills/ 的 playtogether-store：請 AI 助手準備上架資料時用）
 //
-// 已經存在的檔案一律不覆寫。既有專案的 SDK 由開發者自己管理（pt sdk export 取得），遊戲伺服器是 external 或 none。
+// 已經存在的檔案一律不覆寫。已經接上玩聚的專案再執行 pt init，只補上 pt 提供、但專案裡缺少的檔案（skill、store/ 的說明）。既有專案的 SDK 由開發者自己管理（pt sdk export 取得），遊戲伺服器是 external 或 none。
 // 之後和新專案一樣：pt login -register → pt register → pt upload。
 
 import (
@@ -75,7 +76,7 @@ func cmdInit(args []string) error {
 		return err
 	}
 	if _, err := os.Stat(filepath.Join(dir, projectFile)); err == nil {
-		return errors.New("這個資料夾已經有 playtogether.json：已經接上玩聚了（要重來請先刪掉它）")
+		return initRefresh(dir)
 	}
 	if p, err := findProject(); err == nil && p != nil {
 		return fmt.Errorf("上層資料夾 %s 已經是玩聚專案：請在那裡執行，或換一個資料夾", p.dir)
@@ -251,21 +252,13 @@ func cmdInit(args []string) error {
 	for f, c := range policyDocs(*name, pl) {
 		files[f] = []byte(c)
 	}
+	if err := addPtSkills(files); err != nil {
+		return err
+	}
 
-	var created, kept []string
-	for rel, content := range files {
-		dst := filepath.Join(dir, filepath.FromSlash(rel))
-		if _, err := os.Stat(dst); err == nil {
-			kept = append(kept, rel)
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(dst, content, 0o644); err != nil {
-			return err
-		}
-		created = append(created, rel)
+	created, kept, err := writeMissing(dir, files)
+	if err != nil {
+		return err
 	}
 	if err := p.save(); err != nil {
 		return err
@@ -277,7 +270,6 @@ func cmdInit(args []string) error {
 		created = append(created, ".gitignore（加上 keys/）")
 	}
 	slices.Sort(created)
-	slices.Sort(kept)
 
 	fmt.Printf("已把 %s 接上玩聚（畫面 %s、上傳 %s/、%s、內容邊界 %s）\n", *name, *client, *web, gameServerLabel[*gameServer], profileLabel[*profile])
 	for _, f := range created {
@@ -288,6 +280,57 @@ func cmdInit(args []string) error {
 	}
 	fmt.Println()
 	initHints(&p, dir)
+	return nil
+}
+
+// writeMissing 寫入專案裡還沒有的檔案；已經存在的不覆寫（回傳清單）。
+func writeMissing(dir string, files map[string][]byte) (created, kept []string, err error) {
+	for rel, content := range files {
+		dst := filepath.Join(dir, filepath.FromSlash(rel))
+		if _, err := os.Stat(dst); err == nil {
+			kept = append(kept, rel)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return created, kept, err
+		}
+		if err := os.WriteFile(dst, content, 0o644); err != nil {
+			return created, kept, err
+		}
+		created = append(created, rel)
+	}
+	slices.Sort(created)
+	slices.Sort(kept)
+	return created, kept, nil
+}
+
+// initRefresh：已經接上玩聚的專案再執行 pt init，補上 pt 提供、但專案裡缺少的檔案（pt 的 skill、store/ 的說明）。
+// 不改 playtogether.json、不覆寫任何已經存在的檔案（開發者改過的 skill 也保留）。
+func initRefresh(dir string) error {
+	files := map[string][]byte{}
+	if err := addPtSkills(files); err != nil {
+		return err
+	}
+	for _, rel := range []string{"README.md", "screenshots/README.md"} {
+		raw, err := embedded.ReadFile("templates/project/store/" + rel)
+		if err != nil {
+			return err
+		}
+		files[path.Join("store", rel)] = raw
+	}
+	created, _, err := writeMissing(dir, files)
+	if err != nil {
+		return err
+	}
+	if len(created) == 0 {
+		fmt.Println("這個資料夾已經接上玩聚（有 playtogether.json），pt 提供的檔案都在，沒有改任何檔案")
+		return nil
+	}
+	fmt.Println("這個資料夾已經接上玩聚（有 playtogether.json）：補上缺少的檔案，其他設定沒有改")
+	for _, f := range created {
+		fmt.Println("  ✓", f)
+	}
+	fmt.Println("\n請 AI 助手（Claude Code、Codex）「幫我準備上架資料」，它會照 .claude/skills/playtogether-store（Codex：.agents/skills/）的步驟做")
 	return nil
 }
 
@@ -339,4 +382,6 @@ func initHints(p *project, dir string) {
 	fmt.Println("  pt login -register       團隊擁有者或管理者：在瀏覽器同意建立遊戲")
 	fmt.Println("  pt register              建立草稿遊戲、登記金鑰（金鑰 ID 寫回 playtogether.json）")
 	fmt.Println("  pt upload -version 1.0.0 上傳版本（先在 store/ 填好上架資料）")
+	fmt.Println()
+	fmt.Println("上架資料可以請 AI 助手（Claude Code、Codex）「幫我準備上架資料」：它會照 .claude/skills/playtogether-store（Codex：.agents/skills/）的步驟起草文字、準備圖示、用 pt store screenshot 擷取截圖。")
 }

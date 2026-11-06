@@ -87,3 +87,42 @@ func addSkillsFiles(files map[string][]byte, m ccgsManifest, got map[string][]by
 		m.Name, m.Repo, m.Version, m.Commit, m.License, strings.Join(names, "、"), level))
 	return names, nil
 }
+
+// ---------- pt 自己的 skill ----------
+//
+// templates/skills/ 是 pt 自己提供的 skill（不是第三方精選）：每個專案都會用到（例如準備上架資料），
+// 所以不分 AI 模式（含 lightweight、-y）都放進 .claude/skills/（Claude Code）與 .agents/skills/（Codex），內容相同。
+// pt new 建立時放入；pt init 接上既有專案時放入，重跑時補上缺少的檔案（已經存在的不覆寫）。
+
+// ptSkillRoots：Claude Code 與 Codex 讀 skill 的位置
+var ptSkillRoots = []string{".claude/skills", ".agents/skills"}
+
+// ptSkillFiles 回傳 pt 自己的 skill 檔案（專案內路徑 → 內容）。
+func ptSkillFiles() (map[string][]byte, error) {
+	files := map[string][]byte{}
+	err := fs2Walk("templates/skills", func(rel string, content []byte) error {
+		for _, root := range ptSkillRoots {
+			files[path.Join(root, rel)] = content
+		}
+		return nil
+	})
+	if err == nil && len(files) == 0 {
+		err = errors.New("這個 pt 沒有內嵌 pt 自己的 skill")
+	}
+	return files, err
+}
+
+// addPtSkills 把 pt 自己的 skill 放進要寫入的檔案；和已有的檔案衝突時停止（不覆寫）。
+func addPtSkills(files map[string][]byte) error {
+	skills, err := ptSkillFiles()
+	if err != nil {
+		return err
+	}
+	for dst, content := range skills {
+		if _, exists := files[dst]; exists {
+			return fmt.Errorf("pt 的 skill %s 和專案裡已有的檔案衝突", dst)
+		}
+		files[dst] = content
+	}
+	return nil
+}

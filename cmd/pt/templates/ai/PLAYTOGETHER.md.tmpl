@@ -112,7 +112,7 @@ Table Game ≠ Real-Money Gambling：牌、骰子、籌碼、Bet／Call／Raise�
 
 ## 上架資料（store/）
 
-名稱、簡介、說明（繁中與英文必填）、圖示、截圖（1–10 張，實際遊戲畫面）放在 `store/`，`pt upload` 會和版本一起上傳，平台自動裁切。託管遊戲第一次上架必須有核准的上架資料。規格見 `store/README.md`；`pt status` 看審核進度。
+名稱、簡介、說明（繁中與英文必填）、圖示、截圖（1–10 張，實際遊戲畫面）放在 `store/`，`pt upload` 會和版本一起上傳，平台自動裁切。託管遊戲第一次上架必須有核准的上架資料。規格見 `store/README.md`；準備上架資料的步驟見 `.claude/skills/playtogether-store/SKILL.md`（Codex：`.agents/skills/`），截圖用 `pt store screenshot`；`pt status` 看審核進度。
 
 ## 需要玩聚平台審核的項目（可以開發與送審，結果由平台決定）
 
@@ -191,7 +191,7 @@ codex exec --skip-git-repo-check -s workspace-write -i art/generated/hero.png "�
 
 ## 第三方遊戲開發 skill
 
-`.claude/skills/`（Claude Code）與 `.agents/skills/`（Codex）是 awesome-gamedev-agent-skills 的精選，內容相同；版本與授權見 `THIRD_PARTY/awesome-gamedev-agent-skills/`。
+`.claude/skills/`（Claude Code）與 `.agents/skills/`（Codex）裡，除了 pt 自己的 `playtogether-store`（準備上架資料），都是 awesome-gamedev-agent-skills 的精選，內容相同；版本與授權見 `THIRD_PARTY/awesome-gamedev-agent-skills/`。
 
 **優先順序**：本文件 → `docs/ai/AI_WORKFLOW.md` 與 `docs/ai/PROJECT_CONTEXT.md` → skill → skill 裡的範例與外部連結。skill 的建議和本文件衝突時，**不採用、也不要折衷**。已知衝突：
 

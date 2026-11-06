@@ -180,12 +180,13 @@ Recommendation:
 
 ## 上架資料（store/）
 
-`store/` 是上架資料：`listing.json`（名稱、簡介、說明、截圖說明、標籤、人數、一局時間、給審核者的說明）、圖示、截圖、選填的封面。`pt upload` 會和版本一起上傳（平台自動裁切）；格式與尺寸見 `store/README.md`。
+開發者請你「準備上架資料」「寫簡介」「做圖示」「截圖」時，**照 `.claude/skills/playtogether-store/SKILL.md`（Codex：`.agents/skills/playtogether-store/SKILL.md`）的步驟做**：讀專案 → 起草 `store/listing.json` → 圖示與封面 → 用 `pt store screenshot` 擷取截圖 → `pt check` 到沒有錯誤。格式與尺寸見 `store/README.md`。規則摘要：
 
-- 可以依遊戲的實際內容起草 `listing.json`，**繁中與英文都要寫**；簡介是列表上的一行，說明寫怎麼玩、幾個人、特色。
+- `listing.json` **繁中與英文都要寫**；簡介是列表上的一行，說明寫怎麼玩、幾個人、特色。
 - 不得寫誤導或禁止的宣稱（暗示真錢獲利、兌現、提領），不得宣稱已獲批准或屬於某個分級；分級、內容標示、警語由平台審核決定，不寫進上架資料。
-- **截圖必須來自實際遊戲畫面**（可以用 `pt dev` 打開模擬模式擷取），不用生成圖冒充。圖示與封面可以用 Codex 生成（依 `art/STYLE.md` 與平台規則，記錄在 `art/SOURCES.md`）。
+- **截圖必須來自實際遊戲畫面**（`pt store screenshot`），不用生成圖冒充。圖示與封面用開發者的圖片生成工具產生（依 `art/STYLE.md` 與平台規則，記錄在 `art/SOURCES.md`）；沒有圖片生成工具時請開發者提供，不要用截圖裁成圖示。
 - `reviewNotes` 給審核者看：寫怎麼開始一局、建議幾個人測、要特別操作才看得到的內容；`pt check` 標成 REVIEW_REQUIRED 的項目要在這裡說明設計理由。
+- 完成後請開發者確認文字與圖片；**不要自己執行 `pt upload` 或送審**，除非開發者明確要求。
 - 改名稱、圖片、標籤、人數要重新審核；只改簡介、說明裡的幾個字（例如錯字）免審。
 
 ## 設計變更請求

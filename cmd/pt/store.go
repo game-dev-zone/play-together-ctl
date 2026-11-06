@@ -257,7 +257,11 @@ func readStore(p *project, add addFunc) (l storeListing, imgs []storeImage, pres
 			ch = math.Round(cw / target)
 		}
 		if (float64(cfg.Width)-cw)/float64(cfg.Width) > storeMaxCropLoss || (float64(cfg.Height)-ch)/float64(cfg.Height) > storeMaxCropLoss {
-			add(levelSchema, "store/%s 的比例（%d×%d）和需要的 %d×%d 差太多，平台不能自動裁切（例如把橫式圖用在直式遊戲）：請換一張", im.Path, cfg.Width, cfg.Height, w, h)
+			hint := "請換一張"
+			if im.Kind == "screenshot" {
+				hint = fmt.Sprintf("請用 pt store screenshot%s 重新擷取（依 playtogether.json 的畫面方向 %s）", map[bool]string{true: " -locale en", false: ""}[im.Locale == "en"], orientation)
+			}
+			add(levelSchema, "store/%s 的比例（%d×%d）和需要的 %d×%d 差太多，平台不能自動裁切（例如把橫式圖用在直式遊戲）：%s", im.Path, cfg.Width, cfg.Height, w, h, hint)
 		}
 	}
 	shared := 0

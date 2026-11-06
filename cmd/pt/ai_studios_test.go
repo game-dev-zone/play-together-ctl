@@ -229,8 +229,11 @@ func TestNewWritesAIGuide(t *testing.T) {
 			t.Fatal("網頁專案的 PLAYTOGETHER.md 不該有 Godot 規則")
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "web-ai", ".claude")); err == nil {
-		t.Fatal("沒選 studios 不該有 .claude/")
+	if _, err := os.Stat(filepath.Join(dir, "web-ai", ".claude", "rules")); err == nil {
+		t.Fatal("沒選 studios 不該有 .claude/rules")
+	}
+	if entries, _ := os.ReadDir(filepath.Join(dir, "web-ai", ".claude")); len(entries) != 1 || entries[0].Name() != "skills" {
+		t.Fatalf("沒選 studios 的 .claude/ 只有 pt 自己的 skill：%v", entries)
 	}
 	// 素材規則與來源紀錄
 	pg, _ := os.ReadFile(filepath.Join(dir, "web-ai", "PLAYTOGETHER.md"))

@@ -67,6 +67,7 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 | `docs/ai/AI_WORKFLOW.md` | AI 工作流程：權威順序、創意與實作的分工、自動判斷需求、先做原型、遊戲伺服器架構規則、設計變更請求、完成前驗證 |
 | `docs/ai/PROJECT_CONTEXT.md` | 專案背景：畫面、方向、AI 模式、**多人與遊戲伺服器架構**、已安裝的 AI 能力、重要路徑 |
 | `CLAUDE.md`、`AGENTS.md` | Claude Code 與 Codex 的入口：依序讀上面三份（有 `docs/ai/CURRENT_TASK.md` 時也讀） |
+| `.claude/skills/playtogether-store/`、`.agents/skills/playtogether-store/` | `pt` 自己的 skill：請 AI「幫我準備上架資料」時的固定步驟（讀專案 → 起草 `store/listing.json` → 圖示與封面 → `pt store screenshot` 擷取截圖 → `pt check`），Claude Code 與 Codex 內容相同；`pt init` 的既有專案也有 |
 
 ### AI 開發模式（`-mode`）
 
@@ -104,6 +105,8 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 - `pt upload` 會和版本一起上傳上架資料，**平台自動裁切、縮放、重新編碼**；內容沒變時沿用上一次的修訂。只想換截圖或修說明：`pt upload -listing-only`；只上傳版本：`-no-listing`。
 - `pt check` 一併檢查 `store/`：範本文字還沒改或缺圖片時只說明（`pt upload` 會只上傳版本）；長度、標籤、圖片格式、尺寸與比例錯誤是 `ERROR_SCHEMA`（`-skip-check` 不能略過）。
 - `pt upload` 也會送出 `playtogether.json` 的宣告，**平台自己判斷**硬性規則與需要審核的項目（不採信本機的 `pt check`）。
+- **請 AI 準備**：在專案裡對 Claude Code 或 Codex 說「幫我準備上架資料」，它會照專案裡的 `playtogether-store` skill 起草繁中與英文的文字、用你的圖片生成工具做圖示（沒有工具時會請你提供）、擷取實際遊戲截圖，跑 `pt check` 到沒有錯誤，再請你確認後自己執行 `pt upload`。`pt` 本身不呼叫任何 AI，也不需要 AI 帳號或金鑰。
+- **截圖**：`pt store screenshot` 用本機的 Chrome／Chromium 無頭模式擷取實際遊戲畫面，依 `playtogether.json` 的畫面方向模擬手機（直式 360×640、橫式 640×360 CSS px，裝置像素比 3），輸出剛好是 1080×1920／1920×1080 的 PNG，檔名接在既有截圖後面（`-replace` 才從 01 覆寫），全黑或全白的不存檔。先啟動遊戲（`pt dev -mock`；用 `pt dev` 時把它印出的玩家分頁網址傳給 `-url`），常用參數：`-wait 8s`、`-n 3 -interval 4s`、`-locale en`、`-chrome <路徑>`（或 `PT_CHROME`）。
 - `pt status`：版本與上架資料的審核狀態、退件條號與原因、正式分級（由平台審核決定）。
 - `pt login`：在瀏覽器用玩聚帳號確認短碼與團隊，取得送審授權（30 天，可以在玩聚前台的開發者頁撤銷）。之後 `pt upload` 會在檢查通過後**直接送審**版本與上架資料（`-no-submit` 只上傳）；沒登入時只上傳，可以到開發者頁預覽、調整圖片裁切、送審。`pt logout` 刪除這台電腦上的授權。上傳金鑰只能上傳、不能送審。
 - **平台網址**：就是玩聚網站的網址（例如 `https://玩聚網域`），平台 API 在同一個網址的 `/v1` 底下，沒有另外的 API 網域，也不要加 `/v1`、`/api` 等路徑。`pt login`、`pt upload`、`pt status` 依序讀 `-api`、環境變數 `PT_API_URL`、`playtogether.json` 的 `platform`；不在專案裡時用 `pt login -api <平台網址>`。`platform` 還是 `pt new` 的預設值 `https://（平台網址）` 時會直接提示要改。
@@ -305,9 +308,10 @@ claude
 | `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器架構與網址設定、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒；`gameServer.mode: none` 不需要 `serverUrl` |
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；私鑰只在你手上（第一次通常用 `pt register` 自動產生並登記；換金鑰時把公鑰貼到開發者頁的「金鑰」） |
 | `pt login -register` | 另外取得建立遊戲與管理金鑰的權限（團隊擁有者、管理者在瀏覽器同意；7 天，和送審授權分開保存） |
-| `pt init [-name 代號] [-web 資料夾] [-client web\|godot] [-game-server external\|none] [-profile …] [-y]` | 把**不是 `pt new` 建立的既有專案**接上玩聚：只新增 `playtogether.json`、`docs/content/` 的宣告文件、`store/` 上架資料範本與 `.gitignore` 的 `keys/`，已經存在的檔案不覆寫、不動原本的程式。上傳資料夾自動找有 `index.html` 的 `web`、`dist`、`build`、`public`；SDK 由你自己管理（`pt sdk export`）。之後和新專案一樣 `pt register`、`pt upload` |
+| `pt init [-name 代號] [-web 資料夾] [-client web\|godot] [-game-server external\|none] [-profile …] [-y]` | 把**不是 `pt new` 建立的既有專案**接上玩聚：只新增 `playtogether.json`、`docs/content/` 的宣告文件、`store/` 上架資料範本、準備上架資料的 AI skill（`.claude/skills/`、`.agents/skills/` 的 `playtogether-store`）與 `.gitignore` 的 `keys/`，已經存在的檔案不覆寫、不動原本的程式；已經接上玩聚的專案再執行只補上缺少的 skill 與 `store/` 說明。上傳資料夾自動找有 `index.html` 的 `web`、`dist`、`build`、`public`；SDK 由你自己管理（`pt sdk export`）。之後和新專案一樣 `pt register`、`pt upload` |
 | `pt register [-title 名稱]` | 建立草稿遊戲（代號是 `playtogether.json` 的 `name`）並登記金鑰：沒有私鑰會自動產生、只送公鑰，金鑰 ID 寫回 `playtogether.json`；上次沒收到回應時重新執行會接手已建立的遊戲 |
 | `pt upload -version <版本> [-notes 說明] [-no-build] [-orientation portrait\|landscape\|any]` | 上傳版本（設定從 `playtogether.json` 讀，包括畫面方向；Godot 專案先匯出；上傳前自動檢查） |
+| `pt store screenshot [-url 網址] [-wait 5s] [-n 張數] [-interval 3s] [-locale en] [-o 資料夾] [-replace] [-orientation portrait\|landscape] [-chrome 路徑]` | 用本機 Chrome／Chromium 無頭模式擷取實際遊戲畫面，存成上架截圖（`store/screenshots/`，尺寸剛好符合規格、不覆寫既有截圖） |
 | `pt sdk status` | 比較專案的 SDK、這個 `pt` 內嵌的 SDK、最新版 `pt` 內嵌的 SDK，並列出被修改過的 SDK 檔案 |
 | `pt sdk update [-force]` | 把專案裡的 SDK 更新成這個 `pt` 內嵌的版本（專案的 SDK 比較新時不會降版，除非 `-force`） |
 | `pt sdk export <資料夾>` | 把 SDK 檔案（瀏覽器、Godot、Go、Node.js）寫到資料夾，接到不是 `pt new` 建立的既有專案 |

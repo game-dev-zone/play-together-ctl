@@ -153,8 +153,15 @@ func TestNewSkills(t *testing.T) {
 			t.Errorf("PLAYTOGETHER.md 要寫明已知衝突：少了 %q", want)
 		}
 	}
-	if strings.Contains(read("w-none/PLAYTOGETHER.md"), "第三方遊戲開發 skill") || exists("w-none/.agents") {
-		t.Fatal("沒選 skill 的專案不該有 skill 與相關規則")
+	if strings.Contains(read("w-none/PLAYTOGETHER.md"), "第三方遊戲開發 skill") || exists("w-none/THIRD_PARTY") || exists("w-none/.agents/skills/game-feel") {
+		t.Fatal("沒選 skill 的專案不該有第三方 skill 與相關規則")
+	}
+	// pt 自己的上架資料 skill 每個專案都有，兩個 AI 工具的內容相同
+	for _, p := range []string{"w-none", "w-core", "g-full"} {
+		a, c := read(p+"/.agents/skills/playtogether-store/SKILL.md"), read(p+"/.claude/skills/playtogether-store/SKILL.md")
+		if !strings.HasPrefix(a, "---\nname: playtogether-store\ndescription: ") || a != c {
+			t.Errorf("%s 的 playtogether-store skill 不對", p)
+		}
 	}
 	// 風格卡：每個專案都有
 	if !strings.Contains(read("w-none/art/STYLE.md"), "調色盤") || !strings.Contains(read("w-none/PLAYTOGETHER.md"), "--skip-git-repo-check") {
@@ -168,5 +175,27 @@ func TestNewSkills(t *testing.T) {
 	}
 	if exists("g-bad") {
 		t.Fatal("驗證失敗時不能留下專案資料夾")
+	}
+}
+
+// pt 自己的上架資料 skill：固定步驟與規則都在（改 skill 時不要漏掉）
+func TestPtStoreSkill(t *testing.T) {
+	files, err := ptSkillFiles()
+	must(t, err)
+	a, c := string(files[".agents/skills/playtogether-store/SKILL.md"]), string(files[".claude/skills/playtogether-store/SKILL.md"])
+	if a == "" || a != c {
+		t.Fatal("兩個 AI 工具要有同一份 skill")
+	}
+	for _, want := range []string{
+		"name: playtogether-store", "準備上架資料", "playtogether.json", "store/README.md", // 讀專案
+		"繁中與英文都必填", "reviewNotes", "REVIEW_REQUIRED", "真錢", // listing.json
+		"不要自己加圓角", "不要透明背景", "art/STYLE.md", "art/SOURCES.md", "沒有圖片生成工具", "不要用截圖硬裁成圖示", // 圖示
+		"上架圖片不能比遊戲實際內容更強烈", "CONTENT_PROFILE.md", "GAMEPLAY_ECONOMY.md", // 素材規則依宣告
+		"必須是實際遊戲畫面", "pt store screenshot", "pt dev -mock", // 截圖
+		"pt check", "不要自己執行 `pt upload`", // 檢查與交付
+	} {
+		if !strings.Contains(a, want) {
+			t.Errorf("skill 少了 %q", want)
+		}
 	}
 }
