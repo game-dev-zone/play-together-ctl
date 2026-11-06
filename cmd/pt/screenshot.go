@@ -2,21 +2,22 @@ package main
 
 // pt store screenshot：用本機的 Chrome／Chromium 無頭模式擷取實際遊戲畫面，存成上架截圖（store/screenshots/）。
 //
-// 只用 Chrome 的命令列（--screenshot），不用 CDP／WebSocket（標準函式庫沒有 WebSocket）。
-// 手機視窗用 --kiosk 加上 --screen-info 模擬：螢幕是截圖規格的像素（直式 1080×1920、橫式 1920×1080）、
-// devicePixelRatio 3，所以遊戲看到的是 360×640（橫式 640×360）CSS px 的手機畫面，輸出剛好是規格尺寸。
-// 不用 --window-size＋--force-device-scale-factor：新版無頭模式的視窗寬度最少 500 CSS px、
-// 頁面高度會少掉一段（約 87 px），小數倍率也會差一個像素，都不符合手機截圖的需要。
-// --screen-info 的 devicePixelRatio 只接受整數，所以倍率固定是 3。
+// 透過 --remote-debugging-pipe 控制無頭 Chrome（cdp.go；只用標準函式庫）：模擬手機（Emulation.setDeviceMetricsOverride）、
+// 打開遊戲網址，在**真實時間**等 -wait 後擷取，之後每隔 -interval 在**同一個頁面**繼續擷取，拍到同一局的不同階段。
+// 不用 --screenshot＋--virtual-time-budget：虛擬時間會快轉頁面的計時器，但多人遊戲由伺服器照真實時間推進，
+// 而且每張都要重新載入頁面。
+//
+// 手機視窗：直式 390×694 CSS px（橫式 694×390）、devicePixelRatio 1080/390，擷取 390×693.33 的範圍，輸出剛好 1080×1920
+// （橫式 1920×1080）。多出的 0.67 CSS px 在畫面最底下（最右邊），不會被看到。
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"image"
 	"image/png"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -37,8 +38,8 @@ func cmdStore(args []string) error {
 	return cmdStoreScreenshot(args[1:])
 }
 
-// shotScale 是模擬手機的 devicePixelRatio（--screen-info 只接受整數）
-const shotScale = 3
+// 模擬的手機寬度（CSS px；iPhone 12–16 的寬度）。倍率是非整數，輸出才能剛好是平台的截圖規格。
+const shotPhoneWidth = 390
 
 type shotOptions struct {
 	URL         string
@@ -58,8 +59,8 @@ func parseShotArgs(args []string, p *project) (shotOptions, error) {
 	var o shotOptions
 	fs.StringVar(&o.URL, "url", "", "遊戲網址（預設 http://<playtogether.json 的 devAddr>/）")
 	fs.DurationVar(&o.Wait, "wait", 5*time.Second, "載入後等多久再擷取")
-	fs.IntVar(&o.N, "n", 1, "擷取幾張（每張重新載入；第 i 張多等 (i-1)×-interval）")
-	fs.DurationVar(&o.Interval, "interval", 3*time.Second, "多張時每張多等的時間")
+	fs.IntVar(&o.N, "n", 1, "擷取幾張（同一個頁面，第一張在 -wait 後，之後每隔 -interval 一張）")
+	fs.DurationVar(&o.Interval, "interval", 3*time.Second, "多張時，每張之間隔多久（真實時間）")
 	fs.StringVar(&o.Out, "o", "", "輸出資料夾（預設 store/screenshots；-locale en 時是 store/screenshots/en）")
 	fs.BoolVar(&o.Replace, "replace", false, "從 01 開始覆寫（預設接在既有截圖後面，不覆寫）")
 	fs.StringVar(&o.Locale, "locale", "", "en：英文介面專用的截圖（存到 store/screenshots/en/）")
@@ -121,10 +122,20 @@ func parseShotArgs(args []string, p *project) (shotOptions, error) {
 	return o, nil
 }
 
-// shotSize：截圖的輸出像素與遊戲看到的 CSS 視窗（和 storeImageSpec 的截圖尺寸相同）
-func shotSize(orientation string) (w, h, cssW, cssH int) {
+// shotSize：截圖的輸出像素與擷取設定（和 storeImageSpec 的截圖尺寸相同）。
+// 遊戲看到的視窗是 cssW×cssH（短邊 390），clip 是要擷取的 CSS 範圍（clip × scale = 輸出像素）。
+func shotSize(orientation string) (w, h int, plan shotPlan) {
 	w, h, _ = storeImageSpec("screenshot", orientation, 9, 16)
-	return w, h, w / shotScale, h / shotScale
+	short, long := min(w, h), max(w, h)
+	scale := float64(short) / shotPhoneWidth
+	clipLong := float64(long) / scale // 693.33…
+	cssLong := int(math.Ceil(clipLong))
+	plan = shotPlan{CSSW: shotPhoneWidth, CSSH: cssLong, Scale: scale, Clip: &[2]float64{shotPhoneWidth, clipLong}}
+	if w > h {
+		plan.CSSW, plan.CSSH = cssLong, shotPhoneWidth
+		plan.Clip = &[2]float64{clipLong, shotPhoneWidth}
+	}
+	return w, h, plan
 }
 
 var shotName = regexp.MustCompile(`^(\d+)\.(?i:png|jpe?g)$`)
@@ -225,53 +236,8 @@ func findChrome(flagPath string) (string, error) {
 		"或用 -chrome <執行檔路徑>（環境變數 PT_CHROME）指定；也可以用手機或瀏覽器的手機模擬模式手動截圖")
 }
 
-// chromeShotArgs 是擷取一張截圖的 Chrome 參數。
-func chromeShotArgs(userDir, out, target string, w, h int, wait time.Duration) []string {
-	return []string{
-		"--headless=new",
-		"--user-data-dir=" + userDir,
-		"--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-sync",
-		"--disable-background-networking", "--disable-component-update", "--mute-audio",
-		// 全螢幕（沒有視窗邊框與工具列）＋模擬手機螢幕：遊戲看到的視窗就是 w/3 × h/3 CSS px
-		"--kiosk", fmt.Sprintf("--screen-info={%dx%d devicePixelRatio=%d}", w, h, shotScale),
-		"--hide-scrollbars",
-		// 沒有 GPU 的環境（CI、遠端主機）也能畫 WebGL
-		"--use-angle=swiftshader", "--enable-unsafe-swiftshader",
-		fmt.Sprintf("--virtual-time-budget=%d", wait.Milliseconds()),
-		"--screenshot=" + out,
-		target,
-	}
-}
-
-// runChromeShot 啟動 Chrome 擷取一張截圖（暫存的使用者資料夾，結束後刪除）。
-var runChromeShot = func(chrome, out, target string, w, h int, wait time.Duration) error {
-	userDir, err := os.MkdirTemp("", "pt-chrome-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(userDir)
-	// 虛擬時間通常比實際時間快；網路請求、WebSocket 會讓它變慢，所以實際時間另外設上限
-	ctx, cancel := context.WithTimeout(context.Background(), wait+60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, chrome, chromeShotArgs(userDir, out, target, w, h, wait)...)
-	var stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stderr, &stderr
-	err = cmd.Run()
-	if ctx.Err() != nil {
-		return fmt.Errorf("Chrome 超過 %s 沒有完成（遊戲一直在載入？）", wait+60*time.Second)
-	}
-	if _, statErr := os.Stat(out); statErr != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if lines := strings.Split(msg, "\n"); len(lines) > 5 {
-			msg = strings.Join(lines[len(lines)-5:], "\n")
-		}
-		if err == nil {
-			err = errors.New("沒有產生截圖")
-		}
-		return fmt.Errorf("Chrome 擷取失敗：%v\n%s", err, msg)
-	}
-	return nil
-}
+// captureShots 擷取截圖（測試時換成假的）
+var captureShots = captureWithChrome
 
 // checkShot 確認截圖的尺寸正確、不是全黑或全白（取樣 32×32 個點）。
 func checkShot(data []byte, w, h int) error {
@@ -281,7 +247,7 @@ func checkShot(data []byte, w, h int) error {
 	}
 	b := img.Bounds()
 	if b.Dx() != w || b.Dy() != h {
-		return fmt.Errorf("截圖是 %d×%d，不是需要的 %d×%d：這個 Chrome 可能太舊（不支援 --screen-info），請更新 Chrome 後再試", b.Dx(), b.Dy(), w, h)
+		return fmt.Errorf("截圖是 %d×%d，不是需要的 %d×%d：這個 Chrome 可能太舊，請更新 Chrome 後再試", b.Dx(), b.Dy(), w, h)
 	}
 	switch blankShot(img) {
 	case "black":
@@ -349,32 +315,31 @@ func cmdStoreScreenshot(args []string) error {
 	if err != nil {
 		return err
 	}
-	w, h, cssW, cssH := shotSize(o.Orientation)
-	fmt.Printf("用 %s 擷取 %s（%s，手機畫面 %d×%d，輸出 %d×%d）\n", filepath.Base(chrome), o.URL, orientationLabel[o.Orientation], cssW, cssH, w, h)
+	w, h, plan := shotSize(o.Orientation)
+	plan.URL, plan.Wait, plan.Interval, plan.N = o.URL, o.Wait, o.Interval, o.N
+	fmt.Printf("用 %s 打開 %s（%s，手機畫面 %d×%d，輸出 %d×%d）：%s 後擷取", filepath.Base(chrome), o.URL, orientationLabel[o.Orientation], plan.CSSW, plan.CSSH, w, h, o.Wait)
+	if o.N > 1 {
+		fmt.Printf("，之後在同一個頁面每隔 %s 再擷取，共 %d 張", o.Interval, o.N)
+	}
+	fmt.Println()
 	var saved []string
-	for i, name := range names {
-		wait := o.Wait + time.Duration(i)*o.Interval
-		dst := filepath.Join(o.Out, name)
+	start := time.Now()
+	err = captureShots(chrome, plan, func(i int, data []byte) error {
+		if err := checkShot(data, w, h); err != nil {
+			return fmt.Errorf("第 %d 張沒有存檔：%w", i+1, err)
+		}
+		dst := filepath.Join(o.Out, names[i])
 		tmp, err := os.CreateTemp(o.Out, ".pt-shot-*.png")
 		if err != nil {
 			return err
 		}
-		tmp.Close()
-		os.Remove(tmp.Name()) // Chrome 自己建立檔案
-		err = runChromeShot(chrome, tmp.Name(), o.URL, w, h, wait)
-		var data []byte
-		if err == nil {
-			data, err = os.ReadFile(tmp.Name())
+		_, werr := tmp.Write(data)
+		if cerr := tmp.Close(); werr == nil {
+			werr = cerr
 		}
-		if err == nil {
-			err = checkShot(data, w, h)
-		}
-		if err != nil {
+		if werr != nil {
 			os.Remove(tmp.Name())
-			if len(saved) > 0 {
-				fmt.Printf("已存 %s\n", strings.Join(saved, "、"))
-			}
-			return fmt.Errorf("第 %d 張（等待 %s）沒有存檔：%w", i+1, wait, err)
+			return werr
 		}
 		if o.Replace {
 			base := strings.TrimSuffix(dst, ".png")
@@ -388,12 +353,19 @@ func cmdStoreScreenshot(args []string) error {
 		}
 		rel := dst
 		if p != nil {
-			if r, err := filepath.Rel(p.dir, dst); err == nil {
+			if r, err := filepath.Rel(p.dir, dst); err == nil && !strings.HasPrefix(r, "..") {
 				rel = r
 			}
 		}
 		saved = append(saved, filepath.ToSlash(rel))
-		fmt.Printf("  ✓ %s（等待 %s）\n", filepath.ToSlash(rel), wait)
+		fmt.Printf("  ✓ %s（第 %.1f 秒）\n", filepath.ToSlash(rel), time.Since(start).Seconds())
+		return nil
+	})
+	if err != nil {
+		if len(saved) > 0 {
+			fmt.Printf("已存 %s\n", strings.Join(saved, "、"))
+		}
+		return err
 	}
 	fmt.Println("請親自看過每張截圖（畫面正確、沒有錯誤訊息或除錯資訊），不好的刪掉重拍；截圖說明寫在 store/listing.json 的 screenshotCaptions。")
 	return nil

@@ -106,7 +106,7 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 - `pt check` 一併檢查 `store/`：範本文字還沒改或缺圖片時只說明（`pt upload` 會只上傳版本）；長度、標籤、圖片格式、尺寸與比例錯誤是 `ERROR_SCHEMA`（`-skip-check` 不能略過）。
 - `pt upload` 也會送出 `playtogether.json` 的宣告，**平台自己判斷**硬性規則與需要審核的項目（不採信本機的 `pt check`）。
 - **請 AI 準備**：在專案裡對 Claude Code 或 Codex 說「幫我準備上架資料」，它會照專案裡的 `playtogether-store` skill 起草繁中與英文的文字、用你的圖片生成工具做圖示（沒有工具時會請你提供）、擷取實際遊戲截圖，跑 `pt check` 到沒有錯誤，再請你確認後自己執行 `pt upload`。`pt` 本身不呼叫任何 AI，也不需要 AI 帳號或金鑰。
-- **截圖**：`pt store screenshot` 用本機的 Chrome／Chromium 無頭模式擷取實際遊戲畫面，依 `playtogether.json` 的畫面方向模擬手機（直式 360×640、橫式 640×360 CSS px，裝置像素比 3），輸出剛好是 1080×1920／1920×1080 的 PNG，檔名接在既有截圖後面（`-replace` 才從 01 覆寫），全黑或全白的不存檔。先啟動遊戲（`pt dev -mock`；用 `pt dev` 時把它印出的玩家分頁網址傳給 `-url`），常用參數：`-wait 8s`、`-n 3 -interval 4s`、`-locale en`、`-chrome <路徑>`（或 `PT_CHROME`）。
+- **截圖**：`pt store screenshot` 用本機的 Chrome／Chromium 無頭模式擷取實際遊戲畫面，依 `playtogether.json` 的畫面方向模擬手機（直式 390×694、橫式 694×390 CSS px，觸控），輸出剛好是 1080×1920／1920×1080 的 PNG；多張時在**同一個頁面**照真實時間每隔 `-interval` 再擷取，拍到同一局的不同階段（透過 `--remote-debugging-pipe` 控制 Chrome，只用標準函式庫；Windows 還不支援）。檔名接在既有截圖後面（`-replace` 才從 01 覆寫），全黑或全白的不存檔。先啟動遊戲（`pt dev -mock`；用 `pt dev` 時把它印出的玩家分頁網址傳給 `-url`），常用參數：`-wait 8s`、`-n 3 -interval 4s`、`-locale en`、`-chrome <路徑>`（或 `PT_CHROME`）。
 - `pt status`：版本與上架資料的審核狀態、退件條號與原因、正式分級（由平台審核決定）。
 - `pt login`：在瀏覽器用玩聚帳號確認短碼與團隊，取得送審授權（30 天，可以在玩聚前台的開發者頁撤銷）。之後 `pt upload` 會在檢查通過後**直接送審**版本與上架資料（`-no-submit` 只上傳）；沒登入時只上傳，可以到開發者頁預覽、調整圖片裁切、送審。`pt logout` 刪除這台電腦上的授權。上傳金鑰只能上傳、不能送審。
 - **平台網址**：就是玩聚網站的網址（例如 `https://玩聚網域`），平台 API 在同一個網址的 `/v1` 底下，沒有另外的 API 網域，也不要加 `/v1`、`/api` 等路徑。`pt login`、`pt upload`、`pt status` 依序讀 `-api`、環境變數 `PT_API_URL`、`playtogether.json` 的 `platform`；不在專案裡時用 `pt login -api <平台網址>`。`platform` 還是 `pt new` 的預設值 `https://（平台網址）` 時會直接提示要改。

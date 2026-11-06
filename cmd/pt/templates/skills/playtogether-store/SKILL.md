@@ -76,8 +76,8 @@ description: 準備玩聚上架資料（store/）：依專案內容起草 store/
 - 方向照 `playtogether.json` 的 `orientation`：直式 1080×1920、橫式 1920×1080；`any` 預設直式。
 - 用 `pt store screenshot` 擷取（本機的 Chrome／Chromium 無頭模式，輸出尺寸剛好符合規格，檔名接在既有截圖後面、不覆寫）：
   1. 啟動遊戲。`pt new` 建立的專案：`pt dev -mock`（模擬模式，預設網址就能直接玩），或 `pt dev`（本機假平台）並把它印出的「玩家分頁」網址傳給 `-url`。其他專案用專案自己的啟動方式（例如 `make run`、`npm run dev`），再用 `-url` 指定網址。
-  2. `pt store screenshot`（預設網址是 `http://<devAddr>/`、等 5 秒）。常用參數：`-url <網址>`、`-wait 8s`（遊戲載入較慢時加長）、`-n 3 -interval 4s`（同一個網址每張多等一段時間，拍到不同階段）、`-locale en`（存到 `store/screenshots/en/`）、`-replace`（從 01 開始覆寫）、`-chrome <路徑>`（找不到 Chrome 時）。
-  3. 要拍不同畫面（大廳、遊戲中、結算）時，用遊戲已經有的網址參數或示範模式。遊戲沒有這種方式時，先問開發者能不能加一個只在本機使用的示範參數；不要擅自改遊戲規則。
+  2. `pt store screenshot`（預設網址是 `http://<devAddr>/`、等 5 秒）。常用參數：`-url <網址>`、`-wait 8s`（遊戲載入較慢時加長）、`-n 5 -interval 4s`（在同一個頁面照真實時間每隔 4 秒再拍一張，拍到同一局的不同階段）、`-locale en`（存到 `store/screenshots/en/`）、`-replace`（從 01 開始覆寫）、`-chrome <路徑>`（找不到 Chrome 時）。
+  3. 等待照**真實時間**計算，`-n` 的每一張都在同一個頁面擷取（不重新載入）：遊戲會自己往下進行（例如單機練習、示範模式、倒數自動開始）時，一次 `-n 5 -interval 4s` 就能拍到同一局的開始、進行中、結算。`pt store screenshot` 不會點擊畫面；需要操作才會前進的畫面，用遊戲已經有的網址參數或示範模式（例如 `-url "http://127.0.0.1:8090/?demo=practice"`）。遊戲沒有這種方式時，先問開發者能不能加一個只在本機使用的示範參數；不要擅自改遊戲規則。
 - 每張截圖都**親自看過**：畫面正確、沒有錯誤訊息、沒有除錯資訊、沒有個資或真實暱稱。不好的就刪掉重拍。`pt store screenshot` 偵測到全黑或全白時不會存檔，通常是還沒載入完（加大 `-wait`）或 WebGL 沒有啟動。
 - 本機沒有 Chrome／Chromium 時，告訴開發者，請他用手機或瀏覽器的手機模擬模式手動截圖（直式 9:16、橫式 16:9，短邊至少 720）。
 - 截圖數量和 `screenshotCaptions` 對齊（說明可以比截圖少，不能比截圖多）。

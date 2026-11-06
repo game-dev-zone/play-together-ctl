@@ -13,6 +13,10 @@ import (
 
 // 測試預設不是終端機：沒指定的項目用預設值，不詢問
 func TestMain(m *testing.M) {
+	if mode := os.Getenv("PT_FAKE_CHROME"); mode != "" {
+		fakeChrome(mode) // 這個測試執行檔被當成 Chrome 啟動（screenshot_test.go）
+		os.Exit(0)
+	}
 	interactive = func() bool { return false }
 	ciEnv = func() bool { return false } // GitHub Actions 會設定 CI；需要時各測試自己打開
 	os.Exit(m.Run())

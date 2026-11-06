@@ -137,10 +137,10 @@ func usage() {
          [-no-listing] [-listing-only]          只上傳版本／只上傳上架資料
   pt status                                     版本與上架資料的審核狀態、退件原因、正式分級
   pt store screenshot                           用本機 Chrome／Chromium 無頭模式擷取實際遊戲畫面，存成上架截圖（store/screenshots/）：
-                                                依畫面方向模擬手機（直式 360×640、橫式 640×360 CSS px），輸出剛好 1080×1920／1920×1080；
+                                                依畫面方向模擬手機（直式 390×694、橫式 694×390 CSS px），輸出剛好 1080×1920／1920×1080；
                                                 檔名接在既有截圖後面（不覆寫）；全黑或全白的不存檔。先啟動遊戲（例如 pt dev -mock）
          [-url 網址] [-wait 5s]                 遊戲網址（預設 http://<devAddr>/；用 pt dev 時傳它印出的玩家分頁網址）、載入後等多久
-         [-n 張數] [-interval 3s]               擷取多張：每張重新載入，第 i 張多等 (i-1)×interval
+         [-n 張數] [-interval 3s]               擷取多張：在同一個頁面（同一局），照真實時間每隔 interval 再擷取一張
          [-locale en] [-o 資料夾] [-replace]    英文介面專用（store/screenshots/en/）、輸出資料夾、從 01 開始覆寫
          [-orientation portrait|landscape] [-chrome 路徑]
                                                 畫面方向（預設依 playtogether.json；any 時直式）、Chrome 執行檔（或 PT_CHROME）
