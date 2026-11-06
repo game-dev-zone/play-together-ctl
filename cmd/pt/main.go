@@ -301,10 +301,19 @@ func upload(args []string) error {
 	sum := sha256.Sum256(data)
 	fmt.Printf("已打包 %d 個檔案（%.1f MB）\n", count, float64(len(data))/(1<<20))
 
+	// 玩聚代管的遊戲伺服器：建置、打包，和畫面一起登記在同一個版本
+	var serverZip []byte
+	if p.hostedServer() {
+		if serverZip, err = buildServerBundle(p); err != nil {
+			return err
+		}
+	}
+
 	c := client{base: base, keyID: kid, priv: priv}
 	var created struct {
-		BuildID    string `json:"buildId"`
-		UploadPath string `json:"uploadPath"`
+		BuildID          string `json:"buildId"`
+		UploadPath       string `json:"uploadPath"`
+		ServerUploadPath string `json:"serverUploadPath"`
 	}
 	reg := map[string]any{
 		"version": *version, "sha256": hex.EncodeToString(sum[:]), "size": len(data), "notes": *notes, "connectOrigins": origins,
@@ -323,6 +332,10 @@ func upload(args []string) error {
 	if decl, ok := declarationBody(p); ok {
 		reg["declaration"], reg["policyVersion"] = decl, p.PolicyVersion
 	}
+	if serverZip != nil {
+		ss := sha256.Sum256(serverZip)
+		reg["server"] = map[string]any{"sha256": hex.EncodeToString(ss[:]), "size": len(serverZip)}
+	}
 	if err := c.signed("POST", "/v1/dev/builds", reg, &created); err != nil {
 		return err
 	}
@@ -330,6 +343,16 @@ func upload(args []string) error {
 	req.Header.Set("Content-Type", "application/zip")
 	if err := doJSON(req, nil); err != nil {
 		return fmt.Errorf("上傳失敗：%w", err)
+	}
+	if serverZip != nil {
+		if created.ServerUploadPath == "" {
+			return errors.New("平台不支援代管遊戲伺服器（沒有回傳伺服器套件的上傳網址）")
+		}
+		req, _ := http.NewRequest(http.MethodPut, base+created.ServerUploadPath, bytes.NewReader(serverZip))
+		req.Header.Set("Content-Type", "application/zip")
+		if err := doJSON(req, nil); err != nil {
+			return fmt.Errorf("上傳遊戲伺服器套件失敗：%w", err)
+		}
 	}
 	fmt.Println("已上傳，版本 ID：", created.BuildID)
 	revID := ""
@@ -354,9 +377,27 @@ func upload(args []string) error {
 				Problems  []string `json:"problems"`
 				FileCount int      `json:"fileCount"`
 			} `json:"checkReport"`
+			ServerArtifactStatus string `json:"serverArtifactStatus"`
+			ServerCheckReport    struct {
+				Problems []string `json:"problems"`
+			} `json:"serverCheckReport"`
 		}
 		if err := c.signed("GET", "/v1/dev/builds/"+created.BuildID, nil, &b); err != nil {
 			return err
+		}
+		if serverZip != nil {
+			switch b.ServerArtifactStatus {
+			case "failed":
+				fmt.Println("\n遊戲伺服器套件檢查沒有通過：")
+				for _, p := range b.ServerCheckReport.Problems {
+					fmt.Println("  ・", p)
+				}
+				return errors.New("請修正後用同一個版本號重新上傳")
+			case "ready":
+			default:
+				fmt.Print(".")
+				continue // 畫面與伺服器都通過才送審
+			}
 		}
 		switch b.ArtifactStatus {
 		case "ready":

@@ -1012,6 +1012,8 @@ func checkProject(p *project, webDir string) []finding {
 	}
 	// 外部程式與樣式：一律要申報、寫 SRI（cdn.go）
 	checkCDN(p, webDir, add)
+	// 玩聚代管的遊戲伺服器（serverbundle.go）
+	checkServerHosting(p, add)
 
 	var total int64
 	files := 0

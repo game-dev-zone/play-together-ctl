@@ -29,6 +29,17 @@ type multiplayerConfig struct {
 
 type gameServerConfig struct {
 	Mode string `json:"mode"`
+	// Hosting 是 "playtogether" 時，pt upload 會建置遊戲伺服器（Go）並交給玩聚代管（serverbundle.go）
+	Hosting string `json:"hosting,omitempty"`
+	// Dir 是遊戲伺服器 Go 模組的目錄（相對於專案根目錄；預設 "."）
+	Dir string `json:"dir,omitempty"`
+	// Data 是遊戲伺服器要讀的資料檔目錄（選填；會放進套件的 data/，伺服器執行時在 /app/data）
+	Data string `json:"data,omitempty"`
+}
+
+// hostedServer：遊戲伺服器由玩聚代管
+func (p *project) hostedServer() bool {
+	return p != nil && p.GameServer != nil && p.GameServer.Hosting == "playtogether"
 }
 
 // gameServerMode：舊專案沒有 gameServer 欄位，視為原本的行為（範本伺服器）

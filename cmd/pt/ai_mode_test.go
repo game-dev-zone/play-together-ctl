@@ -399,8 +399,8 @@ func TestServerKeyByGameServerMode(t *testing.T) {
 
 // pt dev 的玩家分頁數：沒指定時多人 2、單人 1；明確指定的值照用（單人也可以 -players 2）
 func TestDevPlayersDefault(t *testing.T) {
-	multi := &project{Multiplayer: &multiplayerConfig{true}, GameServer: &gameServerConfig{"playtogether-managed"}}
-	single := &project{Multiplayer: &multiplayerConfig{false}, GameServer: &gameServerConfig{"none"}}
+	multi := &project{Multiplayer: &multiplayerConfig{true}, GameServer: &gameServerConfig{Mode: "playtogether-managed"}}
+	single := &project{Multiplayer: &multiplayerConfig{false}, GameServer: &gameServerConfig{Mode: "none"}}
 	legacy := &project{} // 舊專案：視為多人
 	for _, c := range []struct {
 		name string
@@ -438,14 +438,14 @@ func TestCheckGameServer(t *testing.T) {
 		wantErr   bool
 		wantURL   bool // 是否接著檢查 serverUrl
 	}{
-		{"單人＋none", &multiplayerConfig{false}, &gameServerConfig{"none"}, "", false, false},
-		{"單人＋none 但填了網址", &multiplayerConfig{false}, &gameServerConfig{"none"}, "https://x.example", false, false},
-		{"多人＋範本", &multiplayerConfig{true}, &gameServerConfig{"playtogether-managed"}, "", false, true},
-		{"多人＋external", &multiplayerConfig{true}, &gameServerConfig{"external"}, "", false, true},
-		{"多人＋none 不成立", &multiplayerConfig{true}, &gameServerConfig{"none"}, "", true, false},
-		{"單人＋範本", &multiplayerConfig{false}, &gameServerConfig{"playtogether-managed"}, "", false, true},
+		{"單人＋none", &multiplayerConfig{false}, &gameServerConfig{Mode: "none"}, "", false, false},
+		{"單人＋none 但填了網址", &multiplayerConfig{false}, &gameServerConfig{Mode: "none"}, "https://x.example", false, false},
+		{"多人＋範本", &multiplayerConfig{true}, &gameServerConfig{Mode: "playtogether-managed"}, "", false, true},
+		{"多人＋external", &multiplayerConfig{true}, &gameServerConfig{Mode: "external"}, "", false, true},
+		{"多人＋none 不成立", &multiplayerConfig{true}, &gameServerConfig{Mode: "none"}, "", true, false},
+		{"單人＋範本", &multiplayerConfig{false}, &gameServerConfig{Mode: "playtogether-managed"}, "", false, true},
 		{"舊專案（沒有欄位）", nil, nil, "", false, true},
-		{"不合法的值", nil, &gameServerConfig{"p2p"}, "", true, false},
+		{"不合法的值", nil, &gameServerConfig{Mode: "p2p"}, "", true, false},
 	}
 	for _, c := range cases {
 		p := &project{Multiplayer: c.multi, GameServer: c.gs, ServerURL: c.serverURL}
