@@ -1056,7 +1056,9 @@ func checkProject(p *project, webDir string) []finding {
 	checkOrientation(p, webDir, add)
 	checkAudioSources(p, webDir, add)
 	if !strings.HasPrefix(p.Platform, "http") || strings.Contains(p.Platform, "（") {
-		add(levelBuild, "playtogether.json 的 platform 還沒填（玩聚建立遊戲後會給你平台網址）")
+		add(levelBuild, "playtogether.json 的 platform 還沒填：填玩聚網站的網址（平台 API 在同一個網址的 /v1 底下）")
+	} else if err := validPlatform(strings.TrimRight(p.Platform, "/")); err != nil {
+		add(levelBuild, "playtogether.json 的 platform：%v", err)
 	}
 	checkPolicy(p, add)
 	checkStore(p, add)

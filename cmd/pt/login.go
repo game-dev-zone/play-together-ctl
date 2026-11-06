@@ -72,12 +72,37 @@ func credentialFor(base string) (credential, bool) {
 	return c, ok && c.Token != "" && time.Now().Before(c.ExpiresAt)
 }
 
-// securePlatform：送審授權只能透過 https 傳送（本機開發的 localhost 例外）。
-func securePlatform(base string) error {
+// errNoPlatform：找不到平台網址時的說明。平台網址就是玩聚網站的網址，平台 API 在同一個網址的 /v1 底下。
+var errNoPlatform = errors.New("需要平台網址：在 pt new 建立的專案裡執行（讀 playtogether.json 的 platform），或加上 -api <平台網址>，也可以設定環境變數 PT_API_URL。\n" +
+	"平台網址就是玩聚網站的網址，例如 https://玩聚網域（平台 API 在同一個網址的 /v1 底下，不用另外加）；見開發者文件「快速開始」的「平台網址」")
+
+// templatePlatform 是 pt new 寫進 playtogether.json 的預設值，代表還沒填。
+const templatePlatform = "https://（平台網址）"
+
+// validPlatform 檢查平台網址：不是範本預設值、格式正確、只有 scheme 與網域（不能帶 /v1、/api 等路徑）。
+func validPlatform(base string) error {
+	if base == "" {
+		return errNoPlatform
+	}
+	if strings.Contains(base, "（") || strings.Contains(base, "平台網址") {
+		return fmt.Errorf("平台網址還是範本的預設值 %s：請把 playtogether.json 的 platform 改成玩聚網站的網址，或加上 -api <平台網址>", templatePlatform)
+	}
 	u, err := url.Parse(base)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
-		return fmt.Errorf("平台網址格式錯誤：%s", base)
+		return fmt.Errorf("平台網址格式錯誤：%s（要像 https://玩聚網域）", base)
 	}
+	if strings.Trim(u.Path, "/") != "" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("平台網址不要加路徑：%s。平台 API 固定在同一個網址的 /v1 底下，請改成 %s://%s", base, u.Scheme, u.Host)
+	}
+	return nil
+}
+
+// securePlatform：送審授權只能透過 https 傳送（本機開發的 localhost 例外）。
+func securePlatform(base string) error {
+	if err := validPlatform(base); err != nil {
+		return err
+	}
+	u, _ := url.Parse(base)
 	if u.Scheme == "http" && !isLocal(u.Hostname()) {
 		return fmt.Errorf("平台網址要用 https://（送審授權不能用沒有加密的連線傳送）：%s", base)
 	}
@@ -90,7 +115,7 @@ func platformBase(p *project, flagAPI string) string {
 			return strings.TrimRight(v, "/")
 		}
 	}
-	if p != nil && strings.HasPrefix(p.Platform, "http") {
+	if p != nil {
 		return strings.TrimRight(p.Platform, "/")
 	}
 	return ""
@@ -127,9 +152,6 @@ func cmdLogin(args []string) error {
 		return err
 	}
 	base := platformBase(p, *api)
-	if base == "" {
-		return errors.New("需要平台網址：在 pt new 建立的專案裡執行，或加上 -api <平台網址>")
-	}
 	if err := securePlatform(base); err != nil {
 		return err
 	}

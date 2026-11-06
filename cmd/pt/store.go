@@ -376,8 +376,11 @@ func cmdStatus(args []string) error {
 	// 環境變數 > playtogether.json（和 pt upload 相同）
 	base := strings.TrimRight(first(os.Getenv("PT_API_URL"), p.Platform), "/")
 	kid, kfile := first(os.Getenv("PT_UPLOAD_KEY_ID"), p.UploadKeyID), first(os.Getenv("PT_UPLOAD_KEY_FILE"), p.path(p.UploadKeyFile))
-	if !strings.HasPrefix(base, "http") || kid == "" {
-		return errors.New("需要平台網址與上傳金鑰：填在 playtogether.json（platform、uploadKeyId、uploadKeyFile）")
+	if err := validPlatform(base); err != nil {
+		return err
+	}
+	if kid == "" {
+		return errors.New("需要上傳金鑰：填在 playtogether.json（uploadKeyId、uploadKeyFile）")
 	}
 	priv, err := readKey(kfile)
 	if err != nil {
@@ -503,8 +506,11 @@ func uploadListingOnly(p *project, api, keyID, keyFile string, noSubmit bool) er
 	base := strings.TrimRight(first(api, os.Getenv("PT_API_URL"), p.Platform), "/")
 	kid := first(keyID, os.Getenv("PT_UPLOAD_KEY_ID"), p.UploadKeyID)
 	kfile := first(keyFile, os.Getenv("PT_UPLOAD_KEY_FILE"), p.path(p.UploadKeyFile))
-	if !strings.HasPrefix(base, "http") || kid == "" {
-		return errors.New("需要平台網址與上傳金鑰：填在 playtogether.json（platform、uploadKeyId、uploadKeyFile）")
+	if err := validPlatform(base); err != nil {
+		return err
+	}
+	if kid == "" {
+		return errors.New("需要上傳金鑰：填在 playtogether.json（uploadKeyId、uploadKeyFile）")
 	}
 	fmt.Println("上架資料檢查：")
 	var fs []finding

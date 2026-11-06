@@ -127,3 +127,38 @@ func TestSecurePlatform(t *testing.T) {
 		t.Fatalf("http 的平台要拒絕：%v", err)
 	}
 }
+
+// 平台網址：範本預設值、帶路徑（/v1、/api）、空白都要拒絕並說明怎麼填。
+func TestValidPlatform(t *testing.T) {
+	for u, want := range map[string]string{
+		"https://pt.example":     "",
+		"https://pt.example/":    "",
+		"http://127.0.0.1:8080":  "",
+		"":                       "PT_API_URL",
+		templatePlatform:         "範本的預設值",
+		"https://pt.example/api": "改成 https://pt.example",
+		"https://pt.example/v1":  "不要加路徑",
+		"https://pt.example?x=1": "不要加路徑",
+		"pt.example":             "格式錯誤",
+	} {
+		err := validPlatform(u)
+		if want == "" {
+			if err != nil {
+				t.Errorf("%q 要接受：%v", u, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q：%v，要包含 %q", u, err, want)
+		}
+	}
+	// 不在專案裡、沒有 -api：說明平台網址怎麼來
+	t.Chdir(t.TempDir())
+	t.Setenv("PT_API_URL", "")
+	if err := cmdLogin([]string{"-no-browser"}); err == nil || !strings.Contains(err.Error(), "-api") || !strings.Contains(err.Error(), "/v1") {
+		t.Fatalf("沒有平台網址：%v", err)
+	}
+	if err := cmdLogin([]string{"-api", "https://pt.example/api", "-no-browser"}); err == nil || !strings.Contains(err.Error(), "不要加路徑") {
+		t.Fatalf("帶路徑要拒絕：%v", err)
+	}
+}

@@ -253,6 +253,9 @@ func upload(args []string) error {
 	if base == "" || kid == "" || kfile == "" {
 		return errors.New("需要平台網址、上傳金鑰 ID、上傳私鑰檔案：用 -api、-key-id、-key-file，或填在 playtogether.json（platform、uploadKeyId、uploadKeyFile）")
 	}
+	if err := validPlatform(base); err != nil {
+		return err
+	}
 	if p != nil && p.Client == "godot" && !*noBuild && fs.Arg(0) == "" {
 		if err := buildGodot(p); err != nil {
 			return err
