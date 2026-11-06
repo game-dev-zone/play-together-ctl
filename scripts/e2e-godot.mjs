@@ -1,4 +1,4 @@
-// Godot 範本的瀏覽器測試（CI 用）：打開 pt dev 提供的網頁版，確認 Godot 遊戲用模擬模式握手、
+// Godot 範本的瀏覽器測試（CI 用）：打開 pt dev 提供的網頁版（網址帶 pt_dev 時經過本機假平台，否則是 -mock 模擬模式），確認 Godot 遊戲握手、
 // 向遊戲伺服器兌換啟動碼並收到房間狀態（遊戲把狀態寫到 window.__ptGame）。
 // 用法：node scripts/e2e-godot.mjs <網址> [截圖.png]；需要 Chrome（CHROME 環境變數可指定路徑）
 import { spawn } from 'node:child_process';

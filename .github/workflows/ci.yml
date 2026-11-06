@@ -62,15 +62,18 @@ jobs:
           godot --version
       - name: 匯出測試
         run: go test -v -run 'TestGodot|TestNewGodot|TestCheckGodot' ./cmd/pt
-      - name: 瀏覽器握手（pt new → pt dev → 模擬模式兌換）
+      - name: 瀏覽器握手（pt new → pt dev 本機假平台 → 簽章兌換）
         run: |
           go build -o /tmp/pt ./cmd/pt
           cd "$(mktemp -d)"
           /tmp/pt new ci-godot -client godot -server go
           cd ci-godot
-          /tmp/pt dev -players 0 &
-          for i in $(seq 1 120); do curl -fs -o /dev/null http://127.0.0.1:8090/ && break; sleep 1; done
-          node "$GITHUB_WORKSPACE/scripts/e2e-godot.mjs" http://127.0.0.1:8090/
+          /tmp/pt dev -players 0 > /tmp/ptdev.log 2>&1 &
+          for i in $(seq 1 120); do curl -fs -o /dev/null http://127.0.0.1:8090/ && grep -q '本機假平台：' /tmp/ptdev.log && break; sleep 1; done
+          platform="$(grep -o '本機假平台：http://[0-9.:]*' /tmp/ptdev.log | sed 's/本機假平台：//')"
+          test -n "$platform" || { cat /tmp/ptdev.log; exit 1; }
+          node "$GITHUB_WORKSPACE/scripts/e2e-godot.mjs" "http://127.0.0.1:8090/?pt_dev=${platform}&pt_player=p1"
+          curl -fs "${platform}/dev/state" | grep -q '"endpoint":"兌換啟動碼","status":200' || { echo "假平台沒有收到簽章正確的兌換"; cat /tmp/ptdev.log; exit 1; }
       - name: Claude Code Game Studios 範本（實際下載並逐檔驗證、匯出、握手）
         run: |
           cd "$(mktemp -d)"
@@ -78,7 +81,7 @@ jobs:
           cd ci-studio
           test -f project.godot && test -f .claude/rules/playtogether.md && grep -q '@PLAYTOGETHER.md' CLAUDE.md
           grep -q '^!export_presets.cfg' .gitignore
-          /tmp/pt dev -players 0 -addr 127.0.0.1:8091 &
+          /tmp/pt dev -players 0 -mock -addr 127.0.0.1:8091 &
           for i in $(seq 1 120); do curl -fs -o /dev/null http://127.0.0.1:8091/ && break; sleep 1; done
           node "$GITHUB_WORKSPACE/scripts/e2e-godot.mjs" http://127.0.0.1:8091/
           if strings build/index.pck | grep -qE 'res://(server|design|docs|production)/'; then echo "匯出包含不該有的資料夾"; exit 1; fi

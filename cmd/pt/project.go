@@ -419,14 +419,14 @@ func cmdNew(args []string) error {
 	fmt.Println("下一步：")
 	fmt.Printf("  cd %s\n", name)
 	if *client == "godot" {
-		fmt.Printf("  pt dev        # 匯出 Godot 網頁版並用本機模擬模式打開%s（需要 Godot 4.3 以上與網頁匯出範本）\n", devTabsLabel[*gameServer != "none"])
+		fmt.Printf("  pt dev        # 匯出 Godot 網頁版，啟動本機假平台並打開%s與控制面板（需要 Godot 4.3 以上與網頁匯出範本）\n", devTabsLabel[*gameServer != "none"])
 		if studios {
 			fmt.Println("  用 Godot 編輯器打開專案根目錄修改遊戲")
 		} else {
 			fmt.Println("  用 Godot 編輯器打開 game/ 修改遊戲")
 		}
 	} else {
-		fmt.Printf("  pt dev        # 本機模擬模式，打開%s\n", devTabsLabel[*gameServer != "none"])
+		fmt.Printf("  pt dev        # 啟動遊戲伺服器與本機假平台，打開%s與控制面板\n", devTabsLabel[*gameServer != "none"])
 	}
 	fmt.Println("  make verify   # 啟動驗證：伺服器測試、檢查要上傳的檔案、在模擬模式實際啟動一次（make 列出所有指令）")
 	fmt.Println("接上玩聚的步驟見 README.md。")
@@ -866,8 +866,9 @@ func cmdDev(args []string) error {
 		}
 	} else {
 		fmt.Printf("\n本機假平台：%s（控制面板：踢人、重新開始、關房、平台連不到、時鐘偏差、呼叫紀錄）\n", platform)
-		fmt.Printf("遊戲：%s；簽章金鑰：%s\n", siteURL, keyNote)
-		fmt.Println("每個玩家分頁是一位玩家，重新整理會回到原座位；在面板新增玩家。Ctrl-C 結束")
+		fmt.Printf("玩家分頁：%s（換 pt_player 就是另一位玩家；直接開 %s 不會經過假平台，會兌換失敗）\n", devPlayerURL(siteURL, platform, "p1"), siteURL)
+		fmt.Printf("簽章金鑰：%s\n", keyNote)
+		fmt.Println("重新整理玩家分頁會回到原座位；在控制面板新增玩家。Ctrl-C 結束")
 		if *players > 0 {
 			openBrowser(platform + "/")
 		}
