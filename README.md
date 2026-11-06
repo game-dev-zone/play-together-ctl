@@ -28,11 +28,18 @@ go install github.com/game-dev-zone/play-together-ctl/cmd/pt@latest
 ```sh
 pt new                           # 逐步選擇名稱、畫面（網頁或 Godot）、多人與遊戲伺服器、方向、AI 開發模式
 cd my-party-game
-pt dev                           # 本機模擬模式：啟動參考伺服器並開啟玩家分頁（多人專案 2 個、單人專案 1 個）
-make verify                      # 啟動驗證：伺服器測試、在模擬模式實際啟動一次、檢查要上傳的檔案
+pt dev                           # 本機開發：啟動遊戲伺服器與本機假平台，開啟玩家分頁（多人專案 2 個、單人專案 1 個）與控制面板
+make verify                      # 啟動驗證：伺服器測試、在模擬模式實際啟動一次、pt verify server、檢查要上傳的檔案
 ```
 
-伺服器範本內建斷線重連骨架（`server/session.go`、`server/session.mjs`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入；前端範本會自動重新連線。
+伺服器範本內建斷線重連骨架（`server/session.go`、`server/session.mjs`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入；前端範本會自動重新連線。另有基本防護（`server/limit.go`、`server/limit.mjs`）：每個 IP 與每位玩家限流（429）、請求太大回 413、`GET /healthz`。
+
+### 驗證遊戲伺服器和玩聚的接口
+
+- **`pt dev`**：本機假平台代替玩聚發啟動碼、回應遊戲伺服器的 API，並**驗證簽章**（用 `keys/server.key`，還沒產生時用只供本機的暫存金鑰）。控制面板可以踢人、重新開始、關房、模擬平台連不到與時鐘偏差，並列出遊戲伺服器的每一次呼叫與錯誤原因（例如 `clock_skew`、`bad_signature`）。
+- **`pt verify server`**（範本伺服器）：自動跑一遍加入、重新加入、舊局的啟動碼、踢人、重新開始、關房、平台連不到、時鐘偏差、回報一局、跨來源、413、429 與簽章，約 30 秒；`make verify` 會一起跑。
+- **自己的遊戲伺服器**（`external`）：`pt dev -no-server` 只啟動假平台與控制面板，照印出的 `PT_API_URL`、`PT_KEY_ID`、`PT_KEY_FILE` 啟動你的伺服器後用面板確認。
+- 舊的模擬模式（不經過假平台、不簽章）：`pt dev -mock`。
 
 `PLAYTOGETHER.md` 的「素材」一節建議用 Codex 生成圖片：整套素材共用風格卡 `art/STYLE.md`（範本附一套明亮派對風格：形狀、線條、平塗上色、調色盤色碼、光線、排除項目），先做一張樣板，其他素材都用 `-i` 參考樣板生成，降低「每張各自生成」的 AI 感；生成前同時讀 `docs/content/CONTENT_PROFILE.md`（內容邊界）與 `GAMEPLAY_ECONOMY.md`（玩法宣告）、提示詞寫明平台硬性規則、看過再用，每個素材記錄在 `art/SOURCES.md`。範本內建程式合成的預設音效（網頁版 `web/sfx.js`、Godot 版 `main.gd`，沒有音檔），並接上平台的「遊戲聲音」開關；要用音檔或音樂時照「音效與音樂」一節的來源順序（程式合成 → CC0 → AI 生成付費方案 → 確認沒有登記 Content ID 的免費音樂）。
 
@@ -162,7 +169,7 @@ pt check：PASS／REVIEW_REQUIRED／ERROR
 
 既有專案想改用新的 AI 工作流程：用 `pt new` 以相同設定建一個暫存專案，把 `docs/ai/`、`CLAUDE.md`、`AGENTS.md` 複製過去（`CLAUDE.md`、`AGENTS.md` 改過的話手動合併），並在 `playtogether.json` 加上 `aiMode`、`multiplayer`、`gameServer`。
 
-不需要金鑰、不需要連線到玩聚：直接開啟時 SDK 自動進入模擬模式。
+不需要連線到玩聚：`pt dev` 用本機假平台；直接用瀏覽器開遊戲頁（網址沒有 `pt_dev`）時 SDK 自動進入模擬模式。
 
 ## 依遊戲類型開始
 
@@ -291,7 +298,8 @@ claude
 | 指令 | 說明 |
 | --- | --- |
 | `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-game-server playtogether-managed\|external\|none] [-mode standard\|studio\|lightweight\|custom] [-skills none\|core\|full] [-ai studios] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定、AI 工作流程）；`-orientation` 選直式、橫式或兩者都支援（預設直式） |
-| `pt dev [-addr 127.0.0.1:8090] [-players N] [-smoke]` | 本機模擬模式（Godot 專案會先匯出）：啟動範本／參考伺服器並開啟玩家分頁，預設多人專案 2 個、單人專案（`multiplayer.enabled: false`）1 個，`-players` 可以明確指定；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
+| `pt dev [-addr 127.0.0.1:8090] [-players N] [-no-server] [-site 網址] [-mock] [-smoke]` | 本機開發（Godot 專案會先匯出）：啟動範本／參考伺服器與本機假平台（驗證簽章、控制面板），開啟玩家分頁，預設多人專案 2 個、單人專案（`multiplayer.enabled: false`）1 個，`-players` 可以明確指定；`-no-server` 只啟動假平台（接自己的遊戲伺服器）；`-mock` 舊的模擬模式；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
+| `pt verify server [-json] [-start-action 操作] [-round-wait 時間]` | 用本機假平台自動驗證範本伺服器和玩聚平台的接口（只支援 `playtogether-managed`） |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
 | `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器架構與網址設定、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒；`gameServer.mode: none` 不需要 `serverUrl` |
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；公鑰交給玩聚登記，私鑰只在你手上 |

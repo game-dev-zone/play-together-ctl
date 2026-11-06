@@ -65,6 +65,8 @@ func main() {
 		err = cmdDev(os.Args[2:])
 	case "check":
 		err = cmdCheck(os.Args[2:])
+	case "verify":
+		err = cmdVerify(os.Args[2:])
 	case "build":
 		err = cmdBuild(os.Args[2:])
 	case "sdk":
@@ -112,9 +114,14 @@ func usage() {
                                                 AI 開發模式；-y、非互動與 CI 沒指定時用 lightweight（不下載）
          [-skills none|core|full] [-ai studios] 自訂（-mode custom）：遊戲開發 skill、Claude Code Game Studios
          [-y]                                   不詢問，沒指定的項目用預設值
-  pt dev [-addr 127.0.0.1:8090]                本機模擬模式：啟動參考伺服器並開啟玩家分頁
+  pt dev [-addr 127.0.0.1:8090]                本機開發：啟動遊戲伺服器與本機假平台（驗證簽章；控制面板可以踢人、重新開始、
+                                                關房、模擬平台連不到與時鐘偏差、看呼叫紀錄），並開啟玩家分頁
          [-players N]                           玩家分頁數（預設：多人專案 2、單人專案 1）
+         [-no-server] [-site 網址]              只啟動假平台與控制面板（接自己的遊戲伺服器）
+         [-mock]                                舊的模擬模式（不經過假平台、不簽章）
          [-smoke]                               啟動驗證：啟動、確認首頁與 SDK 載入得到後結束（不開瀏覽器）
+  pt verify server [-json]                      用本機假平台自動驗證範本伺服器和玩聚平台的接口：加入、重新加入、
+                                                踢人、重新開始、關房、平台連不到、時鐘偏差、回報一局、跨來源、413、429、簽章
   pt build                                      Godot 專案：用 Godot 無頭模式匯出網頁版到 build/
   pt check [-local] [-json] [建置資料夾]        上傳前檢查：ERROR_HARD_RULE／ERROR_SCHEMA／ERROR_BUILD／REVIEW_REQUIRED／WARNING；
                                                 -local：platform、serverUrl（需要時）還沒填不算錯誤；-json：JSON 輸出
@@ -296,6 +303,10 @@ func upload(args []string) error {
 	}
 	if p != nil && len(p.CDN) > 0 {
 		reg["cdnAssets"] = p.CDN
+	}
+	// 遊戲伺服器架構：平台依此決定審核要不要測遊戲伺服器的部署（none 不需要）
+	if p != nil {
+		reg["gameServerMode"] = p.gameServerMode()
 	}
 	// 宣告快照：平台自己判斷硬性規則與需要審核的項目（不採信本機的 pt check）
 	if decl, ok := declarationBody(p); ok {

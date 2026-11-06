@@ -19,8 +19,8 @@ import (
 	"time"
 )
 
-// fakePlatform 是只回應遊戲伺服器會呼叫的三個 API 的假平台（不驗證簽章）。
-type fakePlatform struct {
+// stubPlatform 是只回應遊戲伺服器會呼叫的三個 API 的假平台（不驗證簽章）。
+type stubPlatform struct {
 	mu          sync.Mutex
 	epoch       int
 	open        bool
@@ -29,9 +29,9 @@ type fakePlatform struct {
 	rounds      []map[string]any
 }
 
-func (f *fakePlatform) set(fn func(*fakePlatform)) { f.mu.Lock(); fn(f); f.mu.Unlock() }
+func (f *stubPlatform) set(fn func(*stubPlatform)) { f.mu.Lock(); fn(f); f.mu.Unlock() }
 
-func (f *fakePlatform) handler(t *testing.T) http.Handler {
+func (f *stubPlatform) handler(t *testing.T) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/launch/exchange", func(w http.ResponseWriter, r *http.Request) {
 		var in struct{ Code string }
@@ -76,7 +76,7 @@ func (f *fakePlatform) handler(t *testing.T) http.Handler {
 	return mux
 }
 
-func (f *fakePlatform) roundEnded(result string) bool {
+func (f *stubPlatform) roundEnded(result string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, r := range f.rounds {
@@ -103,7 +103,7 @@ func TestReconnectSkeleton(t *testing.T) {
 
 func testReconnect(t *testing.T, tmpl string) {
 	root := newProject(t, tmpl)
-	f := &fakePlatform{epoch: 1, open: true, kicked: map[string]bool{}}
+	f := &stubPlatform{epoch: 1, open: true, kicked: map[string]bool{}}
 	platform := httptest.NewServer(f.handler(t))
 	t.Cleanup(platform.Close)
 
@@ -120,7 +120,7 @@ func testReconnect(t *testing.T, tmpl string) {
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("編譯失敗：%v\n%s", err, out)
 		}
-		gofmt := exec.Command("gofmt", "-l", "main.go", "session.go")
+		gofmt := exec.Command("gofmt", "-l", "main.go", "session.go", "limit.go")
 		gofmt.Dir = filepath.Join(root, "server")
 		if out, err := gofmt.Output(); err != nil || len(out) > 0 {
 			t.Fatalf("範本產生的 Go 程式要符合 gofmt：%v %s", err, out)
@@ -209,7 +209,7 @@ func testReconnect(t *testing.T, tmpl string) {
 	}
 
 	// 3. 平台踢掉 B：下一次查房間後 B 的 token 失效、座位移除
-	f.set(func(f *fakePlatform) { f.kicked["p-b"] = true })
+	f.set(func(f *stubPlatform) { f.kicked["p-b"] = true })
 	eventually("被踢的人失效", []string{a2}, func() bool { st, _ := act(b, "state"); return st == 401 })
 	if _, v := act(a2, "state"); len(v.Players) != 1 {
 		t.Fatalf("被踢的人要移出座位：%+v", v)
@@ -222,7 +222,7 @@ func testReconnect(t *testing.T, tmpl string) {
 	if _, v := act(a2, "start"); !v.Playing {
 		t.Fatalf("要開始一局：%+v", v)
 	}
-	f.set(func(f *fakePlatform) { f.epoch = 2 })
+	f.set(func(f *stubPlatform) { f.epoch = 2 })
 	eventually("重新開始後舊局結束", nil, func() bool { st, _ := act(a2, "state"); return st == 401 })
 	eventually("回報中止", nil, func() bool { return f.roundEnded("aborted") })
 	st, a3 := join("a-0000000000000003")
@@ -244,15 +244,15 @@ func testReconnect(t *testing.T, tmpl string) {
 	}
 
 	// 6. 一段時間查不到平台：拒絕新加入，已在房間的人繼續玩
-	f.set(func(f *fakePlatform) { f.failMembers = true })
+	f.set(func(f *stubPlatform) { f.failMembers = true })
 	eventually("查不到平台時拒絕新加入", []string{a3}, func() bool { st, _ := join("d-0000000000000001"); return st == 503 })
 	if st, _ := act(a3, "state"); st != 200 {
 		t.Fatalf("已在房間的人要能繼續：%d", st)
 	}
-	f.set(func(f *fakePlatform) { f.failMembers = false })
+	f.set(func(f *stubPlatform) { f.failMembers = false })
 	eventually("平台恢復後可以加入", []string{a3}, func() bool { st, _ := join("d-0000000000000002"); return st == 200 })
 
 	// 7. 房間關閉：所有連線失效
-	f.set(func(f *fakePlatform) { f.open = false })
+	f.set(func(f *stubPlatform) { f.open = false })
 	eventually("關房後連線失效", nil, func() bool { st, _ := act(a3, "state"); return st == 401 })
 }

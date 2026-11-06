@@ -1,14 +1,15 @@
 // [[.Name]] 的遊戲伺服器（pt new 從範本「一起按」產生）：兌換啟動碼、由伺服器決定分數與勝負、回報一局給玩聚。
 // 這個檔案是遊戲規則與 HTTP API；斷線重連（座位、token、離線、向玩聚查房間）在 session.go，通常不需要修改。
 //
-// 本機開發：在專案根目錄執行 pt dev（模擬模式，不需要連玩聚）。
+// 本機開發：在專案根目錄執行 pt dev（本機假平台，不需要連玩聚）；改完用 pt verify server 驗證和玩聚的接口。
 //
 // 接上玩聚（正式部署）：
 //
 //	PT_API_URL=（平台網址） PT_KEY_ID=（伺服器金鑰 ID） PT_KEY_FILE=../keys/server.key \
 //	ALLOW_ORIGINS='https://*.games.（平台網域）' ADDR=0.0.0.0:8090 go run .
 //
-// 選填：SEAT_HOLD（離線多久讓出座位，預設 60s）、ROOM_SYNC（多久向玩聚查一次房間，預設 10s）。
+// 選填：SEAT_HOLD（離線多久讓出座位，預設 60s）、ROOM_SYNC（多久向玩聚查一次房間，預設 10s）、
+// TRUST_PROXY=<代理層數>（在反向代理後面時，限流改用 X-Forwarded-For 的 IP；見 limit.go）。
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -28,6 +30,9 @@ import (
 )
 
 const roundLength = 10 * time.Second
+
+// maxBody 是每個請求內容的上限；超過回 413。玩家只送操作，不需要很大。
+const maxBody = 1024
 
 // game 是一個房間的遊戲狀態（「一起按」：10 秒內比誰按得多）。換成你的玩法時改這裡。
 type game struct {
@@ -153,11 +158,11 @@ func main() {
 	mux := http.NewServeMux()
 	// 本機開發時直接提供前端（同一個來源）；上傳到玩聚託管後，前端由玩聚提供、只呼叫下面的 API
 	mux.Handle("GET /", http.FileServer(http.Dir(envOr("WEB_DIR", "../web"))))
+	mux.HandleFunc("GET /healthz", healthz)
 	// 第一次進入、重新整理、網路恢復後都走這裡：用新的啟動碼回到原座位
 	mux.HandleFunc("POST /join", func(w http.ResponseWriter, r *http.Request) {
 		var in struct{ LaunchCode string }
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in) != nil {
-			writeError(w, http.StatusBadRequest, "bad_request")
+		if !readJSON(w, r, &in) {
 			return
 		}
 		out, err := s.hub.join(r.Context(), in.LaunchCode)
@@ -179,8 +184,11 @@ func main() {
 	// 其他操作都帶 join 拿到的 token；玩家只能送「操作」，分數與勝負由伺服器決定
 	mux.HandleFunc("POST /action", func(w http.ResponseWriter, r *http.Request) {
 		var in struct{ Token, Action string }
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in) != nil {
-			writeError(w, http.StatusBadRequest, "bad_request")
+		if !readJSON(w, r, &in) {
+			return
+		}
+		if !actionPerPlayer.allow(in.Token) {
+			writeError(w, http.StatusTooManyRequests, "rate_limited")
 			return
 		}
 		s.hub.mu.Lock()
@@ -205,8 +213,8 @@ func main() {
 	})
 
 	allowed := strings.Split(os.Getenv("ALLOW_ORIGINS"), ",")
-	log.Printf("[[.Name]]：http://%s（模擬模式：%v）", addr, pt.Mock)
-	log.Fatal(http.ListenAndServe(addr, cors(allowed, mux)))
+	log.Printf("[[.Name]]：http://%s（平台：%s）", addr, map[bool]string{true: "模擬模式", false: pt.BaseURL}[pt.Mock])
+	log.Fatal(http.ListenAndServe(addr, cors(allowed, protect(mux))))
 }
 
 // cors：上傳到玩聚託管後，前端在 https://<版本>.games.（平台網域），和遊戲伺服器不同來源，要允許跨來源請求。
@@ -239,6 +247,27 @@ func cors(allowed []string, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// readJSON 讀取請求內容；太大回 413，格式錯誤（含 JSON 後面還有其他內容）回 400。
+func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	err := dec.Decode(v)
+	if err == nil {
+		if _, extra := dec.Token(); extra != io.EOF {
+			err = errors.Join(errors.New("JSON 後面還有其他內容"), extra)
+		}
+	}
+	var tooLarge *http.MaxBytesError
+	switch {
+	case errors.As(err, &tooLarge):
+		writeError(w, http.StatusRequestEntityTooLarge, "too_large")
+	case err != nil:
+		writeError(w, http.StatusBadRequest, "bad_request")
+	default:
+		return true
+	}
+	return false
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

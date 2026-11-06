@@ -52,8 +52,12 @@ func TestUploadSendsOrientation(t *testing.T) {
 		defer mu.Unlock()
 		return got
 	}
-	if o := run()["orientation"]; o != "landscape" {
+	first := run()
+	if o := first["orientation"]; o != "landscape" {
 		t.Fatalf("要送出 playtogether.json 的方向：%v", o)
+	}
+	if m := first["gameServerMode"]; m != "playtogether-managed" {
+		t.Fatalf("要送出遊戲伺服器架構：%v", m)
 	}
 	if o := run("-orientation", "any")["orientation"]; o != "any" {
 		t.Fatalf("參數優先：%v", o)

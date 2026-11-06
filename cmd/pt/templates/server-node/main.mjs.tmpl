@@ -2,17 +2,19 @@
 // 這個檔案是遊戲規則與 HTTP API；斷線重連（座位、token、離線、向玩聚查房間）在 session.mjs，通常不需要修改。
 // 只用 Node 內建模組與玩聚伺服器 SDK（playtogether-server.mjs，pt sdk update 會更新），不需要 npm install。
 //
-// 本機開發：在專案根目錄執行 pt dev（模擬模式，不需要連玩聚）。
+// 本機開發：在專案根目錄執行 pt dev（本機假平台，不需要連玩聚）；改完用 pt verify server 驗證和玩聚的接口。
 // 接上玩聚（正式部署）：
 //   PT_API_URL=（平台網址） PT_KEY_ID=（伺服器金鑰 ID） PT_KEY_FILE=../keys/server.key \
 //   ALLOW_ORIGINS='https://*.games.（平台網域）' ADDR=0.0.0.0:8090 node main.mjs
-// 選填：SEAT_HOLD（離線多久讓出座位，預設 60s）、ROOM_SYNC（多久向玩聚查一次房間，預設 10s）。
+// 選填：SEAT_HOLD（離線多久讓出座位，預設 60s）、ROOM_SYNC（多久向玩聚查一次房間，預設 10s）、
+// TRUST_PROXY=<代理層數>（在反向代理後面時，限流改用 X-Forwarded-For 的 IP；見 limit.mjs）。
 import { createPrivateKey } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join as joinPath, normalize } from 'node:path';
 import { PlatformApiError, createServerClient } from './playtogether-server.mjs';
 import { SessionError, createHub, newToken } from './session.mjs';
+import { actionPerPlayer, clientIP, joinsPerIP, requestsPerIP } from './limit.mjs';
 
 const ROUND_MS = 10_000;
 const env = (k, d) => process.env[k] || d;
@@ -91,11 +93,31 @@ const originAllowed = (o) => allowed.some((a) => {
 
 const webDir = env('WEB_DIR', '../web');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.wasm': 'application/wasm' };
+// 每個請求內容的上限；超過回 413。玩家只送操作，不需要很大
+const MAX_BODY = 1024;
+const TOO_LARGE = Symbol('too_large');
+// 依位元組計算；超過時立刻回 413 並關閉連線，不把剩下的內容讀完
 const readBody = (req) => new Promise((resolve) => {
-  let data = '';
-  req.on('data', (c) => { data += c; if (data.length > 1024) req.destroy(); });
-  req.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+  const chunks = [];
+  let size = 0;
+  let over = false;
+  req.on('data', (c) => {
+    if (over) return;
+    size += c.length;
+    if (size > MAX_BODY) {
+      over = true;
+      chunks.length = 0;
+      resolve(TOO_LARGE);
+      return;
+    }
+    chunks.push(c);
+  });
+  req.on('end', () => {
+    if (over) return;
+    try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { resolve(null); }
+  });
 });
+const tooLarge = (res) => { res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' }); res.end(JSON.stringify({ error: 'too_large' })); };
 const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
 
 createServer(async (req, res) => {
@@ -106,9 +128,16 @@ createServer(async (req, res) => {
     res.setHeader('Vary', 'Origin');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
   }
+  // 健康檢查：給部署環境與玩聚審核確認伺服器活著（不查玩聚）
+  if (req.method === 'GET' && req.url === '/healthz') return send(res, 200, { status: 'ok' });
+  if (req.method === 'POST') {
+    const ip = clientIP(req);
+    if (!requestsPerIP(ip) || (req.url === '/join' && !joinsPerIP(ip))) return send(res, 429, { error: 'rate_limited' });
+  }
   // 第一次進入、重新整理、網路恢復後都走這裡：用新的啟動碼回到原座位
   if (req.method === 'POST' && req.url === '/join') {
     const body = await readBody(req);
+    if (body === TOO_LARGE) return tooLarge(res);
     if (!body?.launchCode) return send(res, 400, { error: 'bad_request' });
     try {
       return send(res, 200, await hub.join(body.launchCode));
@@ -122,6 +151,8 @@ createServer(async (req, res) => {
   // 其他操作都帶 join 拿到的 token；玩家只能送「操作」，分數與勝負由伺服器決定
   if (req.method === 'POST' && req.url === '/action') {
     const body = await readBody(req);
+    if (body === TOO_LARGE) return tooLarge(res);
+    if (!actionPerPlayer(String(body?.token ?? ''))) return send(res, 429, { error: 'rate_limited' });
     let room, seat;
     try {
       ({ room, seat } = hub.lookup(body?.token));
@@ -146,4 +177,4 @@ createServer(async (req, res) => {
     }
   }
   res.writeHead(405); res.end();
-}).listen(Number(port), host, () => console.log(`[[.Name]]：http://${host}:${port}（模擬模式：${mock}）`));
+}).listen(Number(port), host, () => console.log(`[[.Name]]：http://${host}:${port}（平台：${mock ? '模擬模式' : env('PT_API_URL', '')}）`));

@@ -1,0 +1,109 @@
+package main
+
+// 基本防護（pt new 產生）：限流與健康檢查。通常不需要修改；數字可以依遊戲調整。
+//
+//   - 每個 IP、每位玩家（token）各自限流，超過回 429 rate_limited。玩聚平台的限流擋不到你的伺服器，要自己做。
+//   - 請求太大回 413 too_large（main.go 的 maxBody）。
+//   - GET /healthz 回 {"status":"ok"}：給部署環境與玩聚審核確認伺服器活著（不查玩聚，玩聚暫時連不到也是 ok）。
+//
+// IP 預設取連線的來源位址。放在反向代理（Caddy、nginx、Cloudflare Tunnel）後面時，設 TRUST_PROXY=<代理層數>：
+// 每層代理會在 X-Forwarded-For 後面加上它看到的來源，所以取從右邊數第 N 個（例如只有 Caddy 是 1；Cloudflare → Caddy 是 2）。
+// 沒有代理時不要設；層數設太多，玩家可以自己偽造 IP，設太少，所有人會被當成同一個 IP。
+
+import (
+	"net"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+// 每秒補充幾次、最多累積幾次。前端每 0.5 秒輪詢一次狀態，再加上玩家操作（例如連打）。
+var (
+	actionPerPlayer = newLimiter(20, 40)  // 每位玩家的 /action
+	requestsPerIP   = newLimiter(60, 120) // 每個 IP 的所有 API（同一個網路可能有好幾位玩家）
+	joinsPerIP      = newLimiter(0.5, 10) // 每個 IP 的 /join（重新整理才會呼叫；每 2 秒補 1 次）
+)
+
+// limiter 是簡單的令牌桶：每個 key 一個桶，太久沒用的桶會清掉。
+type limiter struct {
+	mu      sync.Mutex
+	rate    float64 // 每秒補充
+	burst   float64
+	buckets map[string]*bucket
+	swept   time.Time
+}
+
+type bucket struct {
+	tokens float64
+	at     time.Time
+}
+
+func newLimiter(rate, burst float64) *limiter {
+	return &limiter{rate: rate, burst: burst, buckets: map[string]*bucket{}}
+}
+
+func (l *limiter) allow(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	if now.Sub(l.swept) > time.Minute {
+		for k, b := range l.buckets {
+			if now.Sub(b.at) > 10*time.Minute {
+				delete(l.buckets, k)
+			}
+		}
+		l.swept = now
+	}
+	b := l.buckets[key]
+	if b == nil {
+		b = &bucket{tokens: l.burst, at: now}
+		l.buckets[key] = b
+	}
+	b.tokens = min(l.burst, b.tokens+now.Sub(b.at).Seconds()*l.rate)
+	b.at = now
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
+}
+
+var trustProxy, _ = strconv.Atoi(os.Getenv("TRUST_PROXY")) // 信任幾層反向代理；0 表示不信任 X-Forwarded-For
+
+func clientIP(r *http.Request) string {
+	if trustProxy > 0 {
+		var parts []string
+		for _, h := range r.Header.Values("X-Forwarded-For") {
+			parts = append(parts, strings.Split(h, ",")...)
+		}
+		if len(parts) >= trustProxy {
+			return strings.TrimSpace(parts[len(parts)-trustProxy])
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// protect 套在 API 外面：每個 IP 限流；/join 另外限流。前端檔案與 /healthz 不限。
+func protect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			ip := clientIP(r)
+			if !requestsPerIP.allow(ip) || (r.URL.Path == "/join" && !joinsPerIP.allow(ip)) {
+				writeError(w, http.StatusTooManyRequests, "rate_limited")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func healthz(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}

@@ -5,10 +5,10 @@
 ## 本機開發
 
 ```sh
-pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版、[[end]]啟動[[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else]]參考伺服器（只用於本機模擬）[[end]]、打開[[if .Multiplayer]]兩個玩家分頁[[else]]一個玩家分頁[[end]]
+pt dev          # 本機開發：[[if eq .Client "godot"]]匯出 Godot 網頁版、[[end]]啟動[[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else]]參考伺服器（只用於本機）[[end]]與本機假平台、打開[[if .Multiplayer]]兩個玩家分頁[[else]]一個玩家分頁[[end]]與控制面板
 ```
 
-不需要金鑰、不需要連線到玩聚。[[if eq .Client "godot"]]
+不需要連線到玩聚。**本機假平台**代替玩聚：發啟動碼、回應遊戲伺服器的 API 並**驗證簽章**（用 `keys/server.key`；還沒產生時用只供本機的暫存金鑰）。控制面板可以模擬房主踢人、重新開始、關房，以及平台連不到、時鐘偏差，並列出遊戲伺服器的每一次呼叫與錯誤原因。每個玩家分頁是一位玩家，重新整理會回到原座位。舊的模擬模式（不簽章）用 `pt dev -mock`。[[if eq .Client "godot"]]
 用 Godot 編輯器打開 [[if .GodotPrefix]]`[[.GodotPrefix]]`[[else]]專案根目錄[[end]] 修改遊戲（在編輯器裡執行時也是模擬模式）；要在瀏覽器看網頁版，重新執行 `pt dev`（或 `pt build` 後重新整理）。
 需要 Godot 4.3 以上，並安裝**網頁匯出範本**（編輯器 → 管理匯出範本 → 下載）。`pt` 會自動找 Godot，找不到時設定環境變數 `GODOT`。[[else]]
 改了前端重新整理即可；改了伺服器重新執行 `pt dev`。[[end]]
@@ -19,14 +19,26 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 
 | 指令 | 用途 |
 | --- | --- |
-| `make dev` | 本機模擬模式（`pt dev`） |
+| `make dev` | 本機開發（`pt dev`） |
 | `make server` | 只啟動遊戲伺服器，不開瀏覽器（`pt dev -players 0`） |
-| `make verify` | **啟動驗證，每次改完跑**：伺服器測試、[[if eq .Client "godot"]]匯出、[[end]]在模擬模式實際啟動一次並確認首頁與 SDK 載入得到（`pt dev -smoke`）、檢查要上傳的檔案（`pt check -local`）。不需要金鑰 |
+| `make verify` | **啟動驗證，每次改完跑**：伺服器測試、[[if eq .Client "godot"]]匯出、[[end]]在模擬模式實際啟動一次並確認首頁與 SDK 載入得到（`pt dev -smoke`）、[[if eq .GameServer "playtogether-managed"]]用本機假平台驗證遊戲伺服器和玩聚的接口（`pt verify server`）、[[end]]檢查要上傳的檔案（`pt check -local`）。不需要金鑰 |
 | `make check` | 上傳前的完整檢查（`pt check`；[[if eq .GameServer "none"]]`platform` 要填好；此模式不需要 `serverUrl`[[else]]`platform`、`serverUrl` 都要填好[[end]]） |
 | `make keys` | 產生還沒有的金鑰（[[if eq .GameServer "none"]]只有上傳金鑰 `keys/upload.key`；這個模式不需要遊戲伺服器金鑰[[else]]上傳金鑰與遊戲伺服器金鑰[[end]]；已經有的不會覆蓋） |
 | `make upload VERSION=1.0.0 NOTES="說明"` | 上傳一個版本 |
 [[- if eq .Client "godot"]]
 | `make build`、`make clean` | 匯出 Godot 網頁版到 `build/`、刪除匯出結果 |
+[[- end]]
+
+## 驗證和玩聚的接口
+[[- if eq .GameServer "playtogether-managed"]]
+
+改過 `server/` 之後跑 `pt verify server`（`make verify` 會一起跑）：用本機假平台自動檢查加入、重新加入回到原座位、舊局的啟動碼、房主踢人、重新開始、關房、平台連不到、時鐘偏差、回報一局（開始、結束、中止）、跨來源、請求太大（413）、限流（429）與簽章，約 30 秒。開局的操作不是 `start` 時加 `-start-action <操作>`。
+[[- else if eq .GameServer "external"]]
+
+你自己的遊戲伺服器介面和範本不同，`pt verify server` 不適用。用 `pt dev -no-server` 啟動本機假平台與控制面板，照印出的環境變數（`PT_API_URL`、`PT_KEY_ID`、`PT_KEY_FILE`）啟動你的伺服器，再用控制面板踢人、重新開始、關房、模擬平台連不到與時鐘偏差，確認呼叫紀錄沒有錯誤、查成員的間隔在 10 秒左右。
+[[- else]]
+
+這個模式沒有正式遊戲伺服器，不需要驗證遊戲伺服器的接口。
 [[- end]]
 
 ## 接上玩聚
@@ -39,7 +51,10 @@ pt dev          # 模擬模式：[[if eq .Client "godot"]]匯出 Godot 網頁版
 2. 玩聚建立遊戲後，把金鑰 ID、平台網址填進 `playtogether.json`（`uploadKeyId`、`serverKeyId`、`platform`）。
 [[- end]]
 [[- if eq .GameServer "playtogether-managed"]]
-3. 部署遊戲伺服器（`server/`），把對外網址填進 `playtogether.json` 的 `serverUrl`，以及[[if eq .Client "godot"]] `[[.GodotPrefix]]config.gd` 的 `SERVER_URL`[[else]] `web/config.js` 的 `serverUrl`[[end]]。
+3. 部署遊戲伺服器（`server/`），把對外網址填進 `playtogether.json` 的 `serverUrl`，以及[[if eq .Client "godot"]] `[[.GodotPrefix]]config.gd` 的 `SERVER_URL`[[else]] `web/config.js` 的 `serverUrl`[[end]]。部署時：
+   - 主機要開啟 **NTP 校時**：簽章的時間和玩聚差超過 5 分鐘會被拒絕（`clock_skew`），玩家會進不了遊戲。
+   - 對外要用 https；放在反向代理（Caddy、nginx、Cloudflare Tunnel）後面時設 `TRUST_PROXY=<代理層數>`（只有 Caddy 是 `1`；Cloudflare → Caddy 是 `2`），限流才會用玩家的 IP。
+   - 部署後確認 `<serverUrl>/healthz` 回 `{"status":"ok"}`；玩聚審核也會檢查。
 [[- else if eq .GameServer "external"]]
 3. 在**你自己的遊戲伺服器**加上玩聚的啟動碼兌換（可以參考 `server/`，或用玩聚的伺服器 SDK），把它的對外網址填進 `playtogether.json` 的 `serverUrl`，以及[[if eq .Client "godot"]] `[[.GodotPrefix]]config.gd` 的 `SERVER_URL`[[else]] `web/config.js` 的 `serverUrl`[[end]]。`server/` 不需要部署。
 [[- else]]

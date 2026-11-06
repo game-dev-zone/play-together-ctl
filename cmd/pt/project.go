@@ -729,6 +729,9 @@ func cmdDev(args []string) error {
 	addr := fs.String("addr", "", "本機位址（預設 playtogether.json 的 devAddr）")
 	players := fs.Int("players", -1, "要打開幾個玩家分頁（預設：多人專案 2、單人專案 1；0 表示不開瀏覽器）")
 	smoke := fs.Bool("smoke", false, "啟動驗證：啟動遊戲伺服器、確認首頁與 SDK 載入得到，然後結束（不開瀏覽器）")
+	mock := fs.Bool("mock", false, "改用舊的模擬模式（不經過本機假平台、不簽章；之後的版本會移除）")
+	noServer := fs.Bool("no-server", false, "只啟動本機假平台與控制面板，不啟動專案的伺服器（用自己的遊戲伺服器時）")
+	site := fs.String("site", "", "搭配 -no-server：遊戲首頁網址（預設 http://<devAddr>/）")
 	_ = fs.Parse(args)
 	p, err := findProject()
 	if err != nil {
@@ -749,6 +752,9 @@ func cmdDev(args []string) error {
 	}
 	if *addr == "" {
 		*addr = p.DevAddr
+	}
+	if *noServer {
+		return devPlatformOnly(p, *site, *addr, *players)
 	}
 	if ln, err := net.Listen("tcp", *addr); err != nil {
 		return fmt.Errorf("%s 已經被其他程式使用，請換一個：pt dev -addr 127.0.0.1:18090", *addr)
@@ -790,8 +796,33 @@ func cmdDev(args []string) error {
 		return fmt.Errorf("pt dev 只支援 go、node 伺服器（目前是 %q）", p.Server)
 	}
 	cmd.Dir = p.path("server")
-	// 模擬模式：不需要金鑰、不連玩聚；前端由遊戲伺服器直接提供（同一個來源）
-	cmd.Env = append(os.Environ(), "PT_MOCK=1", "ADDR="+*addr, "WEB_DIR="+p.path(p.Web))
+	site0 := "http://" + *addr + "/"
+	// 前端由遊戲伺服器直接提供（同一個來源）。預設接本機假平台（驗證簽章、可以模擬踢人與關房）；
+	// 啟動驗證（-smoke）與 -mock 用舊的模擬模式：不需要金鑰、不連任何平台
+	cmd.Env = append(os.Environ(), "ADDR="+*addr, "WEB_DIR="+p.path(p.Web))
+	platform := ""
+	keyNote := ""
+	if *smoke || *mock {
+		cmd.Env = append(cmd.Env, "PT_MOCK=1")
+	} else {
+		keyFile, pub, local, cleanup, err := devServerKey(p)
+		if err != nil {
+			return fmt.Errorf("遊戲伺服器金鑰：%w", err)
+		}
+		defer cleanup()
+		fp := newFakePlatform(pub)
+		var srv *http.Server
+		platform, srv, err = startFakePlatform(fp, site0)
+		if err != nil {
+			return fmt.Errorf("啟動本機假平台失敗：%w", err)
+		}
+		defer srv.Close()
+		cmd.Env = append(cmd.Env, devServerEnv(platform, keyFile)...)
+		keyNote = "專案的 " + p.ServerKeyFile
+		if local {
+			keyNote = "只供本機的暫存金鑰（沒有 " + p.ServerKeyFile + "；不會登記到玩聚）"
+		}
+	}
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("啟動遊戲伺服器失敗：%w", err)
@@ -801,7 +832,7 @@ func cmdDev(args []string) error {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
-	site := "http://" + *addr + "/"
+	siteURL := site0
 	ready := false
 	for i := 0; i < 300 && !ready; i++ { // go run 第一次要編譯，最多等 60 秒
 		select {
@@ -809,7 +840,7 @@ func cmdDev(args []string) error {
 			return fmt.Errorf("遊戲伺服器結束了：%v", err)
 		case <-time.After(200 * time.Millisecond):
 		}
-		if res, err := http.Get(site); err == nil {
+		if res, err := http.Get(siteURL); err == nil {
 			res.Body.Close()
 			ready = true
 		}
@@ -819,7 +850,7 @@ func cmdDev(args []string) error {
 		return errors.New("遊戲伺服器 60 秒內沒有啟動")
 	}
 	if *smoke {
-		err := smokeCheck(site)
+		err := smokeCheck(siteURL)
 		stopServer(cmd)
 		<-done
 		if err != nil {
@@ -828,9 +859,21 @@ func cmdDev(args []string) error {
 		fmt.Println("✓ 啟動驗證通過：遊戲伺服器在模擬模式啟動，首頁與玩聚 SDK 都載入得到")
 		return nil
 	}
-	fmt.Printf("\n本機模擬模式：%s（每開一個分頁就是一位玩家；Ctrl-C 結束）\n", site)
-	for i := 0; i < *players; i++ {
-		openBrowser(site)
+	if platform == "" {
+		fmt.Printf("\n本機模擬模式：%s（每開一個分頁就是一位玩家；Ctrl-C 結束）\n", siteURL)
+		for i := 0; i < *players; i++ {
+			openBrowser(siteURL)
+		}
+	} else {
+		fmt.Printf("\n本機假平台：%s（控制面板：踢人、重新開始、關房、平台連不到、時鐘偏差、呼叫紀錄）\n", platform)
+		fmt.Printf("遊戲：%s；簽章金鑰：%s\n", siteURL, keyNote)
+		fmt.Println("每個玩家分頁是一位玩家，重新整理會回到原座位；在面板新增玩家。Ctrl-C 結束")
+		if *players > 0 {
+			openBrowser(platform + "/")
+		}
+		for i := 1; i <= *players; i++ {
+			openBrowser(devPlayerURL(siteURL, platform, fmt.Sprintf("p%d", i)))
+		}
 	}
 	select {
 	case <-stop:
