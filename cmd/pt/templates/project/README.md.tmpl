@@ -74,7 +74,7 @@ pt dev          # 本機開發：[[if eq .Client "godot"]]匯出 Godot 網頁版
 [[- else]]
 | `web/` | 遊戲畫面（上傳到玩聚託管的就是這個資料夾） |
 [[- end]]
-| `server/` | [[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else if eq .GameServer "external"]]範本遊戲伺服器（整合參考與本機模擬，不是你的正式遊戲伺服器）[[else]]範本遊戲伺服器（本機模擬與參考，正式遊玩不需要）[[end]]：兌換啟動碼、判定分數與勝負、回報一局。遊戲規則在 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]`；斷線重連骨架在 `[[if eq .Server "go"]]session.go[[else]]session.mjs[[end]]`（座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間），通常不需要修改 |
+| `server/` | [[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else if eq .GameServer "external"]]範本遊戲伺服器（整合參考與本機模擬，不是你的正式遊戲伺服器）[[else]]範本遊戲伺服器（本機模擬與參考，正式遊玩不需要）[[end]]：兌換啟動碼、判定分數與勝負、回報一局。遊戲規則在 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]`；和玩聚的接口（座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間、回報一局、限流、413、`/healthz`）在 SDK 的[[if eq .Server "go"]] `gameserver` 套件（`third_party/playtogether-sdk-go/gameserver`）[[else]] `createGameServer`（`playtogether-server.mjs`）[[end]]，`pt sdk update` 會更新，不要直接修改 |
 | `playtogether.json` | 專案設定（pt 指令都從這裡讀） |
 | `Makefile` | 常用指令（見上方） |
 | `keys/` | 私鑰（不進版控） |

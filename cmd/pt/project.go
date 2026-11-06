@@ -673,6 +673,9 @@ func cmdSDK(args []string) error {
 			return err
 		}
 		fmt.Print(sdkStatus(p, true))
+		if hint := legacyServerHint(p); hint != "" {
+			fmt.Println(hint)
+		}
 		return nil
 	}
 	force := len(args) == 2 && args[0] == "update" && args[1] == "-force"
@@ -711,7 +714,26 @@ func cmdSDK(args []string) error {
 		return err
 	}
 	fmt.Printf("SDK 已更新：%s → %s（%d 個檔案）\n", old, p.SDKVersion, len(files))
+	if hint := legacyServerHint(p); hint != "" {
+		fmt.Println(hint)
+	}
 	return nil
+}
+
+// legacyServerHint：v0.18 之前的範本把平台接口寫在 server/session.go（session.mjs）裡，pt sdk update 更新不到。
+func legacyServerHint(p *project) string {
+	if p == nil {
+		return ""
+	}
+	name := map[string]string{"go": "session.go", "node": "session.mjs"}[p.Server]
+	if name == "" {
+		return ""
+	}
+	if _, err := os.Stat(p.path(filepath.Join("server", name))); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("提醒：server/%s 是舊範本的平台接口，pt sdk update 更新不到它（限流、413、/healthz 等之後的修正都不會套用）。"+
+		"建議改用 SDK 的遊戲伺服器套件，步驟見玩聚開發者文件站 /docs/game-server「舊專案改用套件」。", name)
 }
 
 func (p *project) save() error {

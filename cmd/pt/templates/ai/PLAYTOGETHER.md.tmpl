@@ -15,7 +15,7 @@
 [[- else]]
 | `web/` | 遊戲畫面（HTML／JS），上傳的就是這個資料夾；`config.js` 放平台[[if ne .GameServer "none"]]與遊戲伺服器[[end]]網址 |
 [[- end]]
-| `server/` | [[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else if eq .GameServer "external"]]範本遊戲伺服器（**整合參考與本機模擬，不是你的正式遊戲伺服器**）[[else]]範本遊戲伺服器（**本機模擬與參考，正式遊玩不需要**）[[end]]（[[if eq .Server "go"]]Go[[else]]Node.js[[end]]）：兌換啟動碼、判定分數與勝負、回報一局。`[[if eq .Server "go"]]session.go[[else]]session.mjs[[end]]` 是斷線重連骨架（座位、token、離線、向玩聚查房間）：換玩法時改 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]` 的遊戲物件（`view`、`canFree`、`leave`、`abort`），不要拿掉骨架；`view` 只能放這位玩家看得到的資料 |
+| `server/` | [[if eq .GameServer "playtogether-managed"]]遊戲伺服器[[else if eq .GameServer "external"]]範本遊戲伺服器（**整合參考與本機模擬，不是你的正式遊戲伺服器**）[[else]]範本遊戲伺服器（**本機模擬與參考，正式遊玩不需要**）[[end]]（[[if eq .Server "go"]]Go[[else]]Node.js[[end]]）：兌換啟動碼、判定分數與勝負、回報一局。和玩聚的接口（座位、token、離線、向玩聚查房間、回報一局、限流）在 SDK 的[[if eq .Server "go"]] `gameserver` 套件（`third_party/playtogether-sdk-go/`）[[else]] `createGameServer`（`playtogether-server.mjs`）[[end]]，**不要修改 SDK 檔案**（`pt sdk update` 會覆蓋）：換玩法時只改 `[[if eq .Server "go"]]main.go[[else]]main.mjs[[end]]` 的遊戲物件（[[if eq .Server "go"]]`View`、`CanFree`、`Leave`、`Close`、選用的 `Tick`[[else]]`view`、`canFree`、`leave`、`close`、選用的 `tick`[[end]]）與 `onAction`；這些函式只做記憶體內的運算，回報一局用 [[if eq .Server "go"]]`r.StartRound`／`r.EndRound`[[else]]`room.startRound`／`room.endRound`[[end]]；[[if eq .Server "go"]]`View`[[else]]`view`[[end]] 只能放這位玩家看得到的資料 |
 | `playtogether.json` | `pt` 的專案設定 |
 | `keys/` | 私鑰，**不得進版控、不得放進前端** |
 | `art/` | 素材原始檔（`art/generated/`）與素材來源紀錄 `art/SOURCES.md`；不會上傳 |

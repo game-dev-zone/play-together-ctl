@@ -1,0 +1,169 @@
+package gameserver
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"time"
+
+	playtogether "github.com/Yanghsuanming/play-together/sdk-go"
+)
+
+// 一局的回報（只用於玩聚的成效分析，失敗不影響遊戲）。全部排進同一個先進先出的佇列，
+// 由一個背景工作依序送出，所以同一個房間一定是「開始」先於「結束」。
+// 網路錯誤、5xx、429 會重試；其他 4xx（例如 stale_epoch、room_closed、round_not_found）不重試，只記錄。
+// 平台用 Idempotency-Key 去重，重送不會重複記錄。
+
+type report struct {
+	roomID, roundID string
+	epoch           int
+	players         []string                 // 開始
+	result          playtogether.RoundResult // 結束；空字串表示這是「開始」
+}
+
+// retryDelays 是重試前等待的時間（New 時複製；測試時可以在 New 之前縮短）。
+var retryDelays = []time.Duration{time.Second, 4 * time.Second, 15 * time.Second}
+
+const maxQueuedReports = 10000 // 平台長時間連不到時，超過就丟掉最舊的
+
+type reportQueue struct {
+	pt      Platform
+	logf    func(string, ...any)
+	mu      sync.Mutex
+	items   []report
+	busy    bool // 正在送一筆
+	wake    chan struct{}
+	idle    chan struct{} // 佇列清空時關閉，給 drain 等待
+	done    chan struct{} // Close 時關閉：停止背景工作與重試
+	ctx     context.Context
+	cancel  context.CancelFunc
+	delays  []time.Duration
+	once    sync.Once
+	dropped int
+}
+
+func newReportQueue(pt Platform, logf func(string, ...any)) *reportQueue {
+	q := &reportQueue{pt: pt, logf: logf, wake: make(chan struct{}, 1), idle: make(chan struct{}), done: make(chan struct{})}
+	q.ctx, q.cancel = context.WithCancel(context.Background())
+	q.delays = append([]time.Duration(nil), retryDelays...)
+	close(q.idle)
+	return q
+}
+
+func (q *reportQueue) push(r report) {
+	q.mu.Lock()
+	if len(q.items) == 0 && !q.busy {
+		q.idle = make(chan struct{})
+	}
+	if len(q.items) >= maxQueuedReports {
+		q.items = q.items[1:]
+		q.dropped++
+		if q.dropped == 1 || q.dropped%1000 == 0 {
+			q.logf("gameserver: 一局的回報累積太多（玩聚長時間連不到？），已丟掉 %d 筆最舊的", q.dropped)
+		}
+	}
+	q.items = append(q.items, r)
+	q.mu.Unlock()
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (q *reportQueue) next() (report, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.items) == 0 {
+		q.busy = false
+		select {
+		case <-q.idle:
+		default:
+			close(q.idle)
+		}
+		return report{}, false
+	}
+	r := q.items[0]
+	q.items = q.items[1:]
+	q.busy = true
+	return r, true
+}
+
+func (q *reportQueue) run() {
+	for {
+		for {
+			select {
+			case <-q.done: // Close 到期後不再送下一筆
+				return
+			default:
+			}
+			r, ok := q.next()
+			if !ok {
+				break
+			}
+			q.send(r)
+		}
+		select {
+		case <-q.done:
+			return
+		case <-q.wake:
+		}
+	}
+}
+
+func (q *reportQueue) stop() {
+	q.once.Do(func() {
+		close(q.done)
+		q.cancel()
+	})
+}
+
+func (q *reportQueue) send(r report) {
+	what := "開始"
+	if r.result != "" {
+		what = "結束（" + string(r.result) + "）"
+	}
+	for attempt := 0; ; attempt++ {
+		c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		stopWatch := context.AfterFunc(q.ctx, cancel) // Close 到期時取消正在送的請求
+		var err error
+		if r.result == "" {
+			err = q.pt.ReportRoundStart(c, r.roomID, r.epoch, r.roundID, r.players)
+		} else {
+			err = q.pt.ReportRoundEnd(c, r.roomID, r.epoch, r.roundID, r.result)
+		}
+		stopWatch()
+		cancel()
+		if err == nil {
+			return
+		}
+		if !retryable(err) || attempt >= len(q.delays) {
+			q.logf("gameserver: 回報一局%s失敗（不影響遊戲）：%v", what, err)
+			return
+		}
+		select {
+		case <-time.After(q.delays[attempt]):
+		case <-q.done:
+			q.logf("gameserver: 伺服器結束，沒有送出一局%s的回報：%v", what, err)
+			return
+		}
+	}
+}
+
+func retryable(err error) bool {
+	var apiErr *playtogether.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status >= 500 || apiErr.Status == 429
+	}
+	return true // 網路錯誤、逾時
+}
+
+// drain 等佇列送完，最多到 ctx 的期限。
+func (q *reportQueue) drain(ctx context.Context) {
+	q.mu.Lock()
+	idle := q.idle
+	q.mu.Unlock()
+	select {
+	case <-idle:
+	case <-ctx.Done():
+	}
+}

@@ -1,6 +1,6 @@
 package main
 
-// 範本的斷線重連骨架（server/session.go、server/session.mjs）：用假的玩聚平台 API 實際跑 Go 與 Node 版伺服器。
+// 範本伺服器的斷線重連（SDK 的 gameserver 套件／createGameServer）：用假的玩聚平台 API 實際跑 Go 與 Node 版伺服器。
 
 import (
 	"bytes"
@@ -120,7 +120,7 @@ func testReconnect(t *testing.T, tmpl string) {
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("編譯失敗：%v\n%s", err, out)
 		}
-		gofmt := exec.Command("gofmt", "-l", "main.go", "session.go", "limit.go")
+		gofmt := exec.Command("gofmt", "-l", ".")
 		gofmt.Dir = filepath.Join(root, "server")
 		if out, err := gofmt.Output(); err != nil || len(out) > 0 {
 			t.Fatalf("範本產生的 Go 程式要符合 gofmt：%v %s", err, out)

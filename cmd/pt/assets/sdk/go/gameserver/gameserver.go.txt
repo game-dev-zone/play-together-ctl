@@ -1,0 +1,529 @@
+// Package gameserver 是玩聚遊戲伺服器的接口套件：兌換啟動碼、座位與斷線重連、向玩聚查房間（踢人、重新開始、關房）、
+// 回報一局、限流、請求大小與跨來源。開發者只實作遊戲規則（Game 與 Config.OnAction）。
+//
+// 平台接口新增或修正時，用這個套件的專案執行 pt sdk update 就會補齊。
+//
+// # 並行規則
+//
+// 一個 Server 只有一把鎖。Game 的所有方法、Config.NewGame、Config.OnAction、Ticker.Tick 都在這把鎖裡依序執行，
+// 所以遊戲程式不需要自己加鎖。相對地，這些 callback 只能做記憶體內的運算：不能呼叫玩聚平台、不能等網路或磁碟、
+// 不能另開 goroutine 之後再回頭修改遊戲狀態。要回報一局請用 Room.StartRound／Room.EndRound（只排進佇列，背景送出）。
+//
+// HTTP 契約（前端範本與 pt verify server 依賴）見玩聚開發者文件站 /docs/game-server。
+package gameserver
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	playtogether "github.com/Yanghsuanming/play-together/sdk-go"
+)
+
+// Platform 是套件需要的玩聚平台 API；*playtogether.Client 實作它，測試時可以換成假的。
+type Platform interface {
+	ExchangeLaunchCode(ctx context.Context, code string) (*playtogether.LaunchExchange, error)
+	GetRoomMembers(ctx context.Context, roomID string) (*playtogether.RoomMembers, error)
+	ReportRoundStart(ctx context.Context, roomID string, epoch int, roundID string, playerIDs []string) error
+	ReportRoundEnd(ctx context.Context, roomID string, epoch int, roundID string, result playtogether.RoundResult) error
+}
+
+// Game 是開發者實作的遊戲規則，一個房間一個（Config.NewGame 建立）。所有方法都在伺服器鎖裡呼叫。
+type Game interface {
+	// View 是給某位玩家看的完整狀態（加入、重新連線、每次操作後都回這個）。只放這位玩家可以看的資料。
+	View(r *Room, viewer string) any
+	// CanFree 回答離線太久（超過 SEAT_HOLD）的人能不能讓出座位；一局進行中通常回 false，保留座位等他回來。
+	CanFree(playerID string) bool
+	// Leave 在玩家讓出座位或被房主踢出時呼叫：清掉這個人的遊戲狀態。
+	Leave(playerID string)
+	// Close 在房間結束（房主重新開始、關房、閒置清除）時呼叫。進行中的一局由套件回報中止，這裡只需要清理。
+	Close()
+}
+
+// Ticker 是選用介面：Game 實作了就每 Config.TickInterval 對每個房間呼叫一次（例如時間到結束一局）。
+type Ticker interface {
+	Tick(r *Room)
+}
+
+// ActionError 是 OnAction 回給玩家的錯誤：HTTP 400，內容 {"error": Code}。
+type ActionError struct{ Code string }
+
+func (e *ActionError) Error() string { return e.Code }
+
+// Limits 是限流設定：每秒補充幾次（Rate）、最多累積幾次（Burst）。零值的欄位用預設。
+type Limits struct {
+	ActionRate, ActionBurst float64 // 每位玩家的 /action；預設 20、40（前端每 0.5 秒輪詢，加上連打）
+	IPRate, IPBurst         float64 // 每個 IP 的所有 API；預設 60、120（同一個網路可能有好幾位玩家）
+	JoinRate, JoinBurst     float64 // 每個 IP 的 /join；預設 0.5、10（重新整理才會呼叫）
+}
+
+// Config 設定 Server。只有 Platform、NewGame、OnAction 是必填，其他零值都有預設。
+type Config struct {
+	Platform Platform
+	NewGame  func(r *Room) Game
+	// OnAction 處理玩家送來的操作（POST /action 的 action 與選用的 data）。回傳 nil 後，套件回這位玩家的 View。
+	// 不認得的 action（例如前端輪詢用的 "state"）直接回 nil 即可。回傳 *ActionError 時給玩家 400 與代碼。
+	OnAction func(r *Room, seat Seat, g Game, action string, data json.RawMessage) error
+
+	SeatHold     time.Duration // 離線多久讓出座位；0 → 環境變數 SEAT_HOLD → 60s
+	RoomSync     time.Duration // 多久向玩聚查一次房間；0 → ROOM_SYNC → 10s
+	TickInterval time.Duration // Ticker 的間隔；0 → 200ms
+	AllowOrigins []string      // 允許跨來源的網址（支援 https://*.games.example.com）；nil → ALLOW_ORIGINS（逗號分隔）
+	TrustProxy   int           // 信任幾層反向代理的 X-Forwarded-For；0 → 環境變數 TRUST_PROXY → 0（不信任）
+	MaxBody      int64         // 每個請求內容的上限（位元組），超過回 413；0 → 1024
+	Limits       Limits
+
+	Now  func() time.Time                 // 測試用；nil → time.Now
+	Logf func(format string, args ...any) // nil → log.Printf
+}
+
+// 錯誤代碼（HTTP 回應的 error 欄位）
+const (
+	codeSessionExpired      = "session_expired"      // token 已失效：重新整理頁面拿新的啟動碼
+	codeStaleEpoch          = "stale_epoch"          // 房主已重新開始，這是舊局的啟動碼
+	codePlatformUnavailable = "platform_unavailable" // 一段時間查不到玩聚，暫停新加入
+)
+
+var (
+	errStaleEpoch    = errors.New(codeStaleEpoch)
+	errPlatformStale = errors.New(codePlatformUnavailable)
+	errSession       = errors.New(codeSessionExpired)
+	errInternal      = errors.New("internal") // 遊戲的 callback panic
+	// ErrRoundActive：這個房間已經有進行中的一局。
+	ErrRoundActive = errors.New("round_active")
+	// ErrNoPlayers：開始一局時沒有玩家。
+	ErrNoPlayers = errors.New("no_players")
+)
+
+const (
+	offlineAfter = 5 * time.Second  // 多久沒收到請求算離線（前端每 0.5 秒輪詢）
+	idleRoom     = 30 * time.Minute // 沒有人的房間多久後清掉
+	staleSyncs   = 6                // 連續查不到玩聚幾次查詢的時間後拒絕新加入
+)
+
+// Seat 是一位玩家座位的複本（給遊戲讀取）。
+type Seat struct {
+	PlayerID string
+	Name     string
+	Online   bool
+}
+
+type seat struct {
+	playerID, name, token string
+	lastSeen              time.Time
+	order                 int
+}
+
+// Room 是一個玩聚房間（同一局數）在遊戲伺服器上的狀態。方法只能在 callback 裡使用（持有伺服器鎖）。
+type Room struct {
+	s       *Server
+	id      string
+	epoch   int
+	seats   map[string]*seat
+	nextSeq int
+	game    Game
+	emptyAt time.Time
+	round   string   // 進行中那一局的 ID
+	players []string // 進行中那一局的玩家
+	rounds  int
+}
+
+// ID 是玩聚的房間 ID。
+func (r *Room) ID() string { return r.id }
+
+// Epoch 是房間的局數：房主在平台按「重新開始」時加一，套件會結束舊的 Room、建立新的。
+func (r *Room) Epoch() int { return r.epoch }
+
+// Now 是目前時間（測試時可以由 Config.Now 控制）。
+func (r *Room) Now() time.Time { return r.s.now() }
+
+// Seats 回傳座位的複本，依加入順序。
+func (r *Room) Seats() []Seat {
+	list := make([]*seat, 0, len(r.seats))
+	for _, st := range r.seats {
+		list = append(list, st)
+	}
+	for i := 1; i < len(list); i++ { // 座位數很少，插入排序即可
+		for j := i; j > 0 && list[j].order < list[j-1].order; j-- {
+			list[j], list[j-1] = list[j-1], list[j]
+		}
+	}
+	now := r.s.now()
+	out := make([]Seat, len(list))
+	for i, st := range list {
+		out[i] = Seat{PlayerID: st.playerID, Name: st.name, Online: now.Sub(st.lastSeen) < offlineAfter}
+	}
+	return out
+}
+
+// Round 是進行中那一局的 ID；沒有時是空字串。
+func (r *Room) Round() string { return r.round }
+
+// StartRound 開始一局並回報給玩聚（成效分析用，背景送出、失敗不影響遊戲）。回傳套件產生的局 ID。
+// 已經有進行中的一局時回 ErrRoundActive。
+func (r *Room) StartRound(playerIDs []string) (string, error) {
+	if r.round != "" {
+		return "", ErrRoundActive
+	}
+	if len(playerIDs) == 0 {
+		return "", ErrNoPlayers
+	}
+	r.rounds++
+	r.round = fmt.Sprintf("e%d-r%d-%s", r.epoch, r.rounds, newToken()[:6])
+	r.players = append([]string(nil), playerIDs...)
+	r.s.reports.push(report{roomID: r.id, epoch: r.epoch, roundID: r.round, players: r.players})
+	return r.round, nil
+}
+
+// EndRound 結束進行中的一局並回報（completed 或 aborted）。沒有進行中的一局時不做事，所以重複呼叫是安全的。
+func (r *Room) EndRound(result playtogether.RoundResult) {
+	if r.round == "" {
+		return
+	}
+	r.s.reports.push(report{roomID: r.id, epoch: r.epoch, roundID: r.round, result: result})
+	r.round, r.players = "", nil
+}
+
+// Server 管理所有房間與座位。用 New 建立、Handler 掛到 HTTP、Run 啟動背景工作。
+type Server struct {
+	cfg     Config
+	mu      sync.Mutex
+	rooms   map[string]*Room
+	tokens  map[string]tokenRef
+	reports *reportQueue
+	limits  limiters
+	// 向玩聚查房間開始失敗的時間；零值表示最近一次成功
+	syncFailingSince time.Time
+	syncing          atomic.Bool // 上一次查房間還沒結束時不重疊
+}
+
+type tokenRef struct{ roomID, playerID string }
+
+// New 建立 Server。Platform、NewGame、OnAction 沒有設定時 panic（程式寫錯，不是執行期錯誤）。
+func New(cfg Config) *Server {
+	if cfg.Platform == nil || cfg.NewGame == nil || cfg.OnAction == nil {
+		panic("gameserver: Config 的 Platform、NewGame、OnAction 都必須設定")
+	}
+	if cfg.Logf == nil {
+		cfg.Logf = log.Printf
+	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	cfg.SeatHold = envDuration(cfg.Logf, cfg.SeatHold, "SEAT_HOLD", 60*time.Second)
+	cfg.RoomSync = envDuration(cfg.Logf, cfg.RoomSync, "ROOM_SYNC", 10*time.Second)
+	if cfg.TickInterval <= 0 {
+		cfg.TickInterval = 200 * time.Millisecond
+	}
+	if cfg.AllowOrigins == nil {
+		cfg.AllowOrigins = splitList(os.Getenv("ALLOW_ORIGINS"))
+	}
+	if cfg.TrustProxy <= 0 {
+		cfg.TrustProxy, _ = strconv.Atoi(os.Getenv("TRUST_PROXY"))
+	}
+	if cfg.MaxBody <= 0 {
+		cfg.MaxBody = 1024
+	}
+	s := &Server{cfg: cfg, rooms: map[string]*Room{}, tokens: map[string]tokenRef{}}
+	s.reports = newReportQueue(cfg.Platform, cfg.Logf)
+	go s.reports.run()
+	s.limits = newLimiters(cfg.Limits)
+	return s
+}
+
+func (s *Server) now() time.Time { return s.cfg.Now() }
+
+func newToken() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic("gameserver: 系統亂數來源無法使用：" + err.Error()) // 不用低熵的 token
+	}
+	return hex.EncodeToString(b)
+}
+
+// joined 是 /join 的回應。
+type joined struct {
+	Token    string `json:"token"`
+	PlayerID string `json:"playerId"`
+	Name     string `json:"name"`
+	State    any    `json:"state"`
+}
+
+// join 兌換一次性啟動碼，把玩家放回原座位（或給新座位），回傳新的 token 與狀態。
+func (s *Server) join(ctx context.Context, code string) (out *joined, err error) {
+	s.mu.Lock()
+	stale := !s.syncFailingSince.IsZero() && s.now().Sub(s.syncFailingSince) > staleSyncs*s.cfg.RoomSync
+	s.mu.Unlock()
+	if stale {
+		return nil, errPlatformStale
+	}
+	ex, err := s.cfg.Platform.ExchangeLaunchCode(ctx, code) // 不在鎖裡呼叫平台
+	if err != nil {
+		return nil, err
+	}
+	if ex == nil {
+		return nil, errors.New("平台沒有回傳兌換結果")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// View 失敗（panic 或無法編碼）時把這次加入整個撤回：不留下新房間、新座位，舊 token 恢復有效
+	var rollback func()
+	defer func() {
+		if v := recover(); v != nil {
+			s.cfg.Logf("gameserver: 房間 %s 加入時遊戲的 callback 發生 panic：%v", ex.RoomID, v)
+			if rollback != nil {
+				rollback()
+			}
+			out, err = nil, errInternal
+		}
+	}()
+	r := s.rooms[ex.RoomID]
+	if r != nil && ex.Epoch < r.epoch {
+		return nil, errStaleEpoch
+	}
+	newRoom := false
+	if r == nil || ex.Epoch > r.epoch {
+		if r != nil {
+			s.endRoom(r) // 房主在平台按了「重新開始」：舊局結束，所有舊連線失效
+		}
+		nr := &Room{s: s, id: ex.RoomID, epoch: ex.Epoch, seats: map[string]*seat{}}
+		nr.game = s.cfg.NewGame(nr) // panic 時不建立房間
+		r, newRoom = nr, true
+		s.rooms[r.id] = r
+	}
+	st := r.seats[ex.PlayerID]
+	newSeat := st == nil
+	if newSeat {
+		r.nextSeq++
+		st = &seat{playerID: ex.PlayerID, name: ex.Name, order: r.nextSeq}
+		r.seats[st.playerID] = st
+	}
+	ref := tokenRef{r.id, st.playerID}
+	prevToken, prevSeen := st.token, st.lastSeen
+	token := newToken()
+	delete(s.tokens, prevToken) // 舊分頁、舊裝置的連線立即失效
+	st.token, st.lastSeen = token, s.now()
+	s.tokens[token] = ref
+	rollback = func() {
+		delete(s.tokens, token)
+		switch {
+		case newRoom:
+			delete(s.rooms, r.id)
+			s.safely(r, "Close", r.game.Close)
+		case newSeat:
+			delete(r.seats, st.playerID)
+			if len(r.seats) == 0 {
+				r.emptyAt = s.now()
+			}
+		default:
+			st.token, st.lastSeen = prevToken, prevSeen
+			if prevToken != "" {
+				s.tokens[prevToken] = ref
+			}
+		}
+	}
+	state, merr := json.Marshal(r.game.View(r, st.playerID))
+	if merr != nil {
+		s.cfg.Logf("gameserver: View 無法編碼成 JSON：%v", merr)
+		rollback()
+		return nil, errInternal
+	}
+	return &joined{Token: token, PlayerID: st.playerID, Name: st.name, State: json.RawMessage(state)}, nil
+}
+
+// lookupLocked 用 token 找到房間與座位，並記錄「剛剛還在」。
+func (s *Server) lookupLocked(token string) (*Room, *seat, error) {
+	t, ok := s.tokens[token]
+	if !ok {
+		return nil, nil, errSession
+	}
+	r := s.rooms[t.roomID]
+	if r == nil {
+		return nil, nil, errSession
+	}
+	st := r.seats[t.playerID]
+	if st == nil || st.token != token {
+		return nil, nil, errSession
+	}
+	st.lastSeen = s.now()
+	return r, st, nil
+}
+
+// removeSeatLocked 讓出座位並讓 token 失效。
+func (s *Server) removeSeatLocked(r *Room, playerID string) {
+	st := r.seats[playerID]
+	if st == nil {
+		return
+	}
+	delete(s.tokens, st.token)
+	delete(r.seats, playerID)
+	s.safely(r, "Leave", func() { r.game.Leave(playerID) })
+	if len(r.seats) == 0 {
+		r.emptyAt = s.now()
+	}
+}
+
+// endRoom 結束房間：所有連線失效；有進行中的一局就回報中止。呼叫前要持有 s.mu。
+func (s *Server) endRoom(r *Room) {
+	for _, st := range r.seats {
+		delete(s.tokens, st.token)
+	}
+	delete(s.rooms, r.id)
+	r.EndRound(playtogether.RoundAborted)
+	s.safely(r, "Close", r.game.Close)
+}
+
+// safely 執行遊戲的 callback；panic 時記錄並繼續（背景工作不能因為一個房間停下來）。
+func (s *Server) safely(r *Room, what string, fn func()) {
+	defer func() {
+		if v := recover(); v != nil {
+			s.cfg.Logf("gameserver: 房間 %s 的 %s 發生 panic：%v", r.id, what, v)
+		}
+	}()
+	fn()
+}
+
+// sweep：離線太久而且遊戲同意的人讓出座位；沒有人的房間過一段時間清掉。
+func (s *Server) sweep() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	for _, r := range s.rooms {
+		for id, st := range r.seats {
+			if now.Sub(st.lastSeen) <= s.cfg.SeatHold {
+				continue
+			}
+			free := false
+			s.safely(r, "CanFree", func() { free = r.game.CanFree(id) })
+			if free {
+				s.removeSeatLocked(r, id)
+			}
+		}
+		if len(r.seats) == 0 && !r.emptyAt.IsZero() && now.Sub(r.emptyAt) > idleRoom {
+			s.endRoom(r)
+		}
+	}
+}
+
+// tick 對每個房間呼叫 Ticker.Tick。
+func (s *Server) tick() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range s.rooms {
+		if t, ok := r.game.(Ticker); ok {
+			s.safely(r, "Tick", func() { t.Tick(r) })
+		}
+	}
+}
+
+// syncRooms 向玩聚查每個房間（被踢、重新開始、關房）。平台無法替遊戲伺服器斷線，所以要自己查。
+func (s *Server) syncRooms(ctx context.Context) {
+	type ref struct {
+		id    string
+		epoch int
+	}
+	s.mu.Lock()
+	list := make([]ref, 0, len(s.rooms))
+	for _, r := range s.rooms {
+		list = append(list, ref{r.id, r.epoch})
+	}
+	s.mu.Unlock()
+	failed := false // 這一輪有任何房間查不到玩聚：整輪算失敗（不讓其他房間的成功蓋掉）
+	for _, x := range list {
+		m, err := s.cfg.Platform.GetRoomMembers(ctx, x.id) // 不在鎖裡呼叫平台
+		var apiErr *playtogether.APIError
+		gone := errors.As(err, &apiErr) && apiErr.Status == 404 // 房間已不存在
+		if err != nil && !gone {
+			s.cfg.Logf("gameserver: 查詢房間失敗（下次再試）：%v", err)
+			failed = true
+			continue
+		}
+		s.mu.Lock()
+		r := s.rooms[x.id]
+		switch {
+		case r == nil || r.epoch != x.epoch:
+			// 查詢期間房間已經換了一局，下次再查
+		case gone || !m.Open:
+			s.endRoom(r)
+		case m.Epoch > r.epoch:
+			s.endRoom(r) // 房主重新開始：玩家的頁面會重新載入，用新的啟動碼開新局
+		default:
+			for _, mem := range m.Members {
+				if mem.Kicked {
+					s.removeSeatLocked(r, mem.PlayerID)
+				}
+			}
+		}
+		s.mu.Unlock()
+	}
+	if len(list) == 0 {
+		return
+	}
+	s.mu.Lock()
+	switch {
+	case !failed:
+		s.syncFailingSince = time.Time{}
+	case s.syncFailingSince.IsZero():
+		s.syncFailingSince = s.now()
+	}
+	s.mu.Unlock()
+}
+
+// Run 執行背景工作直到 ctx 結束：每秒整理座位、每 RoomSync 查房間、每 TickInterval 呼叫 Tick。
+// 一局的回報由另一個背景工作送出，不受 ctx 影響；結束程式前呼叫 Close 等它送完。
+func (s *Server) Run(ctx context.Context) {
+	sweep := time.NewTicker(time.Second)
+	sync := time.NewTicker(s.cfg.RoomSync)
+	tick := time.NewTicker(s.cfg.TickInterval)
+	defer sweep.Stop()
+	defer sync.Stop()
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-sweep.C:
+			s.sweep()
+		case <-tick.C:
+			s.tick()
+		case <-sync.C:
+			if !s.syncing.CompareAndSwap(false, true) {
+				continue
+			}
+			go func() { // 查房間可能要好幾秒，不擋住 Tick
+				defer s.syncing.Store(false)
+				c, cancel := context.WithTimeout(ctx, s.cfg.RoomSync)
+				defer cancel()
+				s.syncRooms(c)
+			}()
+		}
+	}
+}
+
+// Close 等待還沒送出的一局回報（最多到 ctx 的期限），然後停止回報的背景工作。通常在 Run 的 ctx 結束後呼叫。
+func (s *Server) Close(ctx context.Context) {
+	s.reports.drain(ctx)
+	s.reports.stop()
+}
+
+func envDuration(logf func(string, ...any), v time.Duration, key string, def time.Duration) time.Duration {
+	if v > 0 {
+		return v
+	}
+	if e := os.Getenv(key); e != "" {
+		if d, err := time.ParseDuration(e); err == nil && d > 0 {
+			return d
+		}
+		logf("gameserver: %s 格式錯誤（例如 10s、1m），改用預設 %s", key, def)
+	}
+	return def
+}

@@ -1,4 +1,6 @@
-import { createHash, randomBytes, sign, verify } from "node:crypto";
+import { createHash, createPrivateKey, randomBytes, sign, verify } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
 // ../../node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
 	const numericValues = Object.values(entries).filter((v) => typeof v === "number");
@@ -1408,6 +1410,526 @@ var launchExchangeResponseSchema = /* @__PURE__ */ object({
 	/** 平台房主的假名 ID：遊戲的房主以此為準（平台的踢人、重新開始也由這個人操作） */
 	hostPlayerId: id
 });
+// src/gameserver.ts
+/** onAction 丟出這個錯誤時，玩家收到 400 {"error": code} */
+var ActionError = class extends Error {
+	code;
+	constructor(code) {
+		super(code);
+		this.code = code;
+		this.name = "ActionError";
+	}
+};
+var OFFLINE_AFTER_MS = 5e3;
+var IDLE_ROOM_MS = 18e5;
+var STALE_SYNCS = 6;
+var MAX_QUEUED_REPORTS = 1e4;
+/** 回報一局失敗時重試前等待的時間 */
+var retryDelaysMs = [
+	1e3,
+	4e3,
+	15e3
+];
+var positive = (v, fallback) => typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback;
+function envDuration(name, fallbackMs, log) {
+	const v = process.env[name];
+	if (!v) return fallbackMs;
+	const m = /^(\d+(?:\.\d+)?)(ms|s|m)$/.exec(v);
+	const ms = m ? Number(m[1]) * {
+		ms: 1,
+		s: 1e3,
+		m: 6e4
+	}[m[2]] : 0;
+	if (ms > 0) return ms;
+	log(`${name} 格式錯誤（例如 10s、1m），改用預設 ${fallbackMs}ms`);
+	return fallbackMs;
+}
+var newToken = () => randomBytes(16).toString("hex");
+/** 依環境變數建立平台 client：PT_API_URL、PT_KEY_ID、PT_KEY_FILE（預設 ../keys/server.key）或 PT_PRIVATE_KEY、PT_MOCK=1 */
+function platformFromEnv() {
+	if (process.env.PT_MOCK === "1") return createServerClient({
+		baseUrl: "",
+		keyId: "",
+		mock: true
+	});
+	const baseUrl = process.env.PT_API_URL || "";
+	const keyId = process.env.PT_KEY_ID || "";
+	if (!baseUrl || !keyId) throw new Error("請設定 PT_API_URL 與 PT_KEY_ID（本機開發用 pt dev 會自動設定）");
+	const raw = (process.env.PT_PRIVATE_KEY || readFileSync(process.env.PT_KEY_FILE || "../keys/server.key", "utf8")).trim();
+	const seed = Buffer.from(raw, "base64");
+	if (seed.length !== 32) throw new Error("伺服器私鑰格式錯誤：請用 pt keygen -purpose server 產生");
+	return createServerClient({
+		baseUrl,
+		keyId,
+		privateKey: createPrivateKey({
+			key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]),
+			format: "der",
+			type: "pkcs8"
+		})
+	});
+}
+function originAllowed(allowed, origin) {
+	return allowed.some((raw) => {
+		const a = raw.trim();
+		if (!a) return false;
+		if (a === origin) return true;
+		const i = a.indexOf("://*.");
+		if (i <= 0) return false;
+		const prefix = a.slice(0, i) + "://";
+		const suffix = "." + a.slice(i + 5);
+		if (!origin.startsWith(prefix) || !origin.endsWith(suffix)) return false;
+		const sub = origin.slice(prefix.length, origin.length - suffix.length);
+		return sub.length > 0 && !/[/:@]/.test(sub);
+	});
+}
+function createLimiter(rate, burst) {
+	const buckets = /* @__PURE__ */ new Map();
+	let swept = 0;
+	return (key, now) => {
+		if (now - swept > 6e4) {
+			for (const [k, b] of buckets) if (now - b.at > 6e5) buckets.delete(k);
+			swept = now;
+		}
+		let b = buckets.get(key);
+		if (!b) {
+			b = {
+				tokens: burst,
+				at: now
+			};
+			buckets.set(key, b);
+		}
+		if (now > b.at) b.tokens = Math.min(burst, b.tokens + (now - b.at) / 1e3 * rate);
+		b.at = now;
+		if (b.tokens < 1) return false;
+		b.tokens -= 1;
+		return true;
+	};
+}
+var TOO_LARGE = Symbol("too_large");
+function createGameServer(opts) {
+	const log = opts.log ?? ((...a) => console.warn(...a));
+	const now = opts.now ?? Date.now;
+	const seatHold = positive(opts.seatHoldMs, 0) || envDuration("SEAT_HOLD", 6e4, log);
+	const roomSync = positive(opts.roomSyncMs, 0) || envDuration("ROOM_SYNC", 1e4, log);
+	const tickMs = positive(opts.tickMs, 200);
+	const allowed = opts.allowOrigins ?? (process.env.ALLOW_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+	const trustProxy = positive(opts.trustProxy, 0) || positive(Number.parseInt(process.env.TRUST_PROXY || "0", 10), 0);
+	const maxBody = positive(opts.maxBody, 1024);
+	const l = opts.limits ?? {};
+	const actionLimit = createLimiter(positive(l.actionRate, 20), positive(l.actionBurst, 40));
+	const ipLimit = createLimiter(positive(l.ipRate, 60), positive(l.ipBurst, 120));
+	const joinLimit = createLimiter(positive(l.joinRate, .5), positive(l.joinBurst, 10));
+	const pt = opts.platform;
+	const rooms = /* @__PURE__ */ new Map();
+	const tokens = /* @__PURE__ */ new Map();
+	let syncFailingSince = 0;
+	let seatSeq = 0;
+	const queue = [];
+	let sending = false;
+	let stopped = false;
+	let idleWaiters = [];
+	const retryable = (e) => !(e instanceof PlatformApiError) || e.status >= 500 || e.status === 429;
+	async function pump() {
+		if (sending) return;
+		sending = true;
+		try {
+			for (let r = queue.shift(); r && !stopped; r = queue.shift()) {
+				const what = r.result ? `結束（${r.result}）` : "開始";
+				for (let attempt = 0;; attempt++) try {
+					if (r.result) await pt.reportRoundEnd(r.roomId, r.epoch, r.roundId, r.result);
+					else await pt.reportRoundStart(r.roomId, r.epoch, r.roundId, r.playerIds);
+					break;
+				} catch (e) {
+					if (!retryable(e) || attempt >= retryDelaysMs.length || stopped) {
+						log(`回報一局${what}失敗（不影響遊戲）：`, e.message);
+						break;
+					}
+					await new Promise((ok) => setTimeout(ok, retryDelaysMs[attempt]));
+					if (stopped) break;
+				}
+			}
+		} finally {
+			sending = false;
+			const w = idleWaiters;
+			idleWaiters = [];
+			for (const f of w) f();
+		}
+	}
+	function push(r) {
+		if (stopped) return;
+		if (queue.length >= MAX_QUEUED_REPORTS) queue.shift();
+		queue.push(r);
+		pump();
+	}
+	function makeRoom(id, epoch) {
+		let roundId = "";
+		let rounds = 0;
+		const room = {
+			id,
+			epoch,
+			seatMap: /* @__PURE__ */ new Map(),
+			game: void 0,
+			emptyAt: 0,
+			now,
+			seats() {
+				const t = now();
+				return [...room.seatMap.values()].sort((a, b) => a.order - b.order).map((s) => ({
+					playerId: s.playerId,
+					name: s.name,
+					online: t - s.lastSeen < OFFLINE_AFTER_MS
+				}));
+			},
+			round: () => roundId,
+			startRound(playerIds) {
+				if (roundId) throw new ActionError("round_active");
+				if (!playerIds.length) throw new ActionError("no_players");
+				rounds += 1;
+				roundId = `e${epoch}-r${rounds}-${newToken().slice(0, 6)}`;
+				push({
+					roomId: id,
+					epoch,
+					roundId,
+					playerIds: [...playerIds]
+				});
+				return roundId;
+			},
+			endRound(result) {
+				if (!roundId) return;
+				push({
+					roomId: id,
+					epoch,
+					roundId,
+					result
+				});
+				roundId = "";
+			}
+		};
+		return room;
+	}
+	const safely = (room, what, fn) => {
+		try {
+			fn();
+		} catch (e) {
+			log(`房間 ${room.id} 的 ${what} 發生錯誤：`, e);
+		}
+	};
+	function removeSeat(room, playerId) {
+		const s = room.seatMap.get(playerId);
+		if (!s) return;
+		tokens.delete(s.token);
+		room.seatMap.delete(playerId);
+		safely(room, "leave", () => room.game.leave(playerId));
+		if (room.seatMap.size === 0) room.emptyAt = now();
+	}
+	function endRoom(room) {
+		for (const s of room.seatMap.values()) tokens.delete(s.token);
+		rooms.delete(room.id);
+		room.endRound("aborted");
+		safely(room, "close", () => room.game.close());
+	}
+	class HttpError extends Error {
+		status;
+		code;
+		constructor(status, code) {
+			super(code);
+			this.status = status;
+			this.code = code;
+		}
+	}
+	async function join(code) {
+		if (syncFailingSince && now() - syncFailingSince > STALE_SYNCS * roomSync) throw new HttpError(503, "platform_unavailable");
+		let ex;
+		try {
+			ex = await pt.exchangeLaunchCode(code);
+		} catch (e) {
+			if (e instanceof PlatformApiError && e.status < 500 && e.status !== 429) throw new HttpError(403, e.code);
+			log("兌換啟動碼失敗：", e.message);
+			throw new HttpError(502, "unavailable");
+		}
+		let room = rooms.get(ex.roomId);
+		if (room && ex.epoch < room.epoch) throw new HttpError(409, "stale_epoch");
+		let newRoom = false;
+		if (!room || ex.epoch > room.epoch) {
+			if (room) endRoom(room);
+			const nr = makeRoom(ex.roomId, ex.epoch);
+			nr.game = opts.newGame(nr);
+			room = nr;
+			newRoom = true;
+			rooms.set(room.id, room);
+		}
+		let s = room.seatMap.get(ex.playerId);
+		const newSeat = !s;
+		if (!s) {
+			seatSeq += 1;
+			s = {
+				playerId: ex.playerId,
+				name: ex.name,
+				token: "",
+				lastSeen: 0,
+				order: seatSeq
+			};
+			room.seatMap.set(s.playerId, s);
+		}
+		const ref = {
+			roomId: room.id,
+			playerId: s.playerId
+		};
+		const prev = {
+			token: s.token,
+			lastSeen: s.lastSeen
+		};
+		const token = newToken();
+		tokens.delete(prev.token);
+		s.token = token;
+		s.lastSeen = now();
+		tokens.set(token, ref);
+		try {
+			return JSON.stringify({
+				token,
+				playerId: s.playerId,
+				name: s.name,
+				state: room.game.view(room, s.playerId)
+			});
+		} catch (e) {
+			tokens.delete(token);
+			if (newRoom) {
+				rooms.delete(room.id);
+				const r = room;
+				safely(r, "close", () => r.game.close());
+			} else if (newSeat) {
+				room.seatMap.delete(s.playerId);
+				if (room.seatMap.size === 0) room.emptyAt = now();
+			} else {
+				s.token = prev.token;
+				s.lastSeen = prev.lastSeen;
+				if (prev.token) tokens.set(prev.token, ref);
+			}
+			throw e;
+		}
+	}
+	function action(token, act, data) {
+		const t = typeof token === "string" ? tokens.get(token) : void 0;
+		const room = t && rooms.get(t.roomId);
+		const s = t && room?.seatMap.get(t.playerId);
+		if (!room || !s || s.token !== token) throw new HttpError(401, "session_expired");
+		if (typeof act !== "string") throw new HttpError(400, "bad_request");
+		s.lastSeen = now();
+		const ret = opts.onAction(room, {
+			playerId: s.playerId,
+			name: s.name,
+			online: true
+		}, room.game, act, data);
+		if (ret && typeof ret.then === "function") {
+			log("onAction 不能是 async（回報一局請用 room.startRound／endRound）");
+			throw new HttpError(500, "internal");
+		}
+		if (rooms.get(room.id) !== room) throw new HttpError(401, "session_expired");
+		return JSON.stringify(room.game.view(room, s.playerId));
+	}
+	function sweep() {
+		const t = now();
+		for (const room of [...rooms.values()]) {
+			for (const [id, s] of [...room.seatMap]) {
+				if (t - s.lastSeen <= seatHold) continue;
+				let free = false;
+				safely(room, "canFree", () => free = room.game.canFree(id));
+				if (free) removeSeat(room, id);
+			}
+			if (room.seatMap.size === 0 && room.emptyAt && t - room.emptyAt > IDLE_ROOM_MS) endRoom(room);
+		}
+	}
+	async function syncRooms() {
+		const list = [...rooms.values()].map((r) => ({
+			id: r.id,
+			epoch: r.epoch
+		}));
+		let failed = false;
+		for (const { id, epoch } of list) {
+			let m = null;
+			let gone = false;
+			try {
+				m = await pt.getRoomMembers(id);
+			} catch (e) {
+				gone = e instanceof PlatformApiError && e.status === 404;
+				if (!gone) {
+					log("查詢房間失敗（下次再試）：", e.message);
+					failed = true;
+					continue;
+				}
+			}
+			const room = rooms.get(id);
+			if (!room || room.epoch !== epoch) continue;
+			if (gone || !m.open || m.epoch > room.epoch) {
+				endRoom(room);
+				continue;
+			}
+			for (const mem of m.members || []) if (mem.kicked) removeSeat(room, mem.playerId);
+		}
+		if (!list.length) return;
+		if (!failed) syncFailingSince = 0;
+		else if (!syncFailingSince) syncFailingSince = now();
+	}
+	function tick() {
+		for (const room of [...rooms.values()]) {
+			const g = room.game;
+			if (g.tick) safely(room, "tick", () => g.tick(room));
+		}
+	}
+	const fromProxy = (addr) => {
+		const a = addr.replace(/^::ffff:/, "");
+		return a === "::1" || /^127\./.test(a) || /^10\./.test(a) || /^192\.168\./.test(a) || /^172\.(1[6-9]|2\d|3[01])\./.test(a) || /^f[cd][0-9a-f]{2}:/i.test(a);
+	};
+	const clientIP = (req) => {
+		const remote = req.socket.remoteAddress || "";
+		if (trustProxy > 0 && fromProxy(remote)) {
+			const xff = req.headers["x-forwarded-for"];
+			const parts = (Array.isArray(xff) ? xff.join(",") : xff || "").split(",").filter((p) => p.trim());
+			if (parts.length >= trustProxy) return (parts[parts.length - trustProxy] ?? "").trim();
+		}
+		return remote;
+	};
+	const readBody = (req) => new Promise((resolve) => {
+		const chunks = [];
+		let size = 0;
+		let over = false;
+		req.on("data", (c) => {
+			if (over) return;
+			size += c.length;
+			if (size > maxBody) {
+				over = true;
+				chunks.length = 0;
+				resolve(TOO_LARGE);
+				return;
+			}
+			chunks.push(c);
+		});
+		req.on("end", () => {
+			if (over) return;
+			try {
+				const v = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+				resolve(v && typeof v === "object" && !Array.isArray(v) ? v : null);
+			} catch {
+				resolve(null);
+			}
+		});
+		req.on("error", () => resolve(null));
+	});
+	const sendRaw = (res, status, json, extra = {}) => {
+		res.writeHead(status, {
+			"Content-Type": "application/json",
+			...extra
+		});
+		res.end(json);
+	};
+	const send = (res, status, body, extra = {}) => sendRaw(res, status, JSON.stringify(body), extra);
+	async function handle(req, res) {
+		const path = (req.url || "/").split("?")[0];
+		const api = path === "/join" || path === "/action" || path === "/healthz";
+		const origin = req.headers.origin;
+		res.setHeader("Vary", "Origin");
+		if (origin && originAllowed(allowed, origin)) {
+			res.setHeader("Access-Control-Allow-Origin", origin);
+			res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+			res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+			res.setHeader("Access-Control-Max-Age", "600");
+		}
+		if (req.method === "OPTIONS") {
+			res.writeHead(204);
+			res.end();
+			return true;
+		}
+		if (!api) return false;
+		if (req.method === "GET" && path === "/healthz") {
+			send(res, 200, { status: "ok" });
+			return true;
+		}
+		if (req.method !== "POST" || path === "/healthz") {
+			send(res, 405, { error: "method_not_allowed" });
+			return true;
+		}
+		const ip = clientIP(req);
+		const t = now();
+		if (!ipLimit(ip, t) || path === "/join" && !joinLimit(ip, t)) {
+			send(res, 429, { error: "rate_limited" });
+			return true;
+		}
+		const body = await readBody(req);
+		if (body === TOO_LARGE) {
+			send(res, 413, { error: "too_large" }, { Connection: "close" });
+			return true;
+		}
+		if (!body) {
+			send(res, 400, { error: "bad_request" });
+			return true;
+		}
+		try {
+			if (path === "/join") {
+				if (typeof body.launchCode !== "string" || !body.launchCode) throw new HttpError(400, "bad_request");
+				sendRaw(res, 200, await join(body.launchCode));
+			} else {
+				if (!actionLimit(String(body.token ?? ""), now())) throw new HttpError(429, "rate_limited");
+				sendRaw(res, 200, action(body.token, body.action, body.data));
+			}
+		} catch (e) {
+			if (e instanceof HttpError) send(res, e.status, { error: e.code });
+			else if (e instanceof ActionError) send(res, 400, { error: e.code });
+			else {
+				log("處理請求時發生錯誤：", e);
+				send(res, 500, { error: "internal" });
+			}
+		}
+		return true;
+	}
+	const timers = [];
+	let syncing = false;
+	return {
+		handle,
+		start() {
+			timers.push(setInterval(sweep, 1e3));
+			timers.push(setInterval(tick, tickMs));
+			timers.push(setInterval(async () => {
+				if (syncing) return;
+				syncing = true;
+				try {
+					await syncRooms();
+				} finally {
+					syncing = false;
+				}
+			}, roomSync));
+		},
+		async close(timeoutMs = 5e3) {
+			for (const t of timers) clearInterval(t);
+			if (sending || queue.length > 0) {
+				let timer;
+				await Promise.race([new Promise((ok) => idleWaiters.push(ok)), new Promise((ok) => timer = setTimeout(ok, timeoutMs))]);
+				clearTimeout(timer);
+			}
+			stopped = true;
+		},
+		listen(port, host, fallback) {
+			return createServer(async (req, res) => {
+				try {
+					if (await handle(req, res)) return;
+					if (fallback) await fallback(req, res);
+					else {
+						res.writeHead(404);
+						res.end("not found");
+					}
+				} catch (e) {
+					log("處理請求時發生錯誤：", e);
+					if (!res.headersSent) res.writeHead(400);
+					res.end();
+				}
+			}).listen(port, host);
+		},
+		internal: {
+			sweep,
+			syncRooms,
+			tick,
+			rooms
+		}
+	};
+}
 // src/index.ts
 var SIGNATURE_SCHEME = "PT-SIG-1";
 var MAX_CLOCK_SKEW_MS = 3e5;
@@ -1513,6 +2035,7 @@ function createServerClient(options) {
 	};
 	const doFetch = options.fetch ?? fetch;
 	const base = options.baseUrl.replace(/\/+$/, "");
+	const timeoutMs = options.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : 1e4;
 	async function request(method, path, data, idempotencyKey) {
 		const body = data === void 0 ? "" : JSON.stringify(data);
 		const headers = { ...signRequest({
@@ -1525,6 +2048,7 @@ function createServerClient(options) {
 		const res = await doFetch(`${base}${path}`, {
 			method,
 			headers,
+			signal: AbortSignal.timeout(timeoutMs),
 			...method === "POST" ? { body } : {}
 		});
 		const json = await res.json().catch(() => null);
@@ -1611,4 +2135,4 @@ function mockClient() {
 		async voicePolicy() {}
 	};
 }
-export { HEADER, MAX_CLOCK_SKEW_MS, MOCK_CODE_PREFIX, PlatformApiError, SIGNATURE_SCHEME, canonicalString, createServerClient, signRequest, verifyRequest };
+export { ActionError, HEADER, MAX_CLOCK_SKEW_MS, MOCK_CODE_PREFIX, PlatformApiError, SIGNATURE_SCHEME, canonicalString, createGameServer, createServerClient, platformFromEnv, retryDelaysMs, signRequest, verifyRequest };

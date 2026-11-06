@@ -1,180 +1,101 @@
-// [[.Name]] 的遊戲伺服器（pt new 從範本「一起按」產生，Node.js 版）：兌換啟動碼、由伺服器決定分數與勝負、回報一局給玩聚。
-// 這個檔案是遊戲規則與 HTTP API；斷線重連（座位、token、離線、向玩聚查房間）在 session.mjs，通常不需要修改。
-// 只用 Node 內建模組與玩聚伺服器 SDK（playtogether-server.mjs，pt sdk update 會更新），不需要 npm install。
+// [[.Name]] 的遊戲伺服器（pt new 從範本「一起按」產生，Node.js 版）：這個檔案只有遊戲規則。
+//
+// 和玩聚平台的接口（兌換啟動碼、座位與斷線重連、踢人、重新開始、關房、回報一局、限流、請求大小、跨來源、/healthz）
+// 都在玩聚伺服器 SDK 的 createGameServer（playtogether-server.mjs）；平台接口有新增或修正時，
+// 在專案根目錄執行 pt sdk update 就會更新，不用改這個檔案。只用 Node 內建模組，不需要 npm install。
 //
 // 本機開發：在專案根目錄執行 pt dev（本機假平台，不需要連玩聚）；改完用 pt verify server 驗證和玩聚的接口。
 // 接上玩聚（正式部署）：
 //   PT_API_URL=（平台網址） PT_KEY_ID=（伺服器金鑰 ID） PT_KEY_FILE=../keys/server.key \
 //   ALLOW_ORIGINS='https://*.games.（平台網域）' ADDR=0.0.0.0:8090 node main.mjs
 // 選填：SEAT_HOLD（離線多久讓出座位，預設 60s）、ROOM_SYNC（多久向玩聚查一次房間，預設 10s）、
-// TRUST_PROXY=<代理層數>（在反向代理後面時，限流改用 X-Forwarded-For 的 IP；見 limit.mjs）。
-import { createPrivateKey } from 'node:crypto';
+// TRUST_PROXY=<代理層數>（在反向代理後面時，限流改用 X-Forwarded-For 的 IP）。
+//
+// 規則：下面的函式都要是同步的、只做記憶體內的運算（不能 await 平台、網路或檔案）。
+// 回報一局用 room.startRound、room.endRound（套件在背景送出）。
 import { readFileSync, statSync } from 'node:fs';
-import { createServer } from 'node:http';
 import { extname, join as joinPath, normalize } from 'node:path';
-import { PlatformApiError, createServerClient } from './playtogether-server.mjs';
-import { SessionError, createHub, newToken } from './session.mjs';
-import { actionPerPlayer, clientIP, joinsPerIP, requestsPerIP } from './limit.mjs';
+import { createGameServer, platformFromEnv } from './playtogether-server.mjs';
 
 const ROUND_MS = 10_000;
 const env = (k, d) => process.env[k] || d;
-const [host, port] = env('ADDR', '127.0.0.1:8090').split(':');
-const mock = process.env.PT_MOCK === '1';
-let privateKey;
-if (!mock) {
-  // pt keygen 產生的檔案是一行 base64 種子，包成 PKCS#8 後交給 node:crypto
-  const seed = Buffer.from(readFileSync(env('PT_KEY_FILE', '../keys/server.key'), 'utf8').trim(), 'base64');
-  privateKey = createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]), format: 'der', type: 'pkcs8' });
-}
-const pt = createServerClient({ baseUrl: env('PT_API_URL', ''), keyId: env('PT_KEY_ID', ''), privateKey, mock });
 
-// 斷線重連（座位、token、離線、向玩聚查房間）在 session.mjs；這裡只有遊戲規則
 // game 是一個房間的遊戲狀態（「一起按」：10 秒內比誰按得多）。換成你的玩法時改這裡。
 function newGame() {
   return {
     taps: new Map(), // 玩家 ID → 按了幾下
     endsAt: 0, // 進行中的一局何時結束；0 表示沒有在玩
-    roundId: '',
     winner: '',
-    playing() { return this.endsAt > 0 && Date.now() < this.endsAt; },
+    playing(now) { return this.endsAt > 0 && now < this.endsAt; },
     // 離線太久的人能不能讓出座位：一局進行中先保留，讓他有機會回來
     canFree() { return !this.endsAt; },
     // 玩家讓出座位或被房主踢出
     leave(playerId) { this.taps.delete(playerId); },
-    // 房間結束（房主重新開始、關房）時呼叫；有進行中的一局就回傳它的 ID，骨架會回報「中止」
-    abort() {
-      if (!this.endsAt) return '';
-      this.endsAt = 0;
-      return this.roundId;
-    },
-    // 給某一位玩家看的完整狀態（重新連線後也是送這個）。只放這位玩家可以看的資料
+    // 房間結束（房主重新開始、關房）。進行中的一局由套件回報「中止」，這裡只清理
+    close() { this.endsAt = 0; },
+    // 給某一位玩家看的完整狀態（加入、重新連線、每次操作後都回這個）。只放這位玩家可以看的資料
     view(room, viewer) {
-      const players = [...room.seats.values()].map((s) => ({ id: s.playerId, name: s.name, taps: this.taps.get(s.playerId) || 0, online: hub.online(s) }))
+      const players = room.seats().map((s) => ({ id: s.playerId, name: s.name, taps: this.taps.get(s.playerId) || 0, online: s.online }))
         .sort((a, b) => b.taps - a.taps || a.name.localeCompare(b.name));
-      const left = this.playing() ? (this.endsAt - Date.now()) / 1000 : 0;
+      const now = room.now();
+      const left = this.playing(now) ? (this.endsAt - now) / 1000 : 0;
       return { me: viewer, players, playing: left > 0, secondsLeft: left, winner: this.winner };
+    },
+    // 每 200ms 呼叫一次：時間到就結束這一局、判定勝負
+    tick(room) {
+      if (!this.endsAt || room.now() < this.endsAt) return;
+      let best = 0;
+      for (const s of room.seats()) {
+        const n = this.taps.get(s.playerId) || 0;
+        if (n > best) { best = n; this.winner = s.name; }
+      }
+      this.endsAt = 0;
+      room.endRound('completed');
     },
   };
 }
 
-const hub = createHub({ pt, newGame });
-
-// 時間到就結束這一局、判定勝負，並回報給玩聚（成效分析用，失敗不影響遊戲）
-setInterval(() => {
-  for (const room of hub.rooms.values()) {
-    const g = room.game;
-    if (!g.endsAt || Date.now() < g.endsAt) continue;
-    let best = 0;
-    for (const s of room.seats.values()) {
-      const n = g.taps.get(s.playerId) || 0;
-      if (n > best) { best = n; g.winner = s.name; }
-    }
-    g.endsAt = 0;
-    pt.reportRoundEnd(room.id, room.epoch, g.roundId, 'completed').catch((e) => console.warn('回報一局結束失敗（不影響遊戲）：', e.message));
+// 玩家送來的操作（POST /action 的 action，data 是選用的 JSON）。玩家只能送「操作」，分數與勝負由伺服器決定。
+// 不認得的 action（例如前端每 0.5 秒輪詢用的 "state"）直接 return，套件會回這位玩家的 view。
+function onAction(room, seat, g, action) {
+  const now = room.now();
+  if (action === 'start' && !g.endsAt) {
+    const ids = room.seats().map((s) => s.playerId);
+    for (const id of ids) g.taps.set(id, 0);
+    room.startRound(ids);
+    g.winner = '';
+    g.endsAt = now + ROUND_MS;
   }
-}, 200);
-
-function start(room) {
-  const g = room.game;
-  g.roundId = newToken();
-  g.winner = '';
-  g.endsAt = Date.now() + ROUND_MS;
-  for (const id of room.seats.keys()) g.taps.set(id, 0);
-  pt.reportRoundStart(room.id, room.epoch, g.roundId, [...room.seats.keys()]).catch((e) => console.warn('回報一局開始失敗（不影響遊戲）：', e.message));
+  if (action === 'tap' && g.playing(now)) g.taps.set(seat.playerId, (g.taps.get(seat.playerId) || 0) + 1);
 }
 
-// 上傳到玩聚託管後，前端在 https://<版本>.games.（平台網域），要允許跨來源請求；支援 https://*.games.example.com 這種萬用字元
-const allowed = env('ALLOW_ORIGINS', '').split(',').map((s) => s.trim()).filter(Boolean);
-const originAllowed = (o) => allowed.some((a) => {
-  if (a === o) return true;
-  const i = a.indexOf('://*.');
-  return i > 0 && o.startsWith(a.slice(0, i) + '://') && o.endsWith('.' + a.slice(i + 5));
-});
+const platform = platformFromEnv();
+const server = createGameServer({ platform, newGame, onAction });
+server.start();
 
+// 本機開發時也直接提供前端（同一個來源）；上傳到玩聚託管後，前端由玩聚提供、只呼叫 API
 const webDir = env('WEB_DIR', '../web');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.wasm': 'application/wasm' };
-// 每個請求內容的上限；超過回 413。玩家只送操作，不需要很大
-const MAX_BODY = 1024;
-const TOO_LARGE = Symbol('too_large');
-// 依位元組計算；超過時立刻回 413 並關閉連線，不把剩下的內容讀完
-const readBody = (req) => new Promise((resolve) => {
-  const chunks = [];
-  let size = 0;
-  let over = false;
-  req.on('data', (c) => {
-    if (over) return;
-    size += c.length;
-    if (size > MAX_BODY) {
-      over = true;
-      chunks.length = 0;
-      resolve(TOO_LARGE);
-      return;
-    }
-    chunks.push(c);
-  });
-  req.on('end', () => {
-    if (over) return;
-    try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { resolve(null); }
-  });
-});
-const tooLarge = (res) => { res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' }); res.end(JSON.stringify({ error: 'too_large' })); };
-const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
-
-createServer(async (req, res) => {
-  const origin = req.headers.origin;
-  if (origin && originAllowed(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Vary', 'Origin');
-    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
-  }
-  // 健康檢查：給部署環境與玩聚審核確認伺服器活著（不查玩聚）
-  if (req.method === 'GET' && req.url === '/healthz') return send(res, 200, { status: 'ok' });
-  if (req.method === 'POST') {
-    const ip = clientIP(req);
-    if (!requestsPerIP(ip) || (req.url === '/join' && !joinsPerIP(ip))) return send(res, 429, { error: 'rate_limited' });
-  }
-  // 第一次進入、重新整理、網路恢復後都走這裡：用新的啟動碼回到原座位
-  if (req.method === 'POST' && req.url === '/join') {
-    const body = await readBody(req);
-    if (body === TOO_LARGE) return tooLarge(res);
-    if (!body?.launchCode) return send(res, 400, { error: 'bad_request' });
-    try {
-      return send(res, 200, await hub.join(body.launchCode));
-    } catch (e) {
-      if (e instanceof PlatformApiError) return send(res, 403, { error: e.code }); // 啟動碼無效、過期、已用過，或被房主踢出
-      if (e instanceof SessionError) return send(res, e.status, { error: e.code }); // 舊局的啟動碼、暫時查不到玩聚
-      console.error('兌換啟動碼失敗：', e);
-      return send(res, 502, { error: 'unavailable' });
-    }
-  }
-  // 其他操作都帶 join 拿到的 token；玩家只能送「操作」，分數與勝負由伺服器決定
-  if (req.method === 'POST' && req.url === '/action') {
-    const body = await readBody(req);
-    if (body === TOO_LARGE) return tooLarge(res);
-    if (!actionPerPlayer(String(body?.token ?? ''))) return send(res, 429, { error: 'rate_limited' });
-    let room, seat;
-    try {
-      ({ room, seat } = hub.lookup(body?.token));
-    } catch (e) {
-      return send(res, e.status || 401, { error: e.code || 'session_expired' }); // 換了分頁或裝置、被踢、房間已結束
-    }
-    const g = room.game;
-    if (body.action === 'start' && !g.endsAt) start(room);
-    if (body.action === 'tap' && g.playing()) g.taps.set(seat.playerId, (g.taps.get(seat.playerId) || 0) + 1);
-    return send(res, 200, g.view(room, seat.playerId));
-  }
-  // 本機開發時直接提供前端（同一個來源）；上傳到玩聚託管後，前端由玩聚提供
-  if (req.method === 'GET') {
+function serveStatic(req, res) {
+  if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
+  try {
     const path = normalize(decodeURIComponent((req.url || '/').split('?')[0])).replace(/^(\.\.[/\\])+/, '');
     let file = joinPath(webDir, path === '/' ? 'index.html' : path);
-    try {
-      if (statSync(file).isDirectory()) file = joinPath(file, 'index.html');
-      res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' });
-      return res.end(readFileSync(file));
-    } catch {
-      res.writeHead(404); return res.end('not found');
-    }
+    if (statSync(file).isDirectory()) file = joinPath(file, 'index.html');
+    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' });
+    return res.end(readFileSync(file));
+  } catch {
+    res.writeHead(404); return res.end('not found');
   }
-  res.writeHead(405); res.end();
-}).listen(Number(port), host, () => console.log(`[[.Name]]：http://${host}:${port}（平台：${mock ? '模擬模式' : env('PT_API_URL', '')}）`));
+}
+
+const [host, port] = env('ADDR', '127.0.0.1:8090').split(':');
+const http = server.listen(Number(port), host, serveStatic);
+http.on('listening', () => console.log(`[[.Name]]：http://${host}:${port}（平台：${process.env.PT_MOCK === '1' ? '模擬模式' : env('PT_API_URL', '')}）`));
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, async () => {
+    http.close();
+    await server.close(5_000); // 送完還沒送出的一局回報
+    process.exit(0);
+  });
+}

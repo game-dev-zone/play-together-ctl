@@ -209,10 +209,10 @@ func TestVerifyServerTemplates(t *testing.T) {
 	}
 	t.Run("被踢的人沒有斷線", func(t *testing.T) {
 		root := newProject(t, "web-go")
-		path := filepath.Join(root, "server", "session.go")
+		path := filepath.Join(root, "server", "third_party", "playtogether-sdk-go", "gameserver", "gameserver.go")
 		raw, err := os.ReadFile(path)
 		must(t, err)
-		broken := strings.Replace(string(raw), "h.removeSeat(r, mem.PlayerID)", "_ = mem", 1)
+		broken := strings.Replace(string(raw), "s.removeSeatLocked(r, mem.PlayerID)", "_ = mem", 1)
 		if broken == string(raw) {
 			t.Fatal("找不到要弄壞的地方")
 		}

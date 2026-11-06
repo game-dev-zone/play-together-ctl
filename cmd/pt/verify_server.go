@@ -39,6 +39,16 @@ type verifier struct {
 	base    string // 遊戲伺服器
 	results []verifyResult
 	jsonOut bool
+	legacy  bool // 舊範本（server/session.go）：新契約才有的項目只提醒
+}
+
+// strict 是 v0.18 起的 HTTP 契約項目；舊範本的專案標成略過並提示改用 SDK 的遊戲伺服器套件。
+func (v *verifier) strict(id, title string, ok bool, failDetail string) {
+	if !ok && v.legacy {
+		v.add(id, title, "skip", failDetail+"（舊範本；改用 SDK 的遊戲伺服器套件後會通過，見文件站 /docs/game-server#migrate）")
+		return
+	}
+	v.check(id, title, ok, failDetail)
 }
 
 func (v *verifier) add(id, title, status, detail string) {
@@ -193,7 +203,7 @@ func cmdVerifyServer(args []string) error {
 		stopServer(cmd)
 		<-done
 	}()
-	v := &verifier{fp: fp, base: "http://" + addr, jsonOut: *jsonOut}
+	v := &verifier{fp: fp, base: "http://" + addr, jsonOut: *jsonOut, legacy: legacyServerHint(p) != ""}
 	up := until(60*time.Second, func() bool {
 		select {
 		case <-done:
@@ -287,7 +297,7 @@ func (v *verifier) run(startAction string, roundWait time.Duration) {
 		res.Body.Close()
 		healthy = res.StatusCode == 200 && out["status"] == "ok"
 	}
-	v.check("healthz", "健康檢查 GET /healthz 回 200 {\"status\":\"ok\"}", healthy, "沒有回應或格式不對（範本的 limit.go／limit.mjs）")
+	v.check("healthz", "健康檢查 GET /healthz 回 200 {\"status\":\"ok\"}", healthy, "沒有回應或格式不對（SDK 的 gameserver 套件／createGameServer 會提供）")
 
 	// 加入與重新加入
 	p1 := &verifyPlayer{code: "p1", ip: "10.0.0.1"}
@@ -311,14 +321,19 @@ func (v *verifier) run(startAction string, roundWait time.Duration) {
 	// 用過的啟動碼：第一次兌換成功，第二次要被拒絕
 	code, fpP, _, _ := fp.issue("p1")
 	v.joinWith(p1, code, fpP.ID)
-	st, _ = v.joinWith(&verifyPlayer{code: "p1", ip: p1.ip}, code, "")
-	v.check("reuse", "同一個啟動碼不能用兩次", st != 200, fmt.Sprintf("第二次兌換回 %d", st))
+	st, e = v.joinWith(&verifyPlayer{code: "p1", ip: p1.ip}, code, "")
+	v.check("reuse", "同一個啟動碼不能用兩次（403）", st == 403, fmt.Sprintf("第二次兌換回 %d %s", st, e))
+
+	// 缺少啟動碼
+	stBad, outBad := v.post("/join", "10.0.0.8", []byte(`{}`))
+	eBad, _ := outBad["error"].(string)
+	v.strict("bad-request", "缺少 launchCode 回 400 bad_request", stBad == 400 && eBad == "bad_request", fmt.Sprintf("/join {} 回 %d %s", stBad, eBad))
 
 	// 重新開始：舊局的啟動碼失效，遊戲伺服器結束舊局
 	staleCode, _, _, _ := fp.issue("p2")
 	fp.restart()
 	st, e = v.joinWith(&verifyPlayer{code: "p2", ip: p2.ip}, staleCode, "")
-	v.check("stale-code", "重新開始前發的啟動碼被拒絕", st != 200, fmt.Sprintf("/join 回 %d", st))
+	v.check("stale-code", "重新開始前發的啟動碼被拒絕（403 或 409）", st == 403 || st == 409, fmt.Sprintf("/join 回 %d %s", st, e))
 	ended := until(wait, func() bool { s, _ := v.action(p1, "state"); return s == 401 })
 	v.check("restart", "房主重新開始後，遊戲伺服器結束舊局（舊 token 回 401）", ended,
 		fmt.Sprintf("%s 內舊局的 token 仍然有效：要在查到 epoch 增加時結束房間", wait))
@@ -413,7 +428,7 @@ func (v *verifier) run(startAction string, roundWait time.Duration) {
 	}
 	p3 := &verifyPlayer{code: "p3", ip: "10.0.0.3"}
 	st, e = v.join(p3)
-	v.check("platform-down", "平台連不到時，已在房間的人繼續玩、新加入被拒絕", keptPlaying && st != 200,
+	v.check("platform-down", "平台連不到時，已在房間的人繼續玩、新加入被拒絕（502 或 503）", keptPlaying && (st == 502 || st == 503),
 		fmt.Sprintf("已在房間的人%s；新加入回 %d %s", map[bool]string{true: "可以繼續", false: "被中斷"}[keptPlaying], st, e))
 	fp.setDown(false)
 	time.Sleep(2 * verifyRoomSync) // 等遊戲伺服器下一次查到平台
@@ -431,21 +446,24 @@ func (v *verifier) run(startAction string, roundWait time.Duration) {
 		fmt.Sprintf("/join 回 %d %q（玩家與日誌看不出是時鐘問題；正式主機要開 NTP 校時）", st, e))
 
 	// 跨來源（上傳到玩聚託管後前端和伺服器不同來源）
-	preflight := func(origin string) string {
+	preflight := func(origin string) (int, string, string) {
 		req, _ := http.NewRequest(http.MethodOptions, v.base+"/join", nil)
 		req.Header.Set("Origin", origin)
 		req.Header.Set("Access-Control-Request-Method", "POST")
 		req.Header.Set("Access-Control-Request-Headers", "content-type")
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return ""
+			return 0, "", ""
 		}
 		res.Body.Close()
-		return res.Header.Get("Access-Control-Allow-Origin")
+		return res.StatusCode, res.Header.Get("Access-Control-Allow-Origin"), res.Header.Get("Access-Control-Allow-Headers")
 	}
-	allowed, denied := preflight(verifyCORSOrigin), preflight("https://evil.test")
-	v.check("cors", "跨來源：允許 ALLOW_ORIGINS 的託管網址，拒絕其他來源", allowed == verifyCORSOrigin && denied == "",
-		fmt.Sprintf("允許的來源回 %q、其他來源回 %q", allowed, denied))
+	allowSt, allowed, allowHeaders := preflight(verifyCORSOrigin)
+	_, denied, _ := preflight("https://evil.test")
+	// 瀏覽器送 JSON 前會先送 OPTIONS：要回 2xx、帶 Allow-Origin，而且允許 Content-Type 標頭
+	v.check("cors", "跨來源：允許 ALLOW_ORIGINS 的託管網址（preflight 2xx、允許 Content-Type），拒絕其他來源",
+		allowSt >= 200 && allowSt < 300 && allowed == verifyCORSOrigin && strings.Contains(strings.ToLower(allowHeaders), "content-type") && denied == "",
+		fmt.Sprintf("允許的來源回 %d %q（Allow-Headers %q）、其他來源回 %q", allowSt, allowed, allowHeaders, denied))
 
 	// 請求太大
 	big := append([]byte(`{"token":"`), bytes.Repeat([]byte("x"), 8<<10)...)
@@ -456,7 +474,7 @@ func (v *verifier) run(startAction string, roundWait time.Duration) {
 	stWide, _ := v.post("/action", "10.0.0.9", wide)
 	tail := append([]byte(`{"token":"x"}`), bytes.Repeat([]byte(" x"), 4<<10)...)
 	stTail, _ := v.post("/action", "10.0.0.9", tail)
-	v.check("too-large", "請求內容太大回 413（依位元組計算、JSON 後面的內容也算）", st == 413 && stWide == 413 && stTail != 200,
+	v.check("too-large", "請求內容太大回 413（依位元組計算、JSON 後面的內容也算）", st == 413 && stWide == 413 && (stTail == 413 || stTail == 400), // JSON 後面接非 JSON 內容：413 或 400 都算擋下
 		fmt.Sprintf("英文 8KB 回 %d、中文 3KB 回 %d、JSON 後接 8KB 回 %d", st, stWide, stTail))
 
 	// 限流

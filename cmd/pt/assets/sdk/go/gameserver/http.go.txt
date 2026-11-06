@@ -1,0 +1,304 @@
+package gameserver
+
+import (
+	"encoding/json"
+	"errors"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	playtogether "github.com/Yanghsuanming/play-together/sdk-go"
+)
+
+// Handler 回傳遊戲伺服器的 HTTP handler：POST /join、POST /action、GET /healthz，外面套上限流（429）、
+// 請求大小（413）與跨來源（所有 OPTIONS 回 204，允許的來源才帶 Access-Control-Allow-*）。
+// 其他路徑交給 fallback（例如本機開發時提供前端檔案）；fallback 為 nil 時回 404。
+func (s *Server) Handler(fallback http.Handler) http.Handler {
+	if fallback == nil {
+		fallback = http.NotFoundHandler()
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/", fallback)
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		// 不查玩聚：玩聚暫時連不到時遊戲伺服器本身仍然正常
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("POST /join", s.handleJoin)
+	mux.HandleFunc("POST /action", s.handleAction)
+	return s.cors(s.protect(mux))
+}
+
+func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		LaunchCode string `json:"launchCode"`
+	}
+	if !s.readJSON(w, r, &in) {
+		return
+	}
+	if in.LaunchCode == "" {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+	out, err := s.join(r.Context(), in.LaunchCode)
+	var apiErr *playtogether.APIError
+	switch {
+	case errors.Is(err, errInternal):
+		writeError(w, http.StatusInternalServerError, "internal")
+	case errors.As(err, &apiErr) && apiErr.Status < 500 && apiErr.Status != http.StatusTooManyRequests:
+		writeError(w, http.StatusForbidden, apiErr.Code) // 啟動碼無效、過期、已用過、被房主踢出、簽章或時鐘錯誤
+	case errors.Is(err, errStaleEpoch):
+		writeError(w, http.StatusConflict, codeStaleEpoch)
+	case errors.Is(err, errPlatformStale):
+		writeError(w, http.StatusServiceUnavailable, codePlatformUnavailable)
+	case err != nil: // 平台 5xx、429、網路錯誤
+		s.cfg.Logf("gameserver: 兌換啟動碼失敗：%v", err)
+		writeError(w, http.StatusBadGateway, "unavailable")
+	default:
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Token  string          `json:"token"`
+		Action string          `json:"action"`
+		Data   json.RawMessage `json:"data"`
+	}
+	if !s.readJSON(w, r, &in) {
+		return
+	}
+	if !s.limits.action.allow(in.Token, s.now()) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited")
+		return
+	}
+	view, status, code := s.action(in.Token, in.Action, in.Data)
+	if code != "" {
+		writeError(w, status, code)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+// action 在鎖裡執行玩家的操作，回傳 View（已編碼）或錯誤。
+func (s *Server) action(token, action string, data json.RawMessage) (view json.RawMessage, status int, code string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, st, err := s.lookupLocked(token)
+	if err != nil {
+		return nil, http.StatusUnauthorized, codeSessionExpired // 換了分頁或裝置、被踢、房間已結束
+	}
+	defer func() {
+		if v := recover(); v != nil {
+			s.cfg.Logf("gameserver: 房間 %s 處理操作 %q 時發生 panic：%v", r.id, action, v)
+			view, status, code = nil, http.StatusInternalServerError, "internal"
+		}
+	}()
+	seat := Seat{PlayerID: st.playerID, Name: st.name, Online: true}
+	if err := s.cfg.OnAction(r, seat, r.game, action, data); err != nil {
+		var ae *ActionError
+		if errors.As(err, &ae) {
+			return nil, http.StatusBadRequest, ae.Code
+		}
+		s.cfg.Logf("gameserver: 房間 %s 處理操作 %q 失敗：%v", r.id, action, err)
+		return nil, http.StatusInternalServerError, "internal"
+	}
+	if s.rooms[r.id] != r { // 操作結束了房間（極少見）：舊 token 已失效
+		return nil, http.StatusUnauthorized, codeSessionExpired
+	}
+	b, err := json.Marshal(r.game.View(r, st.playerID)) // 在鎖裡編碼，遊戲之後改狀態不會影響這份回應
+	if err != nil {
+		s.cfg.Logf("gameserver: View 無法編碼成 JSON：%v", err)
+		return nil, http.StatusInternalServerError, "internal"
+	}
+	return b, 0, ""
+}
+
+// readJSON 讀取請求內容；太大回 413（依位元組計算），格式錯誤（含 JSON 後面還有其他內容）回 400。
+func (s *Server) readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, s.cfg.MaxBody))
+	err := dec.Decode(v)
+	if err == nil {
+		if _, extra := dec.Token(); extra != io.EOF {
+			err = errors.Join(errors.New("JSON 後面還有其他內容"), extra)
+		}
+	}
+	var tooLarge *http.MaxBytesError
+	switch {
+	case errors.As(err, &tooLarge):
+		writeError(w, http.StatusRequestEntityTooLarge, "too_large")
+	case err != nil:
+		writeError(w, http.StatusBadRequest, "bad_request")
+	default:
+		return true
+	}
+	return false
+}
+
+// protect：每個 IP 限流；/join 另外限流。GET（/healthz、前端檔案）不限。
+func (s *Server) protect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			ip, now := s.clientIP(r), s.now()
+			if !s.limits.ip.allow(ip, now) || (r.URL.Path == "/join" && !s.limits.join.allow(ip, now)) {
+				writeError(w, http.StatusTooManyRequests, "rate_limited")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// clientIP 取限流用的 IP。TrustProxy=N 而且連線來自本機或內部網路（反向代理）時，取 X-Forwarded-For 從右邊數第 N 個
+// （每層代理在後面加上它看到的來源）；直接從外部連進來的請求一律用連線的來源位址，不採信它自己帶的標頭。
+// 層數設太多，玩家可以自己偽造 IP；設太少，所有人會被當成同一個 IP。
+func (s *Server) clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if n := s.cfg.TrustProxy; n > 0 && fromProxy(host) {
+		var parts []string
+		for _, h := range r.Header.Values("X-Forwarded-For") {
+			for _, p := range strings.Split(h, ",") {
+				if p = strings.TrimSpace(p); p != "" {
+					parts = append(parts, p)
+				}
+			}
+		}
+		if len(parts) >= n {
+			return parts[len(parts)-n]
+		}
+	}
+	return host
+}
+
+// fromProxy：反向代理通常在同一台（loopback）或內部網路（私有位址）。
+func fromProxy(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
+}
+
+// cors：上傳到玩聚託管後，前端在 https://<版本>.games.（平台網域），和遊戲伺服器不同來源。
+func (s *Server) cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Vary", "Origin")
+		if o := r.Header.Get("Origin"); o != "" && originAllowed(s.cfg.AllowOrigins, o) {
+			w.Header().Set("Access-Control-Allow-Origin", o)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Max-Age", "600")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent) // 不允許的來源沒有 Allow-Origin，瀏覽器會擋下
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// originAllowed 支援完全相同的來源，以及 https://*.games.example.com 這種萬用字元（每個版本的網址都不同）。
+func originAllowed(allowed []string, origin string) bool {
+	for _, a := range allowed {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		if a == origin {
+			return true
+		}
+		if scheme, rest, ok := strings.Cut(a, "://*."); ok && strings.HasPrefix(origin, scheme+"://") &&
+			strings.HasSuffix(origin, "."+rest) && !strings.ContainsAny(strings.TrimSuffix(strings.TrimPrefix(origin, scheme+"://"), "."+rest), "/:@") {
+			return true
+		}
+	}
+	return false
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if raw, ok := v.(json.RawMessage); ok {
+		_, _ = w.Write(append(raw, '\n'))
+		return
+	}
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, code string) {
+	writeJSON(w, status, map[string]string{"error": code})
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// ---------- 限流 ----------
+
+type limiters struct{ action, ip, join *limiter }
+
+func newLimiters(l Limits) limiters {
+	def := func(v, d float64) float64 {
+		if v > 0 {
+			return v
+		}
+		return d
+	}
+	return limiters{
+		action: newLimiter(def(l.ActionRate, 20), def(l.ActionBurst, 40)),
+		ip:     newLimiter(def(l.IPRate, 60), def(l.IPBurst, 120)),
+		join:   newLimiter(def(l.JoinRate, 0.5), def(l.JoinBurst, 10)),
+	}
+}
+
+// limiter 是令牌桶：每個 key 一個桶，太久沒用的桶會清掉。
+type limiter struct {
+	mu          sync.Mutex
+	rate, burst float64
+	buckets     map[string]*bucket
+	swept       time.Time
+}
+
+type bucket struct {
+	tokens float64
+	at     time.Time
+}
+
+func newLimiter(rate, burst float64) *limiter {
+	return &limiter{rate: rate, burst: burst, buckets: map[string]*bucket{}}
+}
+
+func (l *limiter) allow(key string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if now.Sub(l.swept) > time.Minute {
+		for k, b := range l.buckets {
+			if now.Sub(b.at) > 10*time.Minute {
+				delete(l.buckets, k)
+			}
+		}
+		l.swept = now
+	}
+	b := l.buckets[key]
+	if b == nil {
+		b = &bucket{tokens: l.burst, at: now}
+		l.buckets[key] = b
+	}
+	if dt := now.Sub(b.at).Seconds(); dt > 0 {
+		b.tokens = min(l.burst, b.tokens+dt*l.rate)
+	}
+	b.at = now
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
+}

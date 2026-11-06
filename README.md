@@ -32,7 +32,7 @@ pt dev                           # 本機開發：啟動遊戲伺服器與本機
 make verify                      # 啟動驗證：伺服器測試、在模擬模式實際啟動一次、pt verify server、檢查要上傳的檔案
 ```
 
-伺服器範本內建斷線重連骨架（`server/session.go`、`server/session.mjs`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入；前端範本會自動重新連線。另有基本防護（`server/limit.go`、`server/limit.mjs`）：每個 IP 與每位玩家限流（429）、請求太大回 413、`GET /healthz`。
+伺服器範本只有遊戲規則；和玩聚的接口在 SDK 的遊戲伺服器套件（Go：`third_party/playtogether-sdk-go/gameserver`；Node.js：`playtogether-server.mjs` 的 `createGameServer`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入、回報一局（依序送出、失敗重試）、每個 IP 與每位玩家限流（429）、請求太大回 413、跨來源、`GET /healthz`；前端範本會自動重新連線。平台接口新增或修正時，`pt sdk update` 就會更新。v0.18 之前建立的專案，伺服器的 `session.go`／`limit.go` 仍可使用，但拿不到之後的更新；改用套件的方式見玩聚開發者文件站 `/docs/game-server`。
 
 ### 驗證遊戲伺服器和玩聚的接口
 
