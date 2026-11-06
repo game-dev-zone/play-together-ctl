@@ -7,7 +7,7 @@ extends Node
 ##
 ## 注意：本 autoload 不宣告 class_name，避免和 autoload 名稱衝突。
 
-## 握手完成。info 內含 mode、player（name、locale）、launchCode、roomId
+## 握手完成。info 內含 mode、player（name、locale）、launchCode、serverUrl（代管時才有值）、roomId
 signal initialized(info: Dictionary)
 ## 握手失敗（例如逾時、未載入 JS 檔）
 signal init_failed(message: String)
@@ -31,6 +31,8 @@ var player_name: String = ""
 var locale: String = ""
 ## 一次性啟動碼：交給自己的遊戲伺服器兌換，不要存起來或寫進日誌
 var launch_code: String = ""
+## 遊戲伺服器由玩聚代管時，這個房間的伺服器網址（例如 https://d-….ikuwra.com）；自己架伺服器時是空字串
+var server_url: String = ""
 ## 平台房號
 var room_id: String = ""
 var is_initialized: bool = false
@@ -134,6 +136,7 @@ func _apply(info: Dictionary) -> void:
 	player_name = str(player.get("name", ""))
 	locale = str(player.get("locale", ""))
 	launch_code = str(info.get("launchCode", ""))
+	server_url = str(info.get("serverUrl", ""))
 	room_id = str(info.get("roomId", ""))
 	is_initialized = true
 	initialized.emit(info)
