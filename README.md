@@ -303,7 +303,9 @@ claude
 | `pt verify server [-json] [-start-action 操作] [-round-wait 時間]` | 用本機假平台自動驗證範本伺服器和玩聚平台的接口（只支援 `playtogether-managed`） |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
 | `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器架構與網址設定、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒；`gameServer.mode: none` 不需要 `serverUrl` |
-| `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；公鑰交給玩聚登記，私鑰只在你手上 |
+| `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；私鑰只在你手上（第一次通常用 `pt register` 自動產生並登記；換金鑰時把公鑰貼到開發者頁的「金鑰」） |
+| `pt login -register` | 另外取得建立遊戲與管理金鑰的權限（團隊擁有者、管理者在瀏覽器同意；7 天，和送審授權分開保存） |
+| `pt register [-title 名稱]` | 建立草稿遊戲（代號是 `playtogether.json` 的 `name`）並登記金鑰：沒有私鑰會自動產生、只送公鑰，金鑰 ID 寫回 `playtogether.json`；上次沒收到回應時重新執行會接手已建立的遊戲 |
 | `pt upload -version <版本> [-notes 說明] [-no-build] [-orientation portrait\|landscape\|any]` | 上傳版本（設定從 `playtogether.json` 讀，包括畫面方向；Godot 專案先匯出；上傳前自動檢查） |
 | `pt sdk status` | 比較專案的 SDK、這個 `pt` 內嵌的 SDK、最新版 `pt` 內嵌的 SDK，並列出被修改過的 SDK 檔案 |
 | `pt sdk update [-force]` | 把專案裡的 SDK 更新成這個 `pt` 內嵌的版本（專案的 SDK 比較新時不會降版，除非 `-force`） |

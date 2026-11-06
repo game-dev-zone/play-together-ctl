@@ -146,6 +146,7 @@ func cmdLogin(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
 	api := fs.String("api", "", "平台網址（或 PT_API_URL；在專案裡預設讀 playtogether.json 的 platform）")
 	noBrowser := fs.Bool("no-browser", false, "不要自動打開瀏覽器")
+	register := fs.Bool("register", false, "另外要求建立遊戲與管理金鑰的權限（pt register；團隊擁有者、管理者；7 天）")
 	_ = fs.Parse(reorder(args))
 	p, err := findProject()
 	if err != nil {
@@ -159,7 +160,11 @@ func cmdLogin(args []string) error {
 	if len([]rune(label)) > 60 {
 		label = string([]rune(label)[:60])
 	}
-	st, dc, err := devPost(base+"/v1/dev/device-codes", map[string]string{"label": label}, nil)
+	req := map[string]any{"label": label}
+	if *register {
+		req["scopes"] = []string{"submit", "register"}
+	}
+	st, dc, err := devPost(base+"/v1/dev/device-codes", req, nil)
 	if err != nil {
 		return err
 	}
@@ -194,9 +199,17 @@ func cmdLogin(args []string) error {
 			c.Token, _ = out["token"].(string)
 			c.ExpiresAt, _ = time.Parse(time.RFC3339Nano, fmt.Sprint(out["expiresAt"]))
 			all := loadCredentials()
-			all[base] = c
+			if *register {
+				all[registerKey(base)] = c // 和送審授權分開保存：建立遊戲的授權比較短，過期不影響送審
+			} else {
+				all[base] = c
+			}
 			if err := saveCredentials(all); err != nil {
-				return fmt.Errorf("保存送審授權失敗：%w", err)
+				return fmt.Errorf("保存授權失敗：%w", err)
+			}
+			if *register {
+				fmt.Printf("\n已授權建立遊戲與管理金鑰：團隊 %s（到 %s）。下一步：pt register；撤銷請到開發者頁。\n", c.TeamName, c.ExpiresAt.Local().Format("2006-01-02"))
+				return nil
 			}
 			fmt.Printf("\n已授權：團隊 %s（到 %s）。之後 pt upload 會在檢查通過後直接送審；撤銷請到開發者頁。\n", c.TeamName, c.ExpiresAt.Local().Format("2006-01-02"))
 			return nil
@@ -229,15 +242,18 @@ func cmdLogout(args []string) error {
 	}
 	base := platformBase(p, *api)
 	all := loadCredentials()
-	if _, ok := all[base]; !ok {
-		fmt.Println("這個平台沒有保存的送審授權")
+	_, a1 := all[base]
+	_, a2 := all[registerKey(base)]
+	if !a1 && !a2 {
+		fmt.Println("這個平台沒有保存的授權")
 		return nil
 	}
 	delete(all, base)
+	delete(all, registerKey(base))
 	if err := saveCredentials(all); err != nil {
 		return err
 	}
-	fmt.Println("已刪除這台電腦上的送審授權（平台上的授權請到開發者頁撤銷）")
+	fmt.Println("已刪除這台電腦上的授權（平台上的授權請到開發者頁撤銷）")
 	return nil
 }
 

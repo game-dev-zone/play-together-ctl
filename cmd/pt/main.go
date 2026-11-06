@@ -83,6 +83,8 @@ func main() {
 		err = cmdStatus(os.Args[2:])
 	case "login":
 		err = cmdLogin(os.Args[2:])
+	case "register":
+		err = cmdRegister(os.Args[2:])
 	case "logout":
 		err = cmdLogout(os.Args[2:])
 	case "version", "-version", "--version":
@@ -130,7 +132,9 @@ func usage() {
   pt upload -version <版本> [-notes …]          上傳版本與上架資料（store/）；在專案裡其他設定（含畫面方向、CDN 申報、宣告）從 playtogether.json 讀
          [-no-listing] [-listing-only]          只上傳版本／只上傳上架資料
   pt status                                     版本與上架資料的審核狀態、退件原因、正式分級
-  pt login [-api 平台網址]                      在瀏覽器確認後取得送審授權（30 天）；之後 pt upload 會在檢查通過後直接送審（-no-submit 不送審）
+  pt login [-api 平台網址] [-register]          在瀏覽器確認後取得送審授權（30 天）；之後 pt upload 會在檢查通過後直接送審（-no-submit 不送審）
+                                                -register：另外取得建立遊戲與管理金鑰的權限（團隊擁有者、管理者；7 天）
+  pt register [-title 名稱]                     建立草稿遊戲並登記金鑰（沒有私鑰會自動產生），金鑰 ID 寫回 playtogether.json
   pt logout                                     刪除這台電腦上的送審授權
          [-skip-check]                          略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查
   pt cdn add <網址>                             從 jsDelivr／cdnjs 載入固定版本的程式或樣式：算出 SRI、記到 playtogether.json、印出要貼的標籤

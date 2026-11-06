@@ -43,13 +43,8 @@ pt dev          # 本機開發：[[if eq .Client "godot"]]匯出 Godot 網頁版
 
 ## 接上玩聚
 
-[[- if eq .GameServer "none"]]
-1. 產生**上傳金鑰**，把公鑰交給玩聚登記：`pt keygen -purpose upload`（私鑰寫在 `keys/`，不會進版控）。此模式沒有正式遊戲伺服器（production Game Server），因此**不需要遊戲伺服器金鑰**（不用執行 `pt keygen -purpose server`），`serverKeyId` 留空，也**不需要 `serverUrl`**。之後改成多人遊戲（`gameServer.mode` 改成 `playtogether-managed` 或 `external`）時再產生。
-2. 玩聚建立遊戲後，把上傳金鑰 ID、平台網址填進 `playtogether.json`（`uploadKeyId`、`platform`）。
-[[- else]]
-1. 產生金鑰，把公鑰交給玩聚登記：`pt keygen -purpose upload`（上傳版本用）、`pt keygen -purpose server`（[[if eq .GameServer "external"]]你自己的遊戲伺服器[[else]]遊戲伺服器[[end]]向玩聚兌換啟動碼、回報一局用）。私鑰寫在 `keys/`，不會進版控[[if eq .GameServer "external"]]；遊戲伺服器金鑰的私鑰要放到你自己的遊戲伺服器[[end]]。
-2. 玩聚建立遊戲後，把金鑰 ID、平台網址填進 `playtogether.json`（`uploadKeyId`、`serverKeyId`、`platform`）。
-[[- end]]
+1. 建立遊戲、登記金鑰（團隊擁有者或管理者執行一次）：`pt login -register`（在瀏覽器同意「建立遊戲與管理金鑰」），再執行 `pt register`。pt 會自動產生[[if eq .GameServer "none"]]上傳金鑰[[else]]上傳金鑰與遊戲伺服器金鑰[[end]]（私鑰寫在 `keys/`，不會進版控）、在玩聚建立草稿遊戲（代號是 `playtogether.json` 的 `name`），並把金鑰 ID 與平台網址寫回 `playtogether.json`。[[if eq .GameServer "none"]]此模式沒有正式遊戲伺服器，**不需要遊戲伺服器金鑰**，也不需要 `serverUrl`；之後改成多人遊戲時，到開發者頁的「金鑰」新增遊戲伺服器金鑰。[[else if eq .GameServer "external"]]遊戲伺服器金鑰的私鑰要放到你自己的遊戲伺服器。[[end]]草稿遊戲不會出現在玩聚的遊戲列表，上架要送審。
+2. 團隊其他成員：用 `pt keygen -purpose upload` 產生自己的上傳金鑰，請擁有者或管理者在開發者頁的「金鑰」新增公鑰，再把拿到的金鑰 ID 填進 `playtogether.json` 的 `uploadKeyId`（私鑰不要互相傳）。[[if ne .GameServer "none"]]換遊戲伺服器金鑰也一樣：`pt keygen -purpose server` 產生、在「金鑰」新增，金鑰 ID 填進 `serverKeyId`（遊戲伺服器的 `PT_KEY_ID`）。[[end]]
 [[- if eq .GameServer "playtogether-managed"]]
 3. 部署遊戲伺服器（`server/`），把對外網址填進 `playtogether.json` 的 `serverUrl`，以及[[if eq .Client "godot"]] `[[.GodotPrefix]]config.gd` 的 `SERVER_URL`[[else]] `web/config.js` 的 `serverUrl`[[end]]。部署時：
    - 主機要開啟 **NTP 校時**：簽章的時間和玩聚差超過 5 分鐘會被拒絕（`clock_skew`），玩家會進不了遊戲。
@@ -62,7 +57,7 @@ pt dev          # 本機開發：[[if eq .Client "godot"]]匯出 Godot 網頁版
 [[- end]]
 4. `pt check`：上傳前檢查。
 5. `pt upload -version 1.0.0 -notes "第一個版本"`：設定都從 `playtogether.json` 讀[[if eq .Client "godot"]]，上傳前會自動重新匯出[[end]]。
-6. 把印出的版本 ID 交給玩聚開預覽房間、送審。
+6. 已經 `pt login` 時，`pt upload` 檢查通過後會直接送審；也可以到玩聚的開發者頁送審。
 
 ## 資料夾
 

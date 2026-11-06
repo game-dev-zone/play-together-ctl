@@ -15,7 +15,7 @@ help:
 	@echo "make test      遊戲伺服器的檢查與測試"
 	@echo "make verify    啟動驗證：[[if eq .Client "godot"]]匯出、[[end]]伺服器測試、檢查要上傳的檔案、在模擬模式實際啟動一次[[if eq .GameServer "playtogether-managed"]]、用本機假平台驗證和玩聚的接口[[end]]（不需要金鑰）"
 	@echo "make check     上傳前的完整檢查（[[if eq .GameServer "none"]]platform 要填好；此模式不需要 serverUrl[[else]]platform、serverUrl 都要填好[[end]]）"
-	@echo "make keys      產生還沒有的金鑰（[[if eq .GameServer "none"]]keys/upload.key；不需要遊戲伺服器金鑰[[else]]keys/upload.key、keys/server.key[[end]]），印出要交給玩聚的公鑰"
+	@echo "make keys      產生還沒有的金鑰（[[if eq .GameServer "none"]]keys/upload.key；不需要遊戲伺服器金鑰[[else]]keys/upload.key、keys/server.key[[end]]）；第一次上傳前通常用 pt register（會自動產生金鑰並登記）"
 	@echo "make upload VERSION=1.0.0 NOTES=\"說明\"   上傳一個版本"[[if eq .Client "godot"]]
 	@echo "make clean     刪除匯出結果 build/"[[end]]
 
