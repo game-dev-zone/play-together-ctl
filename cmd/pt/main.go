@@ -550,6 +550,7 @@ var errorText = map[string]string{
 	"bad_size":           "檔案太大（上限 200MB）",
 	"bad_connect_origin": "外部連線必須是 https:// 或 wss:// 加網域，不含路徑",
 	"rate_limited":       "上傳太頻繁，請稍後再試",
+	"upload_quota":       "你的團隊 24 小時內上傳的上架圖片已達上限（200 張；沒有變更的圖片不算），請明天再試",
 	"hosting_disabled":   "平台沒有開啟託管上架",
 	"sha256_mismatch":    "上傳過程中檔案損毀，請重新上傳",
 	"size_mismatch":      "上傳過程中檔案大小不符，請重新上傳",
