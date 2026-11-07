@@ -3,7 +3,7 @@ package main
 // pt init：把不是 pt new 建立的既有專案接上玩聚。只新增玩聚需要的設定，不動原本的程式碼：
 //
 //	playtogether.json（template: existing、server: none）、docs/content/ 的宣告文件、store/ 上架資料範本、.gitignore 的 keys/、
-//	pt 自己的 skill（.claude/skills/、.agents/skills/ 的 playtogether-store：請 AI 助手準備上架資料時用）
+//	pt 自己的 skill（.claude/skills/、.agents/skills/ 的 playtogether-publish：上架到送審；playtogether-store：準備上架資料）
 //
 // 已經存在的檔案一律不覆寫。已經接上玩聚的專案再執行 pt init，只補上 pt 提供、但專案裡缺少的檔案（skill、store/ 的說明）。既有專案的 SDK 由開發者自己管理（pt sdk export 取得），遊戲伺服器是 external 或 none。
 // 之後和新專案一樣：pt login -register → pt register → pt upload。
@@ -330,7 +330,7 @@ func initRefresh(dir string) error {
 	for _, f := range created {
 		fmt.Println("  ✓", f)
 	}
-	fmt.Println("\n請 AI 助手（Claude Code、Codex）「幫我準備上架資料」，它會照 .claude/skills/playtogether-store（Codex：.agents/skills/）的步驟做")
+	fmt.Println("\n請 AI 助手（Claude Code、Codex）「幫我上架到玩聚」，它會照 .claude/skills/playtogether-publish（Codex：.agents/skills/）一路做到送審；只要準備上架資料時說「幫我準備上架資料」")
 	return nil
 }
 
@@ -383,5 +383,5 @@ func initHints(p *project, dir string) {
 	fmt.Println("  pt register              建立草稿遊戲、登記金鑰（金鑰 ID 寫回 playtogether.json）")
 	fmt.Println("  pt upload -version 1.0.0 上傳版本（先在 store/ 填好上架資料）")
 	fmt.Println()
-	fmt.Println("上架資料可以請 AI 助手（Claude Code、Codex）「幫我準備上架資料」：它會照 .claude/skills/playtogether-store（Codex：.agents/skills/）的步驟起草文字、準備圖示、用 pt store screenshot 擷取截圖。")
+	fmt.Println("也可以全部交給 AI 助手（Claude Code、Codex）：說「幫我上架到玩聚」，它會照 .claude/skills/playtogether-publish（Codex：.agents/skills/）改到檢查通過、準備上架資料（playtogether-store）、上傳並送審；登入時請你在瀏覽器確認。")
 }

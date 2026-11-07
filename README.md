@@ -69,6 +69,7 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 | `docs/ai/PROJECT_CONTEXT.md` | 專案背景：畫面、方向、AI 模式、**多人與遊戲伺服器架構**、已安裝的 AI 能力、重要路徑 |
 | `CLAUDE.md`、`AGENTS.md` | Claude Code 與 Codex 的入口：依序讀上面三份（有 `docs/ai/CURRENT_TASK.md` 時也讀） |
 | `.claude/skills/playtogether-store/`、`.agents/skills/playtogether-store/` | `pt` 自己的 skill：請 AI「幫我準備上架資料」時的固定步驟（讀專案 → 起草 `store/listing.json` → 圖示與封面 → `pt store screenshot` 擷取截圖 → `pt check`），Claude Code 與 Codex 內容相同；`pt init` 的既有專案也有 |
+| `.claude/skills/playtogether-publish/`、`.agents/skills/playtogether-publish/` | `pt` 自己的 skill：請 AI「幫我上架到玩聚」時一路做到送審（`pt init` → 改到 `pt check` 通過 → 上架資料 → `pt login -register`（你在瀏覽器確認）→ `pt register` → `pt upload`）；`pt skills install` 也可以把它裝到使用者層級，還沒接上玩聚的專案也能用 |
 
 ### AI 開發模式（`-mode`）
 
@@ -106,6 +107,7 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 - `pt upload` 會和版本一起上傳上架資料，**平台自動裁切、縮放、重新編碼**；內容沒變時沿用上一次的修訂。只想換截圖或修說明：`pt upload -listing-only`；只上傳版本：`-no-listing`。
 - `pt check` 一併檢查 `store/`：範本文字還沒改或缺圖片時只說明（`pt upload` 會只上傳版本）；長度、標籤、圖片格式、尺寸與比例錯誤是 `ERROR_SCHEMA`（`-skip-check` 不能略過）。
 - `pt upload` 也會送出 `playtogether.json` 的宣告，**平台自己判斷**硬性規則與需要審核的項目（不採信本機的 `pt check`）。
+- **全部交給 AI**：執行一次 `pt skills install`，在遊戲資料夾對 Claude Code 或 Codex 說「幫我上架到玩聚」，從接上專案到送審都由它完成（登入時你在瀏覽器確認）。
 - **請 AI 準備**：在專案裡對 Claude Code 或 Codex 說「幫我準備上架資料」，它會照專案裡的 `playtogether-store` skill 起草繁中與英文的文字、用你的圖片生成工具做圖示（沒有工具時會請你提供）、擷取實際遊戲截圖，跑 `pt check` 到沒有錯誤，再請你確認後自己執行 `pt upload`。`pt` 本身不呼叫任何 AI，也不需要 AI 帳號或金鑰。
 - **截圖**：`pt store screenshot` 用本機的 Chrome／Chromium 無頭模式擷取實際遊戲畫面，依 `playtogether.json` 的畫面方向模擬手機（直式 390×694、橫式 694×390 CSS px，觸控），輸出剛好是 1080×1920／1920×1080 的 PNG；多張時在**同一個頁面**照真實時間每隔 `-interval` 再擷取，拍到同一局的不同階段（透過 `--remote-debugging-pipe` 控制 Chrome，只用標準函式庫；Windows 還不支援）。檔名接在既有截圖後面（`-replace` 才從 01 覆寫），全黑或全白的不存檔。先啟動遊戲（`pt dev -mock`；用 `pt dev` 時把它印出的玩家分頁網址傳給 `-url`），常用參數：`-wait 8s`、`-n 3 -interval 4s`、`-locale en`、`-chrome <路徑>`（或 `PT_CHROME`）。
 - `pt status`：版本與上架資料的審核狀態、退件條號與原因、正式分級（由平台審核決定；還沒審核過時顯示「尚未審核」）。
@@ -312,6 +314,7 @@ claude
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；私鑰只在你手上（第一次通常用 `pt register` 自動產生並登記；換金鑰時把公鑰貼到開發者頁的「金鑰」） |
 | `pt login -register` | 另外取得建立遊戲與管理金鑰的權限（團隊擁有者、管理者在瀏覽器同意；7 天，和送審授權分開保存） |
 | `pt init [-name 代號] [-web 資料夾] [-client web\|godot] [-game-server external\|none] [-profile …] [-y]` | 把**不是 `pt new` 建立的既有專案**接上玩聚：只新增 `playtogether.json`、`docs/content/` 的宣告文件、`store/` 上架資料範本、準備上架資料的 AI skill（`.claude/skills/`、`.agents/skills/` 的 `playtogether-store`）與 `.gitignore` 的 `keys/`，已經存在的檔案不覆寫、不動原本的程式；已經接上玩聚的專案再執行只補上缺少的 skill 與 `store/` 說明。上傳資料夾自動找有 `index.html` 的 `web`、`dist`、`build`、`public`；SDK 由你自己管理（`pt sdk export`）。之後和新專案一樣 `pt register`、`pt upload` |
+| `pt skills install`／`pt skills uninstall` | 把「上架到玩聚」skill（`playtogether-publish`）裝到 `~/.claude/skills/` 與 `~/.agents/skills/`：之後在任何遊戲資料夾打開 Claude Code 或 Codex，說「幫我上架到玩聚」，它會從 `pt init` 一路做到送審，只在登入授權等需要你本人時停下來。pt 更新後重跑會更新 skill |
 | `pt register [-title 名稱]` | 建立草稿遊戲（代號是 `playtogether.json` 的 `name`）並登記金鑰：沒有私鑰會自動產生、只送公鑰，金鑰 ID 寫回 `playtogether.json`；上次沒收到回應時重新執行會接手已建立的遊戲 |
 | `pt upload -version <版本> [-notes 說明] [-no-build] [-orientation portrait\|landscape\|any]` | 上傳版本（設定從 `playtogether.json` 讀，包括畫面方向；Godot 專案先匯出；上傳前自動檢查） |
 | `pt store screenshot [-url 網址] [-wait 5s] [-n 張數] [-interval 3s] [-locale en] [-o 資料夾] [-replace] [-orientation portrait\|landscape] [-chrome 路徑]` | 用本機 Chrome／Chromium 無頭模式擷取實際遊戲畫面，存成上架截圖（`store/screenshots/`，尺寸剛好符合規格、不覆寫既有截圖） |

@@ -99,11 +99,12 @@ func TestNewAIModes(t *testing.T) {
 	if exists(dir, "m-light", ".claude/rules") || exists(dir, "m-light", "THIRD_PARTY") || exists(dir, "m-light", "docs/ai/CURRENT_TASK.md") {
 		t.Fatal("輕量模式不該有第三方 skill、Studios、CURRENT_TASK")
 	}
-	// 輕量模式也有 pt 自己的上架資料 skill，而且只有它
+	// 輕量模式也有 pt 自己的 skill（上架、上架資料），而且只有它們
 	for _, root := range []string{".claude/skills", ".agents/skills"} {
 		entries, _ := os.ReadDir(filepath.Join(dir, "m-light", root))
-		if len(entries) != 1 || entries[0].Name() != "playtogether-store" || !exists(dir, "m-light", root+"/playtogether-store/SKILL.md") {
-			t.Fatalf("輕量模式的 %s 只能有 playtogether-store：%v", root, entries)
+		if len(entries) != 2 || entries[0].Name() != "playtogether-publish" || entries[1].Name() != "playtogether-store" ||
+			!exists(dir, "m-light", root+"/playtogether-store/SKILL.md") || !exists(dir, "m-light", root+"/playtogether-publish/SKILL.md") {
+			t.Fatalf("輕量模式的 %s 只能有 pt 自己的 skill：%v", root, entries)
 		}
 	}
 	// 所有模式都有 pt 自己的上架資料 skill

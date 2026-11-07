@@ -29,7 +29,8 @@ func TestInitExistingProject(t *testing.T) {
 		t.Fatalf("playtogether.json：%+v", p)
 	}
 	for _, f := range []string{"docs/content/CONTENT_PROFILE.md", "docs/content/GAMEPLAY_ECONOMY.md", "store/listing.json",
-		".claude/skills/playtogether-store/SKILL.md", ".agents/skills/playtogether-store/SKILL.md"} {
+		".claude/skills/playtogether-store/SKILL.md", ".agents/skills/playtogether-store/SKILL.md",
+		".claude/skills/playtogether-publish/SKILL.md", ".agents/skills/playtogether-publish/SKILL.md"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Errorf("沒有產生 %s", f)
 		}

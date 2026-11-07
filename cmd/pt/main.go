@@ -95,6 +95,8 @@ func main() {
 		err = cmdInit(os.Args[2:])
 	case "logout":
 		err = cmdLogout(os.Args[2:])
+	case "skills":
+		err = cmdSkills(os.Args[2:])
 	case "version", "-version", "--version":
 		fmt.Print(versionInfo())
 	default:
@@ -157,6 +159,8 @@ func usage() {
                                                 準備上架資料的 AI skill，不動原本的程式）；已經接上的專案重跑時只補上缺少的 skill
   pt register [-title 名稱]                     建立草稿遊戲並登記金鑰（沒有私鑰會自動產生），金鑰 ID 寫回 playtogether.json
   pt logout                                     刪除這台電腦上的送審授權
+  pt skills install                             把「上架到玩聚」skill 裝到 ~/.claude/skills 與 ~/.agents/skills：之後在遊戲資料夾
+                                                請 Claude Code／Codex「幫我上架到玩聚」，從 pt init 一路做到送審（uninstall 移除）
          [-skip-check]                          略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查
   pt cdn add <網址>                             從 jsDelivr／cdnjs 載入固定版本的程式或樣式：算出 SRI、記到 playtogether.json、印出要貼的標籤
   pt sdk status                                 檢查專案的 SDK、這個 pt 內嵌的 SDK、最新版 pt 的 SDK

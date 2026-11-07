@@ -1,6 +1,6 @@
 ---
 name: playtogether-store
-description: 準備玩聚上架資料（store/）：依專案內容起草 store/listing.json（繁中＋英文的名稱、簡介、說明、截圖說明、標籤、人數、給審核者的說明），產生圖示與封面，用 pt store screenshot 擷取實際遊戲截圖，最後用 pt check 檢查到沒有錯誤。使用者說「準備上架資料」「幫我上架」「寫簡介」「寫遊戲說明」「做圖示」「截圖」「store」「listing」時使用。Use when preparing the PlayTogether store listing, description, icon or screenshots.
+description: 準備玩聚上架資料（store/）：依專案內容起草 store/listing.json（繁中＋英文的名稱、簡介、說明、截圖說明、標籤、人數、給審核者的說明），產生圖示與封面，用 pt store screenshot 擷取實際遊戲截圖，最後用 pt check 檢查到沒有錯誤。使用者說「準備上架資料」「寫簡介」「寫遊戲說明」「做圖示」「截圖」「store」「listing」時使用。要一路上架到送審時用 playtogether-publish（它會呼叫這個 skill）。Use when preparing the PlayTogether store listing, description, icon or screenshots.
 ---
 
 # 玩聚上架資料（store/）
@@ -87,4 +87,4 @@ description: 準備玩聚上架資料（store/）：依專案內容起草 store/
 
 1. 執行 `pt check`（還沒填 `platform`、`serverUrl` 時用 `pt check -local`），把 `store/` 相關的錯誤（ERROR_SCHEMA）全部修好；「上架資料還沒準備好」的提示也要消失。其他項目的問題告訴開發者，不要順手改宣告。
 2. 列出這次新增或修改的檔案（`store/listing.json`、`store/icon.png`、`store/cover.png`、`store/screenshots/…`、`art/SOURCES.md`），請開發者**確認文字與圖片**。
-3. 告訴開發者確認後執行 `pt upload -version <版本>`（只更新上架資料用 `pt upload -listing-only`），審核進度用 `pt status`。**不要自己執行 `pt upload`、送審或 `pt login`**，除非開發者明確要求。
+3. 告訴開發者確認後執行 `pt upload -version <版本>`（只更新上架資料用 `pt upload -listing-only`），審核進度用 `pt status`。**不要自己執行 `pt upload`、送審或 `pt login`**，除非開發者明確要求。開發者要你一路上架到送審（`playtogether-publish`）就是明確要求：做完這裡的步驟後回到那個 skill 繼續。
