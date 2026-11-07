@@ -266,21 +266,45 @@ var submitErrors = map[string]string{
 	"listing_in_review": "這款遊戲已經有上架資料在審核中",
 	"images_pending":    "還有上架圖片沒有上傳或處理失敗，請重新執行 pt upload",
 	"not_draft":         "這份上架資料已經送審過",
+	"replace_mismatch":  "要取代的版本已經不在審核中，請重新執行",
+	"not_in_review":     "這個版本已經不在審核中",
 }
 
 // submitWithCredential 用送審授權送審版本和／或上架資料修訂。logged 是 false 表示沒有登入（不是錯誤）。
-func submitWithCredential(base, buildID, revisionID string) (logged bool, err error) {
-	c, ok := credentialFor(base)
-	if !ok {
+// replace：這款遊戲有其他版本在審核中時，直接撤回它、改送這個版本（-replace）；沒有指定時在終端機詢問。
+// inReview 查目前審核中的版本（用上傳金鑰；nil 時不處理取代）。
+func submitWithCredential(base, buildID, revisionID string, replace bool, inReview func() (id, version string, err error)) (logged bool, err error) {
+	creds := submitCredentials(base)
+	if len(creds) == 0 {
 		return false, nil
 	}
 	if err := securePlatform(base); err != nil {
 		return true, err
 	}
-	st, out, err := devPost(base+"/v1/dev/submissions", map[string]string{"buildId": buildID, "revisionId": revisionID},
-		map[string]string{"Authorization": "Bearer " + c.Token})
+	body := map[string]string{"buildId": buildID, "revisionId": revisionID}
+	st, out, err := devPostWithCredentials(base+"/v1/dev/submissions", body, creds)
 	if err != nil {
 		return true, err
+	}
+	// 其他版本審核中：撤回它、改送這個版本（App Store 的「從審核中移除」）
+	if st == http.StatusConflict && out["error"] == "build_in_review" && buildID != "" && inReview != nil {
+		id, version, ierr := inReview()
+		if ierr == nil && id != "" && id != buildID {
+			ok := replace
+			if !ok && interactive() && !ciEnv() {
+				ok, _ = confirm(fmt.Sprintf("%s 正在審核中。要撤回它、改送這個版本嗎？（撤回後一起送審的上架資料會回到草稿，和這個版本一起重新送審）", version), false)
+			}
+			if !ok {
+				return true, fmt.Errorf("送審失敗：%s 正在審核中。要改送這個版本：pt submit -replace（或 pt withdraw 撤回後再 pt submit）", version)
+			}
+			body["replaceBuildId"] = id
+			if st, out, err = devPostWithCredentials(base+"/v1/dev/submissions", body, creds); err != nil {
+				return true, err
+			}
+			if st == http.StatusOK {
+				fmt.Printf("已撤回 %s 的送審。\n", version)
+			}
+		}
 	}
 	if st != http.StatusOK {
 		if t, ok := submitErrors[fmt.Sprint(out["error"])]; ok {
@@ -291,10 +315,38 @@ func submitWithCredential(base, buildID, revisionID string) (logged bool, err er
 	switch {
 	case out["minor"] == true:
 		fmt.Println("已送審：上架資料是小幅修改，已直接生效（平台會事後抽查）。")
+	case out["listingStatus"] == "unchanged":
+		fmt.Println("已送審版本（上架資料沒有變更，沿用目前生效的）。")
 	case buildID != "" && revisionID != "":
 		fmt.Println("已送審：版本和上架資料一起審核，發佈版本時上架資料一起生效。")
 	default:
 		fmt.Println("已送審，等待玩聚平台審核。")
 	}
 	return true, nil
+}
+
+// submitCredentials 是可以送審的授權：pt login 的送審授權，再來是 pt login -register 的（範圍也含送審）。
+func submitCredentials(base string) []credential {
+	var out []credential
+	if c, ok := credentialFor(base); ok {
+		out = append(out, c)
+	}
+	if c, ok := credentialFor(registerKey(base)); ok {
+		out = append(out, c)
+	}
+	return out
+}
+
+// devPostWithCredentials 依序用每一份授權送出；授權失效（login_required）時換下一份。
+func devPostWithCredentials(target string, body any, creds []credential) (int, map[string]any, error) {
+	var st int
+	var out map[string]any
+	var err error
+	for _, c := range creds {
+		st, out, err = devPost(target, body, map[string]string{"Authorization": "Bearer " + c.Token})
+		if err != nil || !(st == http.StatusUnauthorized && out["error"] == "login_required") {
+			return st, out, err
+		}
+	}
+	return st, out, err
 }

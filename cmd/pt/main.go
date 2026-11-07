@@ -81,6 +81,10 @@ func main() {
 		err = cmdContent(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
+	case "submit":
+		err = cmdSubmit(os.Args[2:])
+	case "withdraw":
+		err = cmdWithdraw(os.Args[2:])
 	case "store":
 		err = cmdStore(os.Args[2:])
 	case "login":
@@ -136,6 +140,8 @@ func usage() {
   pt upload -version <版本> [-notes …]          上傳版本與上架資料（store/）；在專案裡其他設定（含畫面方向、CDN 申報、宣告）從 playtogether.json 讀
          [-no-listing] [-listing-only]          只上傳版本／只上傳上架資料
   pt status                                     版本與上架資料的審核狀態、退件原因、正式分級
+  pt submit [-version 版本] [-replace]           送審已經上傳的草稿版本（與草稿上架資料），不重新上傳；-replace 撤回目前審核中的版本改送這個
+  pt withdraw                                   撤回審核中的版本（一起送審的上架資料回到草稿），改好再送
   pt store screenshot                           用本機 Chrome／Chromium 無頭模式擷取實際遊戲畫面，存成上架截圖（store/screenshots/）：
                                                 依畫面方向模擬手機（直式 390×694、橫式 694×390 CSS px），輸出剛好 1080×1920／1920×1080；
                                                 檔名接在既有截圖後面（不覆寫）；全黑或全白的不存檔。先啟動遊戲（例如 pt dev -mock）
@@ -228,6 +234,7 @@ func upload(args []string) error {
 	noListing := fs.Bool("no-listing", false, "不上傳上架資料（store/），只上傳版本")
 	listingOnly := fs.Bool("listing-only", false, "只上傳上架資料（換截圖、修說明），不打包遊戲")
 	noSubmit := fs.Bool("no-submit", false, "只上傳，不送審（已經 pt login 時預設會在檢查通過後送審）")
+	replace := fs.Bool("replace", false, "這款遊戲有其他版本在審核中時，撤回它、改送這個版本（沒有指定時在終端機詢問）")
 	_ = fs.Parse(reorder(args))
 	p, err := findProject()
 	if err != nil {
@@ -414,7 +421,7 @@ func upload(args []string) error {
 		case "ready":
 			fmt.Printf("\n檢查通過（%d 個檔案）。版本網址：%s\n", b.CheckReport.FileCount, b.EntryURL)
 			if !*noSubmit {
-				logged, err := submitWithCredential(base, created.BuildID, revID)
+				logged, err := submitWithCredential(base, created.BuildID, revID, *replace, inReviewBuild(c))
 				if err != nil {
 					return err
 				}

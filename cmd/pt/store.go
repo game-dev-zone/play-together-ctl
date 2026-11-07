@@ -367,63 +367,23 @@ func pushListing(c client, p *project, l storeListing, imgs []storeImage) (strin
 
 // cmdStatus：pt status 查詢版本與上架資料的審核狀態、退件原因、正式分級。
 func cmdStatus(args []string) error {
-	p, err := findProject()
+	_, c, err := projectClient()
 	if err != nil {
 		return err
 	}
-	if p == nil {
-		return errors.New("找不到 playtogether.json：請在 pt new 建立的專案裡執行")
-	}
-	first := func(vals ...string) string {
-		for _, v := range vals {
-			if v != "" {
-				return v
-			}
-		}
-		return ""
-	}
-	// 環境變數 > playtogether.json（和 pt upload 相同）
-	base := strings.TrimRight(first(os.Getenv("PT_API_URL"), p.Platform), "/")
-	kid, kfile := first(os.Getenv("PT_UPLOAD_KEY_ID"), p.UploadKeyID), first(os.Getenv("PT_UPLOAD_KEY_FILE"), p.path(p.UploadKeyFile))
-	if err := validPlatform(base); err != nil {
-		return err
-	}
-	if kid == "" {
-		return errors.New("需要上傳金鑰：填在 playtogether.json（uploadKeyId、uploadKeyFile）")
-	}
-	priv, err := readKey(kfile)
+	st, err := fetchDevStatus(c)
 	if err != nil {
-		return err
-	}
-	var st struct {
-		Game struct {
-			Name, Status, Rating, Warning, LiveVersion string
-			ContentLabels                              []string
-		} `json:"game"`
-		Builds []struct {
-			Version, Status, ArtifactStatus, Reason string
-			Codes                                   []string
-			PolicyFindings                          *struct {
-				Findings []struct{ Level, Reason string } `json:"findings"`
-			} `json:"policyFindings"`
-		} `json:"builds"`
-		ListingRevisions []struct {
-			ID, Status, Reason string
-			Minor              bool
-			Rating             *string
-			Codes              []string
-			PendingImages      int `json:"pendingImages"`
-			FailedImages       int `json:"failedImages"`
-		} `json:"listingRevisions"`
-	}
-	if err := (client{base: base, keyID: kid, priv: priv}).signed("GET", "/v1/dev/status", nil, &st); err != nil {
 		return err
 	}
 	fmt.Printf("%s：%s", st.Game.Name, map[string]string{"draft": "尚未上架", "live": "上架中", "unlisted": "已下架", "disabled": "停用"}[st.Game.Status])
 	if st.Game.LiveVersion != "" {
 		fmt.Printf("（目前版本 %s）", st.Game.LiveVersion)
 	}
-	fmt.Printf("\n正式分級：%s（由玩聚平台審核決定）\n", st.Game.Rating)
+	if st.Game.Rating == nil {
+		fmt.Println("\n正式分級：尚未審核（由玩聚平台審核決定）")
+	} else {
+		fmt.Printf("\n正式分級：%s（由玩聚平台審核決定）\n", *st.Game.Rating)
+	}
 	if len(st.Game.ContentLabels) > 0 || st.Game.Warning != "" {
 		fmt.Printf("內容標示：%s　警語：%s\n", strings.Join(st.Game.ContentLabels, "、"), st.Game.Warning)
 	}
@@ -539,7 +499,7 @@ func uploadListingOnly(p *project, api, keyID, keyFile string, noSubmit bool) er
 		return errors.New("上架資料還沒準備好")
 	}
 	if !noSubmit {
-		logged, err := submitWithCredential(base, "", id)
+		logged, err := submitWithCredential(base, "", id, false, nil)
 		if err != nil {
 			return err
 		}
