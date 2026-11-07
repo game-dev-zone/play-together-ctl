@@ -88,6 +88,44 @@ func TestInitExistingProject(t *testing.T) {
 	}
 }
 
+// pt init -hosting playtogether：既有的 Go 遊戲伺服器交給玩聚代管，不用填 serverUrl。
+func TestInitHostedServer(t *testing.T) {
+	requireEmbeddedSDK(t)
+	dir := filepath.Join(t.TempDir(), "hosted")
+	must(t, os.MkdirAll(filepath.Join(dir, "web"), 0o755))
+	must(t, os.WriteFile(filepath.Join(dir, "web", "index.html"), []byte(`<!doctype html><script src="playtogether-sdk.iife.js"></script>`), 0o644))
+	must(t, os.MkdirAll(filepath.Join(dir, "srv"), 0o755))
+	t.Chdir(dir)
+
+	// 沒有 go.mod：代管只支援 Go
+	if err := cmdInit([]string{"-y", "-hosting", "playtogether", "-server-dir", "srv"}); err == nil || !strings.Contains(err.Error(), "go.mod") {
+		t.Fatalf("沒有 go.mod：%v", err)
+	}
+	if err := cmdInit([]string{"-y", "-game-server", "none", "-hosting", "playtogether"}); err == nil || !strings.Contains(err.Error(), "external") {
+		t.Fatalf("none 不能代管：%v", err)
+	}
+	if err := cmdInit([]string{"-y", "-hosting", "aws"}); err == nil || !strings.Contains(err.Error(), "-hosting") {
+		t.Fatalf("不認得的 -hosting：%v", err)
+	}
+	if err := cmdInit([]string{"-y", "-hosting", "playtogether", "-server-dir", "../x"}); err == nil || !strings.Contains(err.Error(), "-server-dir") {
+		t.Fatalf("專案外的 -server-dir：%v", err)
+	}
+
+	must(t, os.WriteFile(filepath.Join(dir, "srv", "go.mod"), []byte("module srv\n\ngo 1.24\n"), 0o644))
+	must(t, cmdInit([]string{"-y", "-hosting", "playtogether", "-server-dir", "srv", "-platform", "https://pt.example"}))
+	p, err := findProject()
+	if err != nil || p == nil {
+		t.Fatal(err)
+	}
+	if p.gameServerMode() != "external" || !p.hostedServer() || p.GameServer.Dir != "srv" || p.ServerURL != "" {
+		t.Fatalf("playtogether.json：%+v %+v", p, p.GameServer)
+	}
+	// 代管不用 serverUrl；前端還沒讀 launch.serverUrl 只是提醒
+	if err := cmdCheck([]string{"-local"}); err != nil {
+		t.Fatalf("pt check -local：%v", err)
+	}
+}
+
 func TestInitErrors(t *testing.T) {
 	requireEmbeddedSDK(t)
 	dir := filepath.Join(t.TempDir(), "nothing-here")

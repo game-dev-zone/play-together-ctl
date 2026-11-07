@@ -34,12 +34,39 @@ description: 把遊戲上架到玩聚（PlayTogether）：從接上專案（pt i
 | `-client` | `web`（HTML5：PlayCanvas、Phaser、Cocos、Unity WebGL、純 JS…）或 `godot`（有 `project.godot`） |
 | `-web` | web：要上傳的資料夾（根目錄有 `index.html`）。是建置產物（`dist/`、`build/`）時，**先照專案的建置指令建置**（例如 `npm run build`），確認 `index.html` 存在 |
 | `-game-server` | `none`：單人、或多人只靠畫面端（同一台裝置輪流、沒有連線）。`external`：遊戲有自己的連線伺服器（WebSocket、HTTP API、Colyseus、Socket.IO、Firebase 等即時同步） |
+| `-hosting` | 只有 `external` 才有。不填：遊戲伺服器由開發者自己部署。`playtogether`：交給玩聚代管，另用 `-server-dir` 指定伺服器的 Go 模組資料夾（預設 `.`）。見下面「遊戲伺服器由誰執行」 |
 | `-orientation` | `portrait` 直式、`landscape` 橫式、`any` 都可以；看畫面尺寸、CSS、引擎設定 |
 | `-profile` | 內容邊界，預設 `general`。遊戲本身有明顯暴力、血腥、恐怖、性暗示等內容時，**問開發者**要宣告 `moderate` 還是 `strong`（你不能自己提高內容邊界） |
 | `-table-game` | 預設 `none`。有撲克、麻將、骰子、輪盤、百家樂、拉霸等玩法時填對應的值（這類玩法需要平台審核，要在上架資料的 `reviewNotes` 說明） |
 | `-platform` | 第 0 步的平台網址 |
 
 執行後讀 `pt init` 印出的「還要處理」，以及新產生的 `PLAYTOGETHER.md`（有的話）、`docs/content/`。
+
+### 遊戲伺服器由誰執行（`external`）
+
+`external` 的遊戲伺服器有兩種跑法。玩聚代管目前只開放給平台開通的團隊，文件站還沒寫；**不要只因為文件站沒寫，就告訴開發者玩聚不能代管**。開發者問到時說明這個選項與限制，由開發者（或平台）決定能不能用。
+
+| | 開發者自己部署（`-hosting` 不填） | 玩聚代管（`-hosting playtogether`） |
+| --- | --- | --- |
+| 誰部署 | 開發者（VPS、Cloud Run…），填 `playtogether.json` 的 `serverUrl` | `pt upload` 在 `gameServer.dir` 執行 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .`，和畫面一起上傳；發佈時平台啟動 |
+| 語言 | 任何 | **只支援 Go**；`gameServer.dir` 要有 `go.mod`，在那裡 `go build .` 就要得到伺服器（main 在別的資料夾時，在那裡加一個呼叫同一份程式的 `main.go`） |
+| 前端連哪裡 | 設定檔裡的完整網址；上傳加 `-connect` | 握手後的 `pt.launch.serverUrl`（每個房間由平台指定）；不用 `-connect`、不用 `serverUrl` |
+| 金鑰 | 開發者把 `keys/server.key` 放到伺服器 | 平台每次部署自己產生並掛載（`PT_KEY_FILE`），不用處理 |
+
+怎麼選：
+
+- `playtogether.json` 已經有 `gameServer.hosting`，或開發者說要玩聚代管：用代管。
+- 伺服器是 Go、開發者還沒說伺服器要放哪裡（專案裡沒有部署設定、也沒給網址）：**問開發者一次**要自己部署還是玩聚代管。
+- 其他情況（不是 Go、已經部署在自己的網址）：自己部署。
+
+代管的限制（伺服器程式要配合）：
+
+- 啟動時讀環境變數：`ADDR`（`0.0.0.0:8080`；也有 `PORT=8080`）、`PT_API_URL`、`PT_KEY_ID`、`PT_KEY_FILE`、`ALLOW_ORIGINS`（遊戲畫面的網域，WebSocket Origin 與 CORS 照它檢查）、`TRUST_PROXY=1`。用伺服器 SDK 的 `gameserver.PlatformFromEnv()` 建立平台 client。
+- 要有 `GET /healthz` 和 `GET /readyz`（都回 200 才算部署完成；遊戲被停用時 `/readyz` 回 503）。
+- 容器不能連外：只能連 `PT_API_URL`（平台 API）。不能連自己的資料庫、Redis、第三方 API；要用 AI 走玩聚 AI 閘道（`/docs/ai-services`）。
+- 單一執行個體、狀態放記憶體，重新部署時房間會結束；記憶體 256 MB、CPU 0.5、唯讀檔案系統（`/tmp` 16 MB）。要讀的資料檔用 `gameServer.data` 指定資料夾，執行時在 `/app/data`。
+- WebSocket 可以用（走 `wss://`）。
+- 要平台開通：沒開通的環境上傳不會擋，但審核通過後發佈會失敗（「沒有可用的遊戲伺服器主機」）。發生時告訴開發者聯絡平台，不要改宣告繞過。
 
 ## 2. 改到 `pt check -local` 通過
 
@@ -56,11 +83,11 @@ description: 把遊戲上架到玩聚（PlayTogether）：從接上專案（pt i
    ```
 
    直接在瀏覽器開（不在玩聚裡）時 SDK 會進入模擬模式，原本的開發方式不受影響。Godot 用外掛（`pt sdk export` 的 `godot/addons`，見 `/docs/godot`）。
-2. **玩家身分改用啟動碼**（`external`）：不要再用遊戲自己的登入、訪客帳號或隨機 ID。前端把 `pt.launch.code` 交給遊戲伺服器，伺服器用伺服器 SDK（`pt sdk export` 的 `go/`、`node/`）向平台兌換，用兌換結果的玩家 ID 與暱稱。伺服器程式在這個專案裡就照 `/docs/game-server` 的「external 的最低要求」改；不在這個專案裡就把要改的地方列給開發者。
-3. **連遊戲伺服器用完整網址**（`external`）：上傳後畫面在 `https://<版本>.games.<平台網域>`，不能用 `location.host`、相對路徑（例如 `/ws`）。改成設定檔裡的完整網址；伺服器要允許這個來源（CORS、WebSocket Origin）。上傳時用 `-connect wss://…`（逗號分隔）申報。
+2. **玩家身分改用啟動碼**（`external`）：不要再用遊戲自己的登入、訪客帳號或隨機 ID。前端把 `pt.launch.code` 交給遊戲伺服器，伺服器用伺服器 SDK（`pt sdk export` 的 `go/`、`node/`）向平台兌換，用兌換結果的玩家 ID 與暱稱。伺服器程式在這個專案裡就照 `/docs/game-server` 的「external 的最低要求」改；不在這個專案裡就把要改的地方列給開發者。玩聚代管時另外照上面「代管的限制」改（環境變數、`/healthz`、`/readyz`、不連外）。
+3. **連遊戲伺服器用完整網址**（`external`）：上傳後畫面在 `https://<版本>.games.<平台網域>`，不能用 `location.host`、相對路徑（例如 `/ws`）。自己部署：改成設定檔裡的完整網址，伺服器要允許這個來源（CORS、WebSocket Origin），上傳時用 `-connect wss://…`（逗號分隔）申報。玩聚代管：握手後用 `pt.launch.serverUrl`（`https://` 換成 `wss://` 就是 WebSocket），`pt check` 會在上傳資料夾的 `.js` 檔找讀它的程式。
 4. **外部載入的檔案**：CDN 上的程式與樣式表用 `pt cdn add <網址>` 申報；字型、圖片、音效改成放進上傳資料夾（例如 Google Fonts 改成自己的字型檔）。
 5. **平台不允許的功能**：廣告、追蹤與分析工具、自己的付款、WebRTC、麥克風與相機。要拿掉時，**先列出你要拿掉的東西，問開發者一次**再動手（這會改變遊戲行為）。
-6. 改完後實際跑一次：web 用本機伺服器開啟上傳資料夾，或 `pt dev`；確認畫面能載入、沒有錯誤。
+6. 改完後實際跑一次：web 用本機伺服器開啟上傳資料夾，或 `pt dev`；確認畫面能載入、沒有錯誤。有遊戲伺服器時用 `pt dev` 的本機假平台測加入、重新整理、踢人、重新開始、關房：玩聚代管的專案直接 `pt dev`（它會編譯並啟動伺服器，握手時給 `launch.serverUrl`）；自己部署的先啟動自己的伺服器，再 `pt dev -no-server -site <畫面網址>`（前端讀 `launch.serverUrl` 時加 `-server-url <伺服器網址>`）。
 
 不確定怎麼改、或要改的範圍很大（例如整套登入系統）時，說明情況並**問開發者**，不要硬改。
 
@@ -92,7 +119,7 @@ playtogether-store 最後說「不要自己執行 `pt upload`」：開發者說�
 ## 6. 上傳並送審（`pt upload`）
 
 1. 決定版本號：`pt status` 看已經上傳過的版本；第一次用 `1.0.0`，之後用比最新版本大的號碼（修正用第三碼、加功能用第二碼）。版本號不能重複。
-2. 執行 `pt upload -version <版本> -notes "<這版改了什麼，給審核者看>"`，`external` 加上 `-connect <遊戲伺服器的 wss:// 或 https:// 來源>`。它會檢查、打包、上傳版本與 `store/`，檢查通過後直接送審。
+2. 執行 `pt upload -version <版本> -notes "<這版改了什麼，給審核者看>"`，`external` 自己部署時加上 `-connect <遊戲伺服器的 wss:// 或 https:// 來源>`；玩聚代管不用（`pt upload` 會先在本機建置伺服器，要有 `go` 指令）。`external` 的版本說明要寫出限流方式（審核會照它實測）。它會檢查、打包、上傳版本與 `store/`，檢查通過後直接送審。
 3. 出現「這款遊戲有其他版本在審核中」：**問開發者**要不要撤回舊的、改送這個版本（同意後加 `-replace` 重跑）。
 4. 平台檢查失敗：讀錯誤訊息、修正、換一個新的版本號再上傳。
 
@@ -103,6 +130,7 @@ playtogether-store 最後說「不要自己執行 `pt upload`」：開發者說�
 - 送審了哪個版本、上架資料有沒有一起送審。
 - 開發者頁：`<平台網址>/dev/<遊戲代號>`：看審核進度、調整上架資料與截圖裁切、審核通過後決定發佈時間。
 - 審核通過前遊戲不會出現在列表；審核結果會用站內通知告訴團隊。
-- `external`：遊戲伺服器要部署在公開網址，並用 `pt register` 產生的伺服器金鑰（`keys/` 裡，設定方式見 `/docs/game-server`）。
+- `external` 自己部署：遊戲伺服器要部署在公開網址，並用 `pt register` 產生的伺服器金鑰（`keys/` 裡，設定方式見 `/docs/game-server`）。
+- `external` 玩聚代管：不用部署。審核通過、發佈時平台才啟動伺服器，部署完成才上線；發佈失敗（例如環境沒開通代管）會在開發者頁顯示原因，可以重試。
 - 這次改了哪些專案檔案（建議開發者檢查後提交；不要提交 `keys/`）。
 - 還需要開發者做的事（如果有）。

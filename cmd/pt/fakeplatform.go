@@ -76,6 +76,8 @@ type fakePlatform struct {
 	polls    map[string][]time.Time // 房號 → 最近幾次查成員的時間
 	now      func() time.Time
 	ai       http.Handler // 本機 AI 閘道（ai_services.go）；nil 時 /v1/ai/ 回 404
+	// serverURL：代管專案在本機的遊戲伺服器網址；發啟動碼時一起給畫面（SDK 放進 launch.serverUrl），和正式平台一樣
+	serverURL string
 }
 
 type fakeRoom struct {
@@ -594,7 +596,11 @@ func (f *fakePlatform) launchCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	f.write(w, 200, map[string]string{"launchCode": code, "name": p.Name, "roomId": roomID})
+	out := map[string]string{"launchCode": code, "name": p.Name, "roomId": roomID}
+	if f.serverURL != "" {
+		out["serverUrl"] = f.serverURL
+	}
+	f.write(w, 200, out)
 }
 
 // loopbackOrigin：只接受本機的 http 來源。

@@ -130,6 +130,9 @@ func usage() {
                                                 關房、模擬平台連不到與時鐘偏差、看呼叫紀錄），並開啟玩家分頁
          [-players N]                           玩家分頁數（預設：多人專案 2、單人專案 1）
          [-no-server] [-site 網址]              只啟動假平台與控制面板（接自己的遊戲伺服器）
+         [-server-url http://127.0.0.1:埠]      搭配 -no-server：握手時當成 launch.serverUrl 給畫面（像玩聚代管）
+                                                玩聚代管的專案（gameServer.hosting）不用參數：pt dev 自己編譯並啟動 gameServer.dir 的伺服器，
+                                                畫面和伺服器在不同埠，launch.serverUrl 指向伺服器
          [-mock]                                舊的模擬模式（不經過假平台、不簽章）
          [-smoke]                               啟動驗證：啟動、確認首頁與 SDK 載入得到後結束（不開瀏覽器）
   pt verify server [-json]                      用本機假平台自動驗證範本伺服器和玩聚平台的接口：加入、重新加入、
@@ -154,7 +157,7 @@ func usage() {
                                                 畫面方向（預設依 playtogether.json；any 時直式）、Chrome 執行檔（或 PT_CHROME）
   pt login [-api 平台網址] [-register]          在瀏覽器確認後取得送審授權（30 天）；之後 pt upload 會在檢查通過後直接送審（-no-submit 不送審）
                                                 -register：另外取得建立遊戲與管理金鑰的權限（團隊擁有者、管理者；7 天）
-  pt init [-name 代號] [-web 資料夾] [-game-server external|none] [-y]
+  pt init [-name 代號] [-web 資料夾] [-game-server external|none] [-hosting playtogether] [-y]
                                                 把不是 pt new 建立的既有專案接上玩聚（只新增 playtogether.json、宣告文件、store/、
                                                 準備上架資料的 AI skill，不動原本的程式）；已經接上的專案重跑時只補上缺少的 skill
   pt register [-title 名稱]                     建立草稿遊戲並登記金鑰（沒有私鑰會自動產生），金鑰 ID 寫回 playtogether.json

@@ -64,6 +64,8 @@ func cmdInit(args []string) error {
 	client := fs.String("client", "", "畫面：web 或 godot（預設依專案判斷）")
 	web := fs.String("web", "", "要上傳的資料夾（裡面要有 index.html；預設自動尋找 web、dist、build、public）")
 	gameServer := fs.String("game-server", "", "遊戲伺服器：external（用你自己的）或 none（不需要）")
+	hosting := fs.String("hosting", "", "external 的遊戲伺服器由誰執行：不填＝你自己部署；playtogether＝交給玩聚代管（Go；要平台開通）")
+	serverDir := fs.String("server-dir", ".", "-hosting playtogether：遊戲伺服器 Go 模組的資料夾（要有 go.mod，在那裡 go build . 得到伺服器）")
 	profile := fs.String("profile", "", "內容邊界：general、moderate、strong（custom 要在終端機逐項設定）")
 	table := fs.String("table-game", "none", "牌桌玩法："+strings.Join(tableCategories, "、"))
 	orientation := fs.String("orientation", "", "畫面方向：portrait、landscape 或 any")
@@ -160,6 +162,23 @@ func cmdInit(args []string) error {
 	if *gameServer != "external" && *gameServer != "none" {
 		return errors.New("既有專案的 -game-server 只能是 external（用你自己的遊戲伺服器）或 none；要用玩聚範本伺服器請用 pt new")
 	}
+	// 玩聚代管：pt upload 在 serverDir 交叉編譯 Go 伺服器，和畫面一起交給平台（serverbundle.go）
+	switch *hosting {
+	case "":
+	case "playtogether":
+		if *gameServer != "external" {
+			return errors.New("-hosting playtogether 要搭配 -game-server external（沒有遊戲伺服器就不用代管）")
+		}
+		*serverDir = filepath.ToSlash(filepath.Clean(*serverDir))
+		if strings.HasPrefix(*serverDir, "..") || filepath.IsAbs(*serverDir) {
+			return errors.New("-server-dir 要是專案裡的資料夾")
+		}
+		if _, err := os.Stat(filepath.Join(dir, *serverDir, "go.mod")); err != nil {
+			return fmt.Errorf("玩聚代管目前只支援 Go：%s 沒有 go.mod（用 -server-dir 指定遊戲伺服器的 Go 模組資料夾）", *serverDir)
+		}
+	default:
+		return fmt.Errorf("-hosting 只能是 playtogether 或不填（目前是 %q）", *hosting)
+	}
 
 	// 畫面方向
 	if *orientation == "" {
@@ -239,6 +258,15 @@ func cmdInit(args []string) error {
 		return fmt.Errorf("產生 playtogether.json：%w", err)
 	}
 	p.dir, p.Web, p.Godot, p.AIMode = dir, *web, godotDir, ""
+	if *hosting != "" {
+		if p.GameServer == nil {
+			p.GameServer = &gameServerConfig{Mode: *gameServer}
+		}
+		p.GameServer.Hosting = *hosting
+		if *serverDir != "." {
+			p.GameServer.Dir = *serverDir
+		}
+	}
 	if err := fs2Walk("templates/project/store", func(rel string, _ []byte) error {
 		content, err := renderOne("templates/project/store/" + rel)
 		if err != nil {
@@ -271,7 +299,11 @@ func cmdInit(args []string) error {
 	}
 	slices.Sort(created)
 
-	fmt.Printf("已把 %s 接上玩聚（畫面 %s、上傳 %s/、%s、內容邊界 %s）\n", *name, *client, *web, gameServerLabel[*gameServer], profileLabel[*profile])
+	serverLabel := gameServerLabel[*gameServer]
+	if p.hostedServer() {
+		serverLabel += "，玩聚代管"
+	}
+	fmt.Printf("已把 %s 接上玩聚（畫面 %s、上傳 %s/、%s、內容邊界 %s）\n", *name, *client, *web, serverLabel, profileLabel[*profile])
 	for _, f := range created {
 		fmt.Println("  ✓", f)
 	}
@@ -363,9 +395,16 @@ func initHints(p *project, dir string) {
 			todo = append(todo, fmt.Sprintf("%s/index.html 還沒有載入玩聚瀏覽器 SDK：pt sdk export sdk 取得 sdk/browser/playtogether-sdk.iife.js，放進 %s/ 並在 index.html 載入（見開發者文件「快速開始」第 3 步）", p.Web, p.Web))
 		}
 	}
-	if p.gameServerMode() == "external" {
+	switch {
+	case p.gameServerMode() == "external" && p.hostedServer():
+		todo = append(todo, fmt.Sprintf("遊戲伺服器由玩聚代管：pt upload 會在 %s 用 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build . 編成靜態執行檔一起上傳。伺服器要讀 ADDR（或 PORT，8080）、PT_API_URL、PT_KEY_ID、PT_KEY_FILE、ALLOW_ORIGINS、TRUST_PROXY；容器只能連玩聚平台 API，不能連其他外部服務", serverDir(p.GameServer)))
+		todo = append(todo, "你的遊戲伺服器要兌換玩聚的啟動碼（伺服器 SDK：pt sdk export 的 go；文件站「遊戲伺服器」的 external 最低要求）；serverUrl 不用填")
+		todo = append(todo, "前端握手後改用 pt.launch.serverUrl 當遊戲伺服器網址（每個房間由平台指定；不能用 location.host）。本機用 pt dev 測：它會啟動你的伺服器，握手時給畫面 launch.serverUrl")
+		todo = append(todo, "代管要平台開通：沒開通的環境上傳不會擋，但發佈時會失敗（沒有可用的遊戲伺服器主機）")
+	case p.gameServerMode() == "external":
 		todo = append(todo, "你的遊戲伺服器要兌換玩聚的啟動碼（伺服器 SDK：pt sdk export 的 go／node；文件站「遊戲伺服器」的 external 最低要求），部署後把網址填進 playtogether.json 的 serverUrl")
 		todo = append(todo, "上傳到玩聚後，畫面在 https://<版本>.games.（平台網域），和遊戲伺服器不同網址：前端要連完整的伺服器網址（不能用 location.host），伺服器要允許這個來源（CORS／WebSocket Origin）")
+		todo = append(todo, "不想自己部署遊戲伺服器、而且伺服器是 Go：可以改成玩聚代管（pt init 前用 -hosting playtogether，或在 playtogether.json 的 gameServer 加上 \"hosting\": \"playtogether\"；要平台開通）")
 	}
 	if strings.Contains(p.Platform, "（") {
 		todo = append(todo, "把 playtogether.json 的 platform 改成玩聚的網址（見開發者文件「快速開始」的「平台網址」）")

@@ -223,4 +223,12 @@ func TestWebUsesLaunchServerURL(t *testing.T) {
 	if !webUsesLaunchServerURL(dir) {
 		t.Fatal("範本的 game.js 要讀 launch.serverUrl")
 	}
+	// 程式內嵌在 index.html（單一檔案的建置）也算
+	inline := t.TempDir()
+	if err := os.WriteFile(inline+"/index.html", []byte("<script>const s = pt.launch.serverUrl;</script>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !webUsesLaunchServerURL(inline) {
+		t.Fatal("index.html 裡內嵌的程式要算")
+	}
 }

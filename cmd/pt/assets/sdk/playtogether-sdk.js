@@ -1463,7 +1463,7 @@ async function Qt(e, t) {
 	}
 	let { launchCode: r, name: i, roomId: a } = n;
 	if (typeof r != "string" || typeof i != "string" || typeof a != "string") throw Error(`pt dev 本機假平台：${String(n.error ?? "bad_response")}`);
-	return $("mock", {
+	let o = {
 		protocolVersion: 1,
 		launchCode: r,
 		player: {
@@ -1471,9 +1471,23 @@ async function Qt(e, t) {
 			locale: "zh-TW"
 		},
 		room: { id: a }
-	}, () => {}, () => {}).client;
+	}, s = $t(n.serverUrl);
+	return s && (o.server = { url: s }), $("mock", o, () => {}, () => {}).client;
 }
 function $t(e) {
+	if (typeof e != "string") return null;
+	try {
+		let t = new URL(e);
+		return t.protocol === "http:" && [
+			"127.0.0.1",
+			"localhost",
+			"[::1]"
+		].includes(t.hostname) && t.pathname === "/" && !t.search && !t.hash ? t.origin : null;
+	} catch {
+		return null;
+	}
+}
+function en(e) {
 	let t = e.transport ?? qt();
 	if (!t.embedded) {
 		let e = Zt(t.href);
@@ -1518,5 +1532,5 @@ function $t(e) {
 		f();
 	});
 }
-var en = { init: $t };
-export { Jt as HandshakeTimeoutError, en as PlayTogether, Kt as SDK_VERSION, qt as browserTransport, Zt as devPlatform, $t as init };
+var tn = { init: en };
+export { Jt as HandshakeTimeoutError, tn as PlayTogether, Kt as SDK_VERSION, qt as browserTransport, Zt as devPlatform, en as init };

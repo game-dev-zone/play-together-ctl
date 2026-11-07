@@ -201,9 +201,16 @@ func attachDevAI(fp *fakePlatform, p *project, platform string) (env []string, c
 }
 
 // devPlatformOnly（pt dev -no-server）：只啟動假平台與控制面板，印出自己的遊戲伺服器要設定的環境變數。
-func devPlatformOnly(p *project, site, addr string, players int) error {
+func devPlatformOnly(p *project, site, addr string, players int, serverURL string) error {
 	if site == "" {
 		site = "http://" + addr + "/"
+	}
+	if serverURL != "" {
+		u, err := localOrigin(serverURL)
+		if err != nil {
+			return fmt.Errorf("-server-url：%w", err)
+		}
+		serverURL = u
 	}
 	keyFile, pub, local, cleanup, err := devServerKey(p)
 	if err != nil {
@@ -211,12 +218,16 @@ func devPlatformOnly(p *project, site, addr string, players int) error {
 	}
 	defer cleanup()
 	fp := newFakePlatform(pub)
+	fp.serverURL = serverURL
 	platform, srv, err := startFakePlatform(fp, site)
 	if err != nil {
 		return fmt.Errorf("啟動本機假平台失敗：%w", err)
 	}
 	defer srv.Close()
 	fmt.Printf("本機假平台：%s（控制面板與呼叫紀錄）\n", platform)
+	if serverURL != "" {
+		fmt.Printf("握手時給畫面的遊戲伺服器網址（launch.serverUrl）：%s\n", serverURL)
+	}
 	aiEnv, aiCleanup, err := attachDevAI(fp, p, platform)
 	if err != nil {
 		return fmt.Errorf("本機 AI 閘道：%w", err)

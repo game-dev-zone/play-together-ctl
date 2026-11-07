@@ -762,6 +762,7 @@ func cmdDev(args []string) error {
 	mock := fs.Bool("mock", false, "改用舊的模擬模式（不經過本機假平台、不簽章；之後的版本會移除）")
 	noServer := fs.Bool("no-server", false, "只啟動本機假平台與控制面板，不啟動專案的伺服器（用自己的遊戲伺服器時）")
 	site := fs.String("site", "", "搭配 -no-server：遊戲首頁網址（預設 http://<devAddr>/）")
+	serverURL := fs.String("server-url", "", "搭配 -no-server：你在本機啟動的遊戲伺服器網址（例如 http://127.0.0.1:9192）；假平台握手時當成 launch.serverUrl 給畫面，像玩聚代管一樣")
 	_ = fs.Parse(args)
 	p, err := findProject()
 	if err != nil {
@@ -783,8 +784,14 @@ func cmdDev(args []string) error {
 	if *addr == "" {
 		*addr = p.DevAddr
 	}
+	if *serverURL != "" && !*noServer {
+		return errors.New("-server-url 要搭配 -no-server（玩聚代管的專案 pt dev 會自己啟動遊戲伺服器）")
+	}
 	if *noServer {
-		return devPlatformOnly(p, *site, *addr, *players)
+		return devPlatformOnly(p, *site, *addr, *players, *serverURL)
+	}
+	if p.hostedServer() {
+		return devHosted(p, *addr, *players, *smoke, *mock)
 	}
 	if ln, err := net.Listen("tcp", *addr); err != nil {
 		return fmt.Errorf("%s 已經被其他程式使用，請換一個：pt dev -addr 127.0.0.1:18090", *addr)
@@ -1344,7 +1351,8 @@ func webUsesLaunchServerURL(webDir string) bool {
 			return nil
 		}
 		name := d.Name()
-		if !(strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".mjs") || strings.HasSuffix(name, ".ts")) || strings.HasPrefix(name, "playtogether-sdk") {
+		// .html 也看：把程式內嵌在 index.html 的遊戲（單一檔案的建置）同樣算數
+		if !(strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".mjs") || strings.HasSuffix(name, ".ts") || strings.HasSuffix(name, ".html")) || strings.HasPrefix(name, "playtogether-sdk") {
 			return nil
 		}
 		if b, err := os.ReadFile(path); err == nil && strings.Contains(string(b), "launch.serverUrl") {
