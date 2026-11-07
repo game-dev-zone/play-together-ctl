@@ -200,3 +200,27 @@ func TestDevAINoServer(t *testing.T) {
 		t.Fatalf("應為 404：%d", w.Code)
 	}
 }
+
+// 玩聚代管的遊戲伺服器：前端要讀 launch.serverUrl（範本有），SDK 檔案裡的字樣不算。
+func TestWebUsesLaunchServerURL(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/playtogether-sdk.iife.js", []byte("x.launch.serverUrl"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/game.js", []byte("fetch(cfg.serverUrl + '/join')"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if webUsesLaunchServerURL(dir) {
+		t.Fatal("只有 SDK 檔案提到不算")
+	}
+	tpl, err := embedded.ReadFile("templates/client-web/game.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/game.js", tpl, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !webUsesLaunchServerURL(dir) {
+		t.Fatal("範本的 game.js 要讀 launch.serverUrl")
+	}
+}

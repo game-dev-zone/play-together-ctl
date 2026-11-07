@@ -1105,7 +1105,10 @@ func checkProject(p *project, webDir string) []finding {
 	checkAI(p, add)
 	if checkGameServer(p, add) {
 		if p.ServerURL == "" && p.hostedServer() {
-			// 玩聚代管：每個房間的伺服器網址由 SDK 握手提供（launch.serverUrl），不用填
+			// 玩聚代管：每個房間的伺服器網址由 SDK 握手提供（launch.serverUrl），不用填；但前端要真的用它
+			if p.Client != "godot" && !webUsesLaunchServerURL(webDir) {
+				add(levelWarn, "遊戲伺服器由玩聚代管，但前端沒有讀 pt.launch.serverUrl：上傳後會把請求送到遊戲畫面的網址（405）。握手後改用 pt.launch.serverUrl 當遊戲伺服器網址（pt new 的範本 game.js 有範例）")
+			}
 		} else if p.ServerURL == "" {
 			msg := "playtogether.json 的 serverUrl 還沒填：上傳後遊戲畫面和遊戲伺服器在不同網址，要填遊戲伺服器的對外網址"
 			if p.gameServerMode() == "external" {
@@ -1325,4 +1328,29 @@ func isGodotEngineJS(webDir, rel, content string) bool {
 		return false
 	}
 	return strings.Contains(content, "GodotRTCPeerConnection") && strings.Contains(content, "Engine")
+}
+
+// webUsesLaunchServerURL：前端的 JavaScript（不含 SDK 檔案）有沒有讀 launch.serverUrl。
+func webUsesLaunchServerURL(webDir string) bool {
+	found := false
+	_ = filepath.WalkDir(webDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || found {
+			return nil
+		}
+		if d.IsDir() {
+			if d.Name() == "node_modules" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if !(strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".mjs") || strings.HasSuffix(name, ".ts")) || strings.HasPrefix(name, "playtogether-sdk") {
+			return nil
+		}
+		if b, err := os.ReadFile(path); err == nil && strings.Contains(string(b), "launch.serverUrl") {
+			found = true
+		}
+		return nil
+	})
+	return found
 }

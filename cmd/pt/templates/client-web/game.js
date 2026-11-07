@@ -11,11 +11,13 @@ let failures = 0;
 let poll = 0;
 let wasPlaying = false;
 let lastSecond = 0;
+// 遊戲伺服器網址：玩聚代管時由平台在握手時給（pt.launch.serverUrl，每個房間固定）；否則用 config.js 的 serverUrl（本機 pt dev 是空字串＝同一個來源）
+let server = (cfg.serverUrl || '').replace(/\/+$/, '');
 
 // 回傳 { status, data }；網路錯誤時 status 是 0
 async function post(path, body) {
   try {
-    const res = await fetch(cfg.serverUrl + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(server + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     return { status: res.status, data: await res.json().catch(() => ({})) };
   } catch {
     return { status: 0, data: {} };
@@ -71,6 +73,7 @@ const JOIN_ERRORS = {
 
 async function main() {
   const pt = await PlayTogether.init({ platformOrigins: cfg.platformOrigins });
+  if (pt.launch.serverUrl) server = pt.launch.serverUrl.replace(/\/+$/, '');
   // 啟動碼只用一次、不要存起來；網路錯誤時重試幾次（伺服器沒收到就還能用）
   let res;
   for (let i = 0; i < 3; i++) {
