@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -393,7 +394,8 @@ func TestScreenshotCommand(t *testing.T) {
 	must(t, os.Remove(filepath.Join(shots, "02.png")))
 	must(t, os.WriteFile(filepath.Join(shots, "01.png"), gamePNG(t, 1080, 1920), 0o644))
 	_, imgs, _, ready := readStore(p, func(level, format string, a ...any) { fs = append(fs, finding{level, fmt.Sprintf(format, a...)}) })
-	if len(fs) != 0 || !ready || len(imgs) != 5 { // 圖示、共用截圖 01、03、04、英文截圖 01（02 刪掉了）
+	fs = slices.DeleteFunc(fs, func(f finding) bool { return f.level == levelWarn && strings.Contains(f.msg, "沒有封面") }) // 這裡只測截圖
+	if len(fs) != 0 || !ready || len(imgs) != 5 {                                                                       // 圖示、共用截圖 01、03、04、英文截圖 01（02 刪掉了）
 		t.Errorf("擷取的截圖不該有問題：%v %d", fs, len(imgs))
 	}
 	// 連不到網址：說明要先啟動遊戲

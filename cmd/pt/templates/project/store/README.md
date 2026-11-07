@@ -9,7 +9,7 @@
 | `icon.png`（或 `.jpg`） | 圖示：正方形或接近正方形，至少 512×512（平台輸出 1024×1024，前台自己加圓角；不要自己加圓角、陰影或透明背景） |
 | `screenshots/01.png` … | 截圖 1–10 張（依檔名排序）：**必須是實際遊戲畫面**；依 `playtogether.json` 的畫面方向，直式 9:16（1080×1920）、橫式 16:9（1920×1080），短邊至少 720。用 `pt store screenshot` 擷取 |
 | `screenshots/en/01.png` … | 選填：英文介面專用的截圖；沒有時英文頁面用上面的截圖 |
-| `cover.png`（或 `.jpg`） | 選填：16:9 封面（精選等大版面用），短邊至少 720 |
+| `cover.png`（或 `.jpg`） | 建議：16:9 封面，短邊至少 720（遊戲頁、房間頁、房間結束畫面的大圖；沒有時用平台的預設圖） |
 
 - 標籤代碼：`party`、`deduction`、`turn-taking`、`quiz`、`drawing`、`word`、`cooperative`、`team`、`strategy`、`reaction`、`casual`、`music`、`icebreaker`（最多 5 個）。
 - 圖片只收 PNG、JPEG，每張最多 10 MB；比例差太多（例如把橫式圖用在直式遊戲）平台不能自動裁切，要換一張。

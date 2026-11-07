@@ -277,6 +277,8 @@ func readStore(p *project, add addFunc) (l storeListing, imgs []storeImage, pres
 	}
 	if !ready {
 		add(levelInfo, "store/ 的上架資料還沒準備好（範本文字還沒改，或缺圖示、截圖）：pt upload 會只上傳版本，第一次上架前要補齊")
+	} else if !slices.ContainsFunc(imgs, func(im storeImage) bool { return im.Kind == "cover" }) {
+		add(levelWarn, "store/ 沒有封面（cover.png，16:9）：遊戲頁、房間頁、房間結束畫面的大圖會用平台的預設圖；建議加一張（playtogether-store skill 會產生）")
 	}
 	return l, imgs, true, ready
 }

@@ -87,7 +87,12 @@ func TestStoreTemplateAndReady(t *testing.T) {
 	}
 	fillStore(t, root)
 	fs, imgs, ready := runStore(t, root)
-	if !ready || len(fs) != 0 || len(imgs) != 3 {
+	if !ready || len(fs) != 1 || !fs.has(levelWarn, "沒有封面") || len(imgs) != 3 {
+		t.Fatalf("沒有封面要提醒（不擋上傳）：%v %v %d", ready, fs, len(imgs))
+	}
+	must(t, os.WriteFile(filepath.Join(root, "store/cover.png"), pngOf(t, 1280, 720), 0o644))
+	fs, imgs, ready = runStore(t, root)
+	if !ready || len(fs) != 0 || len(imgs) != 4 {
 		t.Fatalf("填好之後要沒有問題：%v %v %d", ready, fs, len(imgs))
 	}
 	wf := readFile(t, dir, "store-game", "docs/ai/AI_WORKFLOW.md")
