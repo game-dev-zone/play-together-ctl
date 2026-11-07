@@ -21,6 +21,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -353,15 +354,24 @@ func pushListing(c client, p *project, l storeListing, imgs []storeImage) (strin
 	if err := c.signed("POST", "/v1/dev/listing-revisions", body, &out); err != nil {
 		return "", false, fmt.Errorf("上傳上架資料失敗：%w", err)
 	}
+	processing := false
 	for _, u := range out.Uploads {
 		data := byKey[fmt.Sprintf("%s/%s/%d", u.Kind, u.Locale, u.Position)]
 		req, _ := http.NewRequest(http.MethodPut, c.base+u.UploadPath, bytes.NewReader(data))
-		if err := doJSON(req, nil); err != nil {
+		var res struct{ Status string }
+		if err := doJSON(req, &res); err != nil {
 			name := u.Kind
 			if u.Kind == "screenshot" {
 				name = fmt.Sprintf("截圖 %s%d", map[bool]string{true: "en/", false: ""}[u.Locale == "en"], u.Position+1)
 			}
 			return out.RevisionID, false, fmt.Errorf("上傳%s失敗：%w", name, err)
+		}
+		processing = processing || res.Status == "processing"
+	}
+	// 平台在隔離環境處理圖片（裁切、縮放、重新編碼）；還沒處理完就等，送審要全部處理完
+	if processing {
+		if err := waitListingImages(c, out.RevisionID); err != nil {
+			return out.RevisionID, false, err
 		}
 	}
 	return out.RevisionID, out.Reused, nil
@@ -511,4 +521,30 @@ func uploadListingOnly(p *project, api, keyID, keyFile string, noSubmit bool) er
 	}
 	fmt.Printf("下一步：執行 pt login 授權後會直接送審，或到開發者頁送審上架資料修訂 %s（只改簡介、說明的小幅修改會直接生效）。審核進度：pt status\n", id)
 	return nil
+}
+
+// waitListingImages 等平台處理完這份修訂的圖片（最多 2 分鐘）；有處理失敗的就回傳原因。
+func waitListingImages(c client, revisionID string) error {
+	fmt.Print("平台處理圖片中")
+	deadline := time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		time.Sleep(2 * time.Second)
+		fmt.Print(".")
+		st, err := fetchDevStatus(c)
+		if err != nil {
+			continue
+		}
+		for _, r := range st.ListingRevisions {
+			if r.ID != revisionID || r.PendingImages > 0 {
+				continue
+			}
+			fmt.Println()
+			if r.FailedImages > 0 {
+				return fmt.Errorf("有 %d 張上架圖片處理失敗（格式、尺寸或比例不符；pt check 會檢查規格），換圖後重新執行 pt upload", r.FailedImages)
+			}
+			return nil
+		}
+	}
+	fmt.Println()
+	return errors.New("平台還在處理上架圖片：稍後執行 pt submit 送審（pt status 看處理進度）")
 }
