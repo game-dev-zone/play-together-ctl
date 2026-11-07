@@ -32,7 +32,7 @@ pt dev                           # 本機開發：啟動遊戲伺服器與本機
 make verify                      # 啟動驗證：伺服器測試、在模擬模式實際啟動一次、pt verify server、檢查要上傳的檔案
 ```
 
-伺服器範本只有遊戲規則；和玩聚的接口在 SDK 的遊戲伺服器套件（Go：`third_party/playtogether-sdk-go/gameserver`；Node.js：`playtogether-server.mjs` 的 `createGameServer`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入、回報一局（依序送出、失敗重試）、每個 IP 與每位玩家限流（429）、請求太大回 413、跨來源、`GET /healthz`；前端範本會自動重新連線。平台接口新增或修正時，`pt sdk update` 就會更新。v0.18 之前建立的專案，伺服器的 `session.go`／`limit.go` 仍可使用，但拿不到之後的更新；改用套件的方式見玩聚開發者文件站 `/docs/game-server`。
+伺服器範本只有遊戲規則；和玩聚的接口在 SDK 的遊戲伺服器套件（Go：`third_party/playtogether-sdk-go/gameserver`；Node.js：`playtogether-server.mjs` 的 `createGameServer`）：座位綁玩家 ID、新 token 取代舊 token、離線與讓座、定期向玩聚查房間（踢人、重新開始、關房）、查不到平台時暫停新加入、回報一局（依序送出、失敗重試）、每個 IP 與每位玩家限流（429）、請求太大回 413、跨來源、`GET /healthz`；前端範本會自動重新連線。平台接口新增或修正時，`pt sdk update` 就會更新。v0.18 之前建立的專案，伺服器的 `session.go`／`limit.go` 仍可使用，但拿不到之後的更新；改用套件：`pt migrate server-kit`（步驟見玩聚開發者文件站 `/docs/game-server`）。
 
 ### 驗證遊戲伺服器和玩聚的接口
 
@@ -320,7 +320,9 @@ claude
 | `pt upload -version <版本> [-notes 說明] [-no-build] [-orientation portrait\|landscape\|any]` | 上傳版本（設定從 `playtogether.json` 讀，包括畫面方向；Godot 專案先匯出；上傳前自動檢查） |
 | `pt store screenshot [-url 網址] [-wait 5s] [-n 張數] [-interval 3s] [-locale en] [-o 資料夾] [-replace] [-orientation portrait\|landscape] [-chrome 路徑]` | 用本機 Chrome／Chromium 無頭模式擷取實際遊戲畫面，存成上架截圖（`store/screenshots/`，尺寸剛好符合規格、不覆寫既有截圖） |
 | `pt sdk status` | 比較專案的 SDK、這個 `pt` 內嵌的 SDK、最新版 `pt` 內嵌的 SDK，並列出被修改過的 SDK 檔案 |
-| `pt sdk update [-force]` | 把專案裡的 SDK 更新成這個 `pt` 內嵌的版本（專案的 SDK 比較新時不會降版，除非 `-force`） |
+| `pt sdk update [-force] [-overwrite-modified]` | 把專案裡的 SDK 更新成這個 `pt` 內嵌的版本（專案的 SDK 比較新時不會降版，除非 `-force`；SDK 檔案被改過時停下來，`-overwrite-modified` 才覆蓋） |
+| `pt upgrade [-dry-run] [-y] [-delete-removed]` | 把範本檔案（`PLAYTOGETHER.md`、`CLAUDE.md`、`AGENTS.md`、`docs/ai/`、`Makefile`、`.gitignore`、`pt` 的 skill）更新成這個 `pt` 的版本：先列計畫再套用，沒改過的換新、改過的寫成 `<檔名>.pt-new`、新的範本檔補上；遊戲本身的檔案不碰。依據 `.pt/generated.json`（請放進版本控制）；v0.24 之前建立的專案先 `pt upgrade -init` |
+| `pt migrate server-kit [-apply]` | v0.18 之前的專案改用 SDK 的遊戲伺服器套件：先寫出新範本 `server/main.go.pt-new` 與 `.pt/migrate-server-kit.md`（要改的每一行）；搬好後 `-apply` 備份並刪除 `session.go`、`limit.go`，確認可以編譯（失敗會還原） |
 | `pt sdk export <資料夾>` | 把 SDK 檔案（瀏覽器、Godot、Go、Node.js）寫到資料夾，接到不是 `pt new` 建立的既有專案 |
 | `pt version` | 顯示 `pt` 與內嵌 SDK 的版本，並檢查有沒有新版 |
 

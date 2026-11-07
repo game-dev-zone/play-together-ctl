@@ -71,6 +71,10 @@ func main() {
 		err = cmdBuild(os.Args[2:])
 	case "sdk":
 		err = cmdSDK(os.Args[2:])
+	case "upgrade":
+		err = cmdUpgrade(os.Args[2:])
+	case "migrate":
+		err = cmdMigrate(os.Args[2:])
 	case "keygen":
 		err = keygen(os.Args[2:])
 	case "upload":
@@ -171,7 +175,10 @@ func usage() {
          [-skip-check]                          略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查
   pt cdn add <網址>                             從 jsDelivr／cdnjs 載入固定版本的程式或樣式：算出 SRI、記到 playtogether.json、印出要貼的標籤
   pt sdk status                                 檢查專案的 SDK、這個 pt 內嵌的 SDK、最新版 pt 的 SDK
-  pt sdk update [-force]                        把專案裡的 SDK 更新成這個 pt 內嵌的版本（不會降版，除非 -force）
+  pt sdk update [-force] [-overwrite-modified]  把專案裡的 SDK 更新成這個 pt 內嵌的版本（不會降版，除非 -force；SDK 檔案被改過時停下來）
+  pt upgrade [-dry-run] [-y] [-delete-removed] 把範本檔案（平台規則、AI 契約、Makefile、pt 的 skill）更新成這個 pt 的版本：
+                                                沒改過的換新、改過的寫 .pt-new；遊戲本身的檔案不碰。舊專案先 pt upgrade -init
+  pt migrate server-kit [-apply]                舊專案（server/session.go）改用 SDK 的遊戲伺服器套件：先產生對照與步驟，搬好後 -apply
   pt sdk export <資料夾>                        把 SDK 檔案寫到資料夾（接到既有專案用）
   pt version                                    顯示版本並檢查有沒有新版
 

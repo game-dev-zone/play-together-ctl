@@ -24,8 +24,8 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"sort"
 	"strings"
-	texttemplate "text/template"
 	"time"
 )
 
@@ -316,78 +316,25 @@ func cmdNew(args []string) error {
 		*skills = "none"
 	}
 	withSkills := *skills != "none"
-	godotDir := "game"
-	if studios {
-		godotDir = "." // Claude Code Game Studios 的工具假設 project.godot 在根目錄
-	}
-	godotPrefix := godotDir + "/"
-	if godotDir == "." {
-		godotPrefix = ""
-	}
-	godotPath := godotPrefix
-	if godotPath == "" {
-		godotPath = "./"
-	}
-	template := *client + "-" + *server
-	data := map[string]string{"Name": name, "Client": *client, "Server": *server, "Template": template, "Platform": *platform, "SDKVersion": sdkVersion(),
-		"GodotDir": godotDir, "GodotPrefix": godotPrefix, "GodotPath": godotPath, "AI": map[bool]string{true: "studios", false: ""}[studios],
-		"Skills":      map[bool]string{true: *skills, false: ""}[withSkills],
-		"Orientation": *orientation, "OrientationLabel": orientationLabel[*orientation],
-		"AIMode": aiMode, "AIModeLabel": aiModeLabel[aiMode], "GameServer": *gameServer, "Hosting": *hosting,
-		"PolicyJSON": policyJSON(pl), "PolicyVersion": loadPolicyRules().Version,
-		"Multiplayer":   map[bool]string{true: "true", false: ""}[*gameServer != "none"],
-		"SkillsLabel":   map[string]string{"full": "完整（通用＋" + map[string]string{"web": "網頁引擎", "godot": "Godot"}[*client] + "）", "core": "通用", "none": ""}[*skills],
-		"SkillsVersion": gds.Version + "（commit " + gds.Commit[:7] + "）", "StudiosVersion": ccgs.Version + "（commit " + ccgs.Commit[:7] + "）"}
-	for k, v := range policySummary(pl) {
-		data[k] = v
-	}
-	files := map[string][]byte{}
-	render := func(src, dst string) error {
-		return fs2Walk("templates/"+src, func(rel string, content []byte) error {
-			out := path.Join(dst, strings.TrimSuffix(rel, ".tmpl"))
-			if strings.HasSuffix(rel, ".tmpl") {
-				t, err := texttemplate.New(rel).Delims("[[", "]]").Option("missingkey=error").Parse(string(content))
-				if err != nil {
-					return fmt.Errorf("範本 %s：%w", rel, err)
-				}
-				var b bytes.Buffer
-				if err := t.Execute(&b, data); err != nil {
-					return err
-				}
-				content = b.Bytes()
-			}
-			files[out] = content
-			return nil
-		})
-	}
-	clientDir := map[string]string{"web": "web", "godot": godotDir}[*client]
-	parts := [][2]string{{"project", ""}, {"ai", ""}, {"client-" + *client, clientDir}, {"server-" + *server, "server"}}
-	if studios {
-		parts = append(parts, [2]string{"ai-studios/docs", "docs"}) // CURRENT_TASK.md、DECISIONS.md
-	}
-	for _, r := range parts {
-		if err := render(r[0], r[1]); err != nil {
-			return err
-		}
-	}
-	files["docs/content/CONTENT_PROFILE.md"] = []byte(contentProfileDoc(name, pl))
-	files["docs/content/GAMEPLAY_ECONOMY.md"] = []byte(gameplayEconomyDoc(name, pl))
-	files[".gitignore"] = files["gitignore"]
-	delete(files, "gitignore")
-	if *client == "godot" && godotDir == "." {
-		// Godot 專案在根目錄時，素材原始檔不要被匯入、匯出（會變成上傳的一部分）
-		files["art/.gdignore"] = []byte{}
+	in := genInputs{Name: name, Client: *client, Server: *server, Platform: *platform, Orientation: *orientation, AIMode: aiMode,
+		GameServer: *gameServer, Hosting: *hosting, Skills: *skills, Studios: studios, Policy: pl, CCGS: ccgs, GDS: gds}
+	godotDir := in.godotDir()
+	files, kinds, err := renderProject(in)
+	if err != nil {
+		return err
 	}
 	sdk, err := sdkFiles(*client, *server, godotDir)
 	if err != nil {
 		return err
 	}
 	for k, v := range sdk {
-		files[k] = v
+		files[k], kinds[k] = v, kindSDK
 	}
-	// pt 自己的 skill（準備上架資料等）：所有 AI 模式都放；先放進來，第三方 skill 撞名時會停止
-	if err := addPtSkills(files); err != nil {
-		return err
+	// 記下 pt 產生的檔案（.pt/generated.json），之後 pt upgrade、pt sdk update 才分得出哪些被改過；第三方內容不記
+	manifest := newManifest(files, kinds)
+	rendered := map[string][]byte{}
+	for k, v := range files {
+		rendered[k] = v
 	}
 	if studios {
 		// 先下載並驗證完，才開始寫入檔案（失敗時不留下半個專案）
@@ -411,6 +358,12 @@ func cmdNew(args []string) error {
 			return err
 		}
 	}
+	// 被第三方內容（Claude Code Game Studios 等）改寫過的範本檔不交給 pt upgrade 管理（重新產生的範本不含那些改動）
+	for rel, before := range rendered {
+		if !bytes.Equal(files[rel], before) {
+			manifest.remove(rel)
+		}
+	}
 	for rel, content := range files {
 		dst := filepath.Join(name, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -421,6 +374,9 @@ func cmdNew(args []string) error {
 		}
 	}
 	if err := os.MkdirAll(filepath.Join(name, "keys"), 0o700); err != nil {
+		return err
+	}
+	if err := manifest.save(name); err != nil {
 		return err
 	}
 	fmt.Printf("已建立 %s（畫面 %s、伺服器 %s、%s、%s、內容邊界 %s、AI 模式 %s、SDK %s）\n\n", name, *client, *server, orientationLabel[*orientation], gameServerLabel[*gameServer], profileLabel[pl.Content.Profile], aiModeLabel[aiMode], sdkVersion())
@@ -701,10 +657,14 @@ func cmdSDK(args []string) error {
 		}
 		return nil
 	}
-	force := len(args) == 2 && args[0] == "update" && args[1] == "-force"
-	if !force && (len(args) != 1 || args[0] != "update") {
+	if len(args) == 0 || args[0] != "update" {
 		return errors.New("用法：pt sdk status（檢查有沒有新版）、pt sdk update（在 pt new 建立的專案裡）或 pt sdk export <資料夾>（把 SDK 檔案寫到資料夾，給既有專案用）")
 	}
+	ufs := flag.NewFlagSet("sdk update", flag.ExitOnError)
+	forceFlag := ufs.Bool("force", false, "專案的 SDK 比這個 pt 內嵌的新時也換成內嵌的版本（降版）")
+	overwrite := ufs.Bool("overwrite-modified", false, "SDK 檔案被改過時也覆蓋（改動會不見）")
+	_ = ufs.Parse(args[1:])
+	force := *forceFlag
 	p, err := findProject()
 	if err != nil {
 		return err
@@ -726,6 +686,30 @@ func cmdSDK(args []string) error {
 	if err != nil {
 		return err
 	}
+	// 有基線（.pt/generated.json）時，SDK 檔案被改過就先停下來，不要默默蓋掉
+	m, err := loadManifest(p.dir)
+	if err != nil {
+		return err
+	}
+	if m != nil && !*overwrite {
+		var modified []string
+		for _, f := range m.Files {
+			if f.Kind != kindSDK {
+				continue
+			}
+			disk, exists, err := fileState(p, f.Path)
+			if err != nil {
+				return err
+			}
+			if exists && sha(disk) != f.BaselineSHA256 && !bytes.Equal(disk, files[f.Path]) {
+				modified = append(modified, f.Path)
+			}
+		}
+		if len(modified) > 0 {
+			sort.Strings(modified)
+			return fmt.Errorf("這些 SDK 檔案被改過（和上次 pt 寫入的內容不同），更新會蓋掉改動：\n    %s\nSDK 檔案不要直接修改；確定要覆蓋請加 -overwrite-modified", strings.Join(modified, "\n    "))
+		}
+	}
 	for rel, content := range files {
 		if err := os.MkdirAll(filepath.Dir(p.path(rel)), 0o755); err != nil {
 			return err
@@ -738,6 +722,15 @@ func cmdSDK(args []string) error {
 	p.SDKVersion = sdkVersion()
 	if err := p.save(); err != nil {
 		return err
+	}
+	if m != nil {
+		for rel, content := range files {
+			m.set(rel, kindSDK, sha(content))
+		}
+		m.SDKVersion = p.SDKVersion
+		if err := m.save(p.dir); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("SDK 已更新：%s → %s（%d 個檔案）\n", old, p.SDKVersion, len(files))
 	if hint := legacyServerHint(p); hint != "" {
@@ -759,7 +752,7 @@ func legacyServerHint(p *project) string {
 		return ""
 	}
 	return fmt.Sprintf("提醒：server/%s 是舊範本的平台接口，pt sdk update 更新不到它（限流、413、/healthz 等之後的修正都不會套用）。"+
-		"建議改用 SDK 的遊戲伺服器套件，步驟見玩聚開發者文件站 /docs/game-server「舊專案改用套件」。", name)
+		"建議改用 SDK 的遊戲伺服器套件：執行 pt migrate server-kit（產生對照與步驟），或見玩聚開發者文件站 /docs/game-server「舊專案改用套件」。", name)
 }
 
 func (p *project) save() error {

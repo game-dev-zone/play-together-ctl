@@ -237,6 +237,9 @@ func snapshot(t *testing.T, root string) map[string]string {
 			return err
 		}
 		rel, _ := filepath.Rel(root, p)
+		if filepath.ToSlash(rel) == manifestPath { // 內容雜湊含專案名稱，另外由 upgrade_test 驗證
+			return nil
+		}
 		b, err := os.ReadFile(p)
 		out[filepath.ToSlash(rel)] = strings.ReplaceAll(string(b), name, "<name>")
 		return err

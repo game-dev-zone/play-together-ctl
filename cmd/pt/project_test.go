@@ -175,6 +175,11 @@ func TestSDKUpdate(t *testing.T) {
 	t.Chdir(root)
 	stale := filepath.Join(root, "server/playtogether-server.mjs")
 	must(t, os.WriteFile(stale, []byte("// old"), 0o644))
+	// 模擬舊版 pt 寫入的 SDK：基線就是舊內容（沒有被改過）
+	m, err := loadManifest(root)
+	must(t, err)
+	m.set("server/playtogether-server.mjs", kindSDK, sha([]byte("// old")))
+	must(t, m.save(root))
 	raw, _ := os.ReadFile(filepath.Join(root, projectFile))
 	must(t, os.WriteFile(filepath.Join(root, projectFile), bytes.Replace(raw, []byte(sdkVersion()), []byte("0.0.1"), 1), 0o644))
 	if err := cmdSDK([]string{"update"}); err != nil {
@@ -186,6 +191,23 @@ func TestSDKUpdate(t *testing.T) {
 	p, _ := findProject()
 	if p.SDKVersion != sdkVersion() || p.ServerURL != "" || p.Template != "web-node" {
 		t.Fatalf("playtogether.json 更新後要保留其他設定：%+v", p)
+	}
+	m, _ = loadManifest(root)
+	if f, _ := m.get("server/playtogether-server.mjs"); f.BaselineSHA256 == sha([]byte("// old")) || m.SDKVersion != sdkVersion() {
+		t.Fatal("更新後基線要換成新內容")
+	}
+
+	// SDK 檔案被改過：停下來，不覆蓋；-overwrite-modified 才覆蓋
+	must(t, os.WriteFile(stale, []byte("// 我改的"), 0o644))
+	if err := cmdSDK([]string{"update"}); err == nil || !strings.Contains(err.Error(), "server/playtogether-server.mjs") {
+		t.Fatalf("改過的 SDK 檔案要停下來：%v", err)
+	}
+	if b, _ := os.ReadFile(stale); string(b) != "// 我改的" {
+		t.Fatal("不能覆蓋改過的檔案")
+	}
+	must(t, cmdSDK([]string{"update", "-overwrite-modified"}))
+	if b, _ := os.ReadFile(stale); string(b) == "// 我改的" {
+		t.Fatal("-overwrite-modified 要覆蓋")
 	}
 }
 
