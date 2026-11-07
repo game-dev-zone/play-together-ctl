@@ -850,6 +850,12 @@ func cmdDev(args []string) error {
 		}
 		defer srv.Close()
 		cmd.Env = append(cmd.Env, devServerEnv(platform, keyFile)...)
+		aiEnv, aiCleanup, err := attachDevAI(fp, p, platform)
+		if err != nil {
+			return fmt.Errorf("本機 AI 閘道：%w", err)
+		}
+		defer aiCleanup()
+		cmd.Env = append(cmd.Env, aiEnv...)
 		keyNote = "專案的 " + p.ServerKeyFile
 		if local {
 			keyNote = "只供本機的暫存金鑰（沒有 " + p.ServerKeyFile + "；不會登記到玩聚）"
@@ -1096,6 +1102,7 @@ func checkProject(p *project, webDir string) []finding {
 	}
 	checkPolicy(p, add)
 	checkStore(p, add)
+	checkAI(p, add)
 	if checkGameServer(p, add) {
 		if p.ServerURL == "" && p.hostedServer() {
 			// 玩聚代管：每個房間的伺服器網址由 SDK 握手提供（launch.serverUrl），不用填

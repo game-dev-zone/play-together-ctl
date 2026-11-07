@@ -93,6 +93,7 @@ type policy struct {
 	Sensitive sensitiveContent
 	Gameplay  gameplayPolicy
 	Economy   economyPolicy
+	AI        []string // gameServer.ai（選填）：遊戲伺服器使用的 AI 服務
 }
 
 var (
@@ -249,6 +250,7 @@ func (pl *policy) fields() map[string][]string {
 		"economy.purchasableStake": b(e.PurchasableStake), "economy.withdrawableValue": b(e.WithdrawableValue),
 		"economy.redeemableValue": b(e.RedeemableValue), "economy.transferableRealWorldValue": b(e.TransferableRealWorldValue),
 		"economy.paidRandomReward": b(e.PaidRandomReward),
+		"gameServer.ai":            pl.AI,
 	}
 }
 
@@ -494,6 +496,7 @@ func readPolicy(p *project, add addFunc) (pl policy, legacy, ok bool) {
 			strictDecode(g.TableGame, "gameplay.tableGame", jsonKeys(tablePreset("none")), &pl.Gameplay.TableGame, add)
 		}
 	}
+	pl.AI = p.aiProviders()
 	return pl, false, true
 }
 

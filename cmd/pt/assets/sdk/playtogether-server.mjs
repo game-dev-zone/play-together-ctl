@@ -710,6 +710,40 @@ var $ZodCheckMinLength = /*@__PURE__*/ $constructor("$ZodCheckMinLength", (inst,
 		});
 	};
 });
+var $ZodCheckStringFormat = /*@__PURE__*/ $constructor("$ZodCheckStringFormat", (inst, def) => {
+	var _a, _b;
+	$ZodCheck.init(inst, def);
+	if (def.pattern) (_a = inst._zod).check ?? (_a.check = (payload) => {
+		def.pattern.lastIndex = 0;
+		if (def.pattern.test(payload.value)) return;
+		payload.issues.push({
+			origin: "string",
+			code: "invalid_format",
+			format: def.format,
+			input: payload.value,
+			...def.pattern ? { pattern: def.pattern.toString() } : {},
+			inst,
+			continue: !def.abort
+		});
+	});
+	else (_b = inst._zod).check ?? (_b.check = () => {});
+});
+var $ZodCheckRegex = /*@__PURE__*/ $constructor("$ZodCheckRegex", (inst, def) => {
+	$ZodCheckStringFormat.init(inst, def);
+	inst._zod.check = (payload) => {
+		def.pattern.lastIndex = 0;
+		if (def.pattern.test(payload.value)) return;
+		payload.issues.push({
+			origin: "string",
+			code: "invalid_format",
+			format: "regex",
+			input: payload.value,
+			pattern: def.pattern.toString(),
+			inst,
+			continue: !def.abort
+		});
+	};
+});
 // ../../node_modules/zod/v4/core/versions.js
 var version = {
 	major: 4,
@@ -1226,6 +1260,15 @@ function _minLength(minimum, params) {
 	});
 }
 // @__NO_SIDE_EFFECTS__
+function _regex(pattern, params) {
+	return new $ZodCheckRegex({
+		check: "string_format",
+		format: "regex",
+		...normalizeParams(params),
+		pattern
+	});
+}
+// @__NO_SIDE_EFFECTS__
 function _refine(Class, fn, _params) {
 	return new Class({
 		type: "custom",
@@ -1369,6 +1412,7 @@ function refine(fn, _params = {}) {
 }
 var id = (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(128));
 var shortText = (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(64));
+(/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(256), /* @__PURE__ */ _regex(/^https?:\/\/d-[a-z0-9]{16}\.[a-z0-9.-]+(:[0-9]{1,5})?$/));
 var range = (min, max) => (/* @__PURE__ */ number()).check(/* @__PURE__ */ _gte(min), /* @__PURE__ */ _lte(max));
 var playerSummarySchema = /* @__PURE__ */ object({
 	id,
@@ -1445,6 +1489,25 @@ function envDuration(name, fallbackMs, log) {
 	return fallbackMs;
 }
 var newToken = () => randomBytes(16).toString("hex");
+var AI_PATHS = {
+	anthropic: "/anthropic",
+	openai: "/openai/v1",
+	gemini: "/gemini"
+};
+/** 指定服務要給官方套件的網址（anthropic、openai、gemini；OpenAI 的網址含 /v1） */
+function aiBaseURL(provider) {
+	const path = Object.hasOwn(AI_PATHS, provider) ? AI_PATHS[provider] : void 0;
+	if (!path) throw new Error(`玩聚 AI 閘道沒有這個服務：${String(provider)}（可用 anthropic、openai、gemini）`);
+	const base = (process.env.PT_AI_URL || "").replace(/\/+$/, "");
+	if (!base) throw new Error("沒有 PT_AI_URL：這個部署沒有玩聚 AI 閘道（本機開發請用 pt dev）");
+	return base + path;
+}
+/** 部署專用的 AI 代號（每次啟動時讀；重新部署會換新）。不要寫進紀錄 */
+function aiToken() {
+	const t = readFileSync(process.env.PT_AI_TOKEN_FILE || "/run/pt/ai-token", "utf8").trim();
+	if (!t) throw new Error("AI 代號是空的");
+	return t;
+}
 /** 依環境變數建立平台 client：PT_API_URL、PT_KEY_ID、PT_KEY_FILE（預設 ../keys/server.key）或 PT_PRIVATE_KEY、PT_MOCK=1 */
 function platformFromEnv() {
 	if (process.env.PT_MOCK === "1") return createServerClient({
@@ -2202,4 +2265,4 @@ function mockClient() {
 		async voicePolicy() {}
 	};
 }
-export { ActionError, HEADER, MAX_CLOCK_SKEW_MS, MOCK_CODE_PREFIX, PlatformApiError, SIGNATURE_SCHEME, canonicalString, createGameServer, createServerClient, platformFromEnv, retryDelaysMs, signRequest, verifyRequest };
+export { ActionError, HEADER, MAX_CLOCK_SKEW_MS, MOCK_CODE_PREFIX, PlatformApiError, SIGNATURE_SCHEME, aiBaseURL, aiToken, canonicalString, createGameServer, createServerClient, platformFromEnv, retryDelaysMs, signRequest, verifyRequest };

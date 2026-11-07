@@ -1,0 +1,48 @@
+package gameserver
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+)
+
+// 玩聚 AI 閘道（代管遊戲伺服器）：用 AI 服務的官方套件，只把網址與金鑰換成這兩個值。
+// 開發者的 AI 金鑰存在玩聚平台，容器裡只有部署專用的 AI 代號（不是金鑰）。
+//
+//	client := anthropic.NewClient(option.WithBaseURL(must(gameserver.AIBaseURL("anthropic"))), option.WithAPIKey(must(gameserver.AIToken())))
+//
+// 環境變數：PT_AI_URL（代管時是 http://pt-api:8081/v1/ai）、PT_AI_TOKEN_FILE（預設 /run/pt/ai-token）。
+
+// aiPaths：官方套件的網址樣式（OpenAI 的網址含 /v1，Anthropic、Gemini 不含）。
+var aiPaths = map[string]string{"anthropic": "/anthropic", "openai": "/openai/v1", "gemini": "/gemini"}
+
+// AIBaseURL 回傳指定服務要給官方套件的網址（provider：anthropic、openai、gemini）。
+func AIBaseURL(provider string) (string, error) {
+	p, ok := aiPaths[provider]
+	if !ok {
+		return "", fmt.Errorf("玩聚 AI 閘道沒有這個服務：%q（可用 anthropic、openai、gemini）", provider)
+	}
+	base := strings.TrimRight(os.Getenv("PT_AI_URL"), "/")
+	if base == "" {
+		return "", errors.New("沒有 PT_AI_URL：這個部署沒有玩聚 AI 閘道（本機開發請用 pt dev）")
+	}
+	return base + p, nil
+}
+
+// AIToken 讀取部署專用的 AI 代號（每次啟動時讀；重新部署會換新）。不要寫進紀錄。
+func AIToken() (string, error) {
+	file := os.Getenv("PT_AI_TOKEN_FILE")
+	if file == "" {
+		file = "/run/pt/ai-token"
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return "", fmt.Errorf("讀不到 AI 代號（PT_AI_TOKEN_FILE）：%w", err)
+	}
+	t := strings.TrimSpace(string(b))
+	if t == "" {
+		return "", errors.New("AI 代號是空的")
+	}
+	return t, nil
+}

@@ -35,6 +35,8 @@ type gameServerConfig struct {
 	Dir string `json:"dir,omitempty"`
 	// Data 是遊戲伺服器要讀的資料檔目錄（選填；會放進套件的 data/，伺服器執行時在 /app/data）
 	Data string `json:"data,omitempty"`
+	// AI 是遊戲伺服器使用的 AI 服務（anthropic、openai、gemini；ai_services.go）。需要平台審核（審核準則 3.9）
+	AI []string `json:"ai,omitempty"`
 }
 
 // hostedServer：遊戲伺服器由玩聚代管

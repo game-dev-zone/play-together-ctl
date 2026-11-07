@@ -75,6 +75,7 @@ type fakePlatform struct {
 	seq      int
 	polls    map[string][]time.Time // 房號 → 最近幾次查成員的時間
 	now      func() time.Time
+	ai       http.Handler // 本機 AI 閘道（ai_services.go）；nil 時 /v1/ai/ 回 404
 }
 
 type fakeRoom struct {
@@ -285,7 +286,28 @@ func (f *fakePlatform) handler(panel http.Handler) http.Handler {
 	if panel != nil {
 		mux.Handle("/", panel)
 	}
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// AI 閘道不經過 ServeMux（ServeMux 會把 ..、// 清理後轉址）：原始的請求目標由 aigateway.Parse 檢查，和平台相同
+		if strings.HasPrefix(r.RequestURI, "/v1/ai/") || strings.HasPrefix(r.URL.Path, "/v1/ai/") {
+			if f.ai == nil {
+				http.NotFound(w, r)
+				return
+			}
+			f.ai.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+}
+
+// logAI 把本機 AI 閘道的呼叫記到控制面板（不記錄內容與金鑰）。
+func (f *fakePlatform) logAI(endpoint string, status int, result, hint string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logLocked(endpoint, status, result, true)
+	if hint != "" {
+		f.calls[len(f.calls)-1].Hint = hint
+	}
 }
 
 func (f *fakePlatform) write(w http.ResponseWriter, status int, v any) {

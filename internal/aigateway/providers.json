@@ -1,0 +1,47 @@
+{
+  "version": "2026-11-07",
+  "note": "玩聚 AI 閘道的服務清單：上游網址固定，只轉送這裡列出的方法、路徑、query 與標頭，未知的一律拒絕。新增服務或 API 前要先經過平台審核政策負責人同意；pt check 用同一份代號清單。",
+  "providers": [
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "upstream": "https://api.anthropic.com",
+      "keyHeader": "x-api-key",
+      "endpoints": [
+        { "method": "POST", "path": "/v1/messages" },
+        { "method": "POST", "path": "/v1/messages/count_tokens" }
+      ],
+      "requestHeaders": ["anthropic-version", "anthropic-beta"],
+      "check": { "method": "GET", "path": "/v1/models", "query": "limit=1", "headers": { "anthropic-version": "2023-06-01" } }
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "upstream": "https://api.openai.com",
+      "keyHeader": "authorization",
+      "keyScheme": "Bearer",
+      "endpoints": [
+        { "method": "POST", "path": "/v1/chat/completions" },
+        { "method": "POST", "path": "/v1/responses" },
+        { "method": "POST", "path": "/v1/embeddings" },
+        { "method": "POST", "path": "/v1/moderations" }
+      ],
+      "requestHeaders": [],
+      "check": { "method": "GET", "path": "/v1/models" }
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "upstream": "https://generativelanguage.googleapis.com",
+      "keyHeader": "x-goog-api-key",
+      "params": { "model": "^[a-z0-9][a-z0-9.-]{0,79}$" },
+      "endpoints": [
+        { "method": "POST", "path": "/v1beta/models/{model}:generateContent" },
+        { "method": "POST", "path": "/v1beta/models/{model}:streamGenerateContent", "query": { "alt": ["sse"] } },
+        { "method": "POST", "path": "/v1beta/models/{model}:countTokens" }
+      ],
+      "requestHeaders": [],
+      "check": { "method": "GET", "path": "/v1beta/models", "query": "pageSize=1" }
+    }
+  ]
+}

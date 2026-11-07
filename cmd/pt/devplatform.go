@@ -177,6 +177,29 @@ func devServerEnv(platform, keyFile string) []string {
 	return []string{"PT_MOCK=", "PT_API_URL=" + platform, "PT_KEY_ID=" + fakeKeyID, "PT_KEY_FILE=" + keyFile}
 }
 
+// attachDevAI 在假平台掛上本機 AI 閘道（遊戲伺服器模式不是 none 時）。回傳遊戲伺服器要的環境變數：
+// PT_AI_URL、PT_AI_TOKEN_FILE，並清空各服務金鑰的環境變數（代管時容器裡沒有，直接讀金鑰的程式在本機就會發現）。
+func attachDevAI(fp *fakePlatform, p *project, platform string) (env []string, cleanup func(), err error) {
+	if p.gameServerMode() == "none" {
+		return nil, func() {}, nil
+	}
+	d, env, cleanup, err := newDevAI(p, platform)
+	if err != nil {
+		return nil, nil, err
+	}
+	d.log = fp.logAI
+	fp.ai = d
+	if len(d.declared) > 0 {
+		fmt.Println("本機 AI 閘道：" + strings.Join(d.keyStatus(), "；"))
+	}
+	for _, names := range aiKeyEnv {
+		for _, n := range names {
+			env = append(env, n+"=")
+		}
+	}
+	return env, cleanup, nil
+}
+
 // devPlatformOnly（pt dev -no-server）：只啟動假平台與控制面板，印出自己的遊戲伺服器要設定的環境變數。
 func devPlatformOnly(p *project, site, addr string, players int) error {
 	if site == "" {
@@ -194,9 +217,19 @@ func devPlatformOnly(p *project, site, addr string, players int) error {
 	}
 	defer srv.Close()
 	fmt.Printf("本機假平台：%s（控制面板與呼叫紀錄）\n", platform)
+	aiEnv, aiCleanup, err := attachDevAI(fp, p, platform)
+	if err != nil {
+		return fmt.Errorf("本機 AI 閘道：%w", err)
+	}
+	defer aiCleanup()
 	fmt.Println("請用下面的環境變數啟動你的遊戲伺服器（只供本機；不要設 PT_MOCK）：")
 	for _, kv := range devServerEnv(platform, keyFile)[1:] {
 		fmt.Println("  " + kv)
+	}
+	for _, kv := range aiEnv {
+		if strings.HasPrefix(kv, "PT_AI_") {
+			fmt.Println("  " + kv + "（玩聚 AI 閘道；用 SDK 的 AI 小工具讀取）")
+		}
 	}
 	if local {
 		fmt.Printf("（沒有 %s，用只供本機的暫存金鑰；pt dev 結束時刪除）\n", p.ServerKeyFile)

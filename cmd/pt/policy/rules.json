@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-05",
+  "version": "2026-11-07",
   "note": "玩聚平台政策資料：哪些宣告是平台硬性規則（hard）、哪些需要平台人工審核（review）。由平台產品／審核政策負責人決定，pt 維護者同步；只寫條件與原因，不寫分級、不寫准駁。政策變更影響分類時要立即發新版 pt。",
   "rules": [
     {"id": "real-money-wagering", "field": "economy.realMoneyWagering", "values": ["true"], "level": "hard", "category": "經濟", "reason": "真實金錢下注（含用有現實價值的資產下注）"},
@@ -24,6 +24,7 @@
     {"id": "historical-persecution", "field": "sensitiveContent.historicalPersecution", "values": ["true"], "level": "review", "category": "內容", "reason": "歷史迫害、戰爭、殖民、人權侵害等歷史題材"},
     {"id": "political-repression", "field": "sensitiveContent.politicalRepression", "values": ["true"], "level": "review", "category": "內容", "reason": "威權統治、白色恐怖、政治監禁等政治題材"},
     {"id": "discrimination-depiction", "field": "sensitiveContent.discriminationDepiction", "values": ["true"], "level": "review", "category": "內容", "reason": "劇情或批判性敘事中呈現的歧視"},
-    {"id": "hate-speech-depiction", "field": "sensitiveContent.hateSpeechDepiction", "values": ["true"], "level": "review", "category": "內容", "reason": "角色台詞或史料中的仇恨、歧視言論"}
+    {"id": "hate-speech-depiction", "field": "sensitiveContent.hateSpeechDepiction", "values": ["true"], "level": "review", "category": "內容", "reason": "角色台詞或史料中的仇恨、歧視言論"},
+    {"id": "ai-generated-content", "field": "gameServer.ai", "values": ["anthropic", "openai", "gemini"], "level": "review", "category": "內容", "reason": "使用 AI 生成內容（審核準則 3.9：輸出符合內容邊界、讓玩家知道是 AI、不送可識別玩家的資料、限制呼叫次數）"}
   ]
 }

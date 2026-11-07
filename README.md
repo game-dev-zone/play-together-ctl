@@ -39,6 +39,7 @@ make verify                      # 啟動驗證：伺服器測試、在模擬模
 - **`pt dev`**：本機假平台代替玩聚發啟動碼、回應遊戲伺服器的 API，並**驗證簽章**（用 `keys/server.key`，還沒產生時用只供本機的暫存金鑰）。控制面板可以踢人、重新開始、關房、模擬平台連不到與時鐘偏差，並列出遊戲伺服器的每一次呼叫與錯誤原因（例如 `clock_skew`、`bad_signature`）。
 - **`pt verify server`**（範本伺服器）：自動跑一遍加入、重新加入、舊局的啟動碼、踢人、重新開始、關房、平台連不到、時鐘偏差、回報一局、跨來源、413、429 與簽章，約 30 秒；`make verify` 會一起跑。
 - **自己的遊戲伺服器**（`external`）：`pt dev -no-server` 只啟動假平台與控制面板，照印出的 `PT_API_URL`、`PT_KEY_ID`、`PT_KEY_FILE` 啟動你的伺服器後用面板確認。
+- **AI 服務**（玩聚代管的遊戲伺服器呼叫 Anthropic、OpenAI、Gemini）：在 `playtogether.json` 申報 `"gameServer": {"ai": ["anthropic"]}`（`pt check` 會列為需要平台審核，`pt upload` 一起送出）。`pt dev` 提供本機的玩聚 AI 閘道：遊戲伺服器拿到和代管時相同的 `PT_AI_URL`、`PT_AI_TOKEN_FILE`，請求檢查也相同，金鑰用你在終端機設定的 `ANTHROPIC_API_KEY`／`OPENAI_API_KEY`／`GEMINI_API_KEY`（遊戲伺服器本身看不到這些變數）。程式用 SDK 的 `gameserver.AIBaseURL`、`gameserver.AIToken`（Node.js：`aiBaseURL`、`aiToken`）設定官方 SDK 的網址與金鑰。
 - 舊的模擬模式（不經過假平台、不簽章）：`pt dev -mock`。
 
 `PLAYTOGETHER.md` 的「素材」一節建議用 Codex 生成圖片：整套素材共用風格卡 `art/STYLE.md`（範本附一套明亮派對風格：形狀、線條、平塗上色、調色盤色碼、光線、排除項目），先做一張樣板，其他素材都用 `-i` 參考樣板生成，降低「每張各自生成」的 AI 感；生成前同時讀 `docs/content/CONTENT_PROFILE.md`（內容邊界）與 `GAMEPLAY_ECONOMY.md`（玩法宣告）、提示詞寫明平台硬性規則、看過再用，每個素材記錄在 `art/SOURCES.md`。範本內建程式合成的預設音效（網頁版 `web/sfx.js`、Godot 版 `main.gd`，沒有音檔），並接上平台的「遊戲聲音」開關；要用音檔或音樂時照「音效與音樂」一節的來源順序（程式合成 → CC0 → AI 生成付費方案 → 確認沒有登記 Content ID 的免費音樂）。
@@ -305,7 +306,7 @@ claude
 | `pt dev [-addr 127.0.0.1:8090] [-players N] [-no-server] [-site 網址] [-mock] [-smoke]` | 本機開發（Godot 專案會先匯出）：啟動範本／參考伺服器與本機假平台（驗證簽章、控制面板），開啟玩家分頁，預設多人專案 2 個、單人專案（`multiplayer.enabled: false`）1 個，`-players` 可以明確指定；`-no-server` 只啟動假平台（接自己的遊戲伺服器）；`-mock` 舊的模擬模式；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
 | `pt verify server [-json] [-start-action 操作] [-round-wait 時間]` | 用本機假平台自動驗證範本伺服器和玩聚平台的接口（只支援 `playtogether-managed`） |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
-| `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器架構與網址設定、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒；`gameServer.mode: none` 不需要 `serverUrl` |
+| `pt check [-local] [建置資料夾]` | 上傳前檢查：SDK、私鑰、廣告與追蹤工具、WebRTC、遊戲伺服器架構與網址設定、AI 服務申報（`gameServer.ai`）、音檔都記錄在 `art/SOURCES.md`；`-local` 在部署前使用，`platform`、`serverUrl` 還沒填只提醒；`gameServer.mode: none` 不需要 `serverUrl` |
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；私鑰只在你手上（第一次通常用 `pt register` 自動產生並登記；換金鑰時把公鑰貼到開發者頁的「金鑰」） |
 | `pt login -register` | 另外取得建立遊戲與管理金鑰的權限（團隊擁有者、管理者在瀏覽器同意；7 天，和送審授權分開保存） |
 | `pt init [-name 代號] [-web 資料夾] [-client web\|godot] [-game-server external\|none] [-profile …] [-y]` | 把**不是 `pt new` 建立的既有專案**接上玩聚：只新增 `playtogether.json`、`docs/content/` 的宣告文件、`store/` 上架資料範本、準備上架資料的 AI skill（`.claude/skills/`、`.agents/skills/` 的 `playtogether-store`）與 `.gitignore` 的 `keys/`，已經存在的檔案不覆寫、不動原本的程式；已經接上玩聚的專案再執行只補上缺少的 skill 與 `store/` 說明。上傳資料夾自動找有 `index.html` 的 `web`、`dist`、`build`、`public`；SDK 由你自己管理（`pt sdk export`）。之後和新專案一樣 `pt register`、`pt upload` |

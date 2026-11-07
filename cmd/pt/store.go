@@ -301,8 +301,13 @@ func declarationBody(p *project) (json.RawMessage, bool) {
 	if p == nil || !p.hasPolicy() {
 		return nil, false
 	}
-	raw, _ := json.Marshal(map[string]json.RawMessage{"platformAudience": p.PlatformAudience, "contentProfile": p.ContentProfile,
-		"sensitiveContent": p.SensitiveContent, "gameplay": p.Gameplay, "economy": p.Economy})
+	body := map[string]any{"platformAudience": p.PlatformAudience, "contentProfile": p.ContentProfile,
+		"sensitiveContent": p.SensitiveContent, "gameplay": p.Gameplay, "economy": p.Economy}
+	// 選填的 gameServer 區塊：有使用 AI 服務才送（平台判斷為需要審核）
+	if ai := p.aiProviders(); len(ai) > 0 {
+		body["gameServer"] = map[string][]string{"ai": ai}
+	}
+	raw, _ := json.Marshal(body)
 	return raw, true
 }
 
