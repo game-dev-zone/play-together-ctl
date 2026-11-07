@@ -83,6 +83,8 @@ func main() {
 		err = cmdStatus(os.Args[2:])
 	case "submit":
 		err = cmdSubmit(os.Args[2:])
+	case "preview":
+		err = cmdPreview(os.Args[2:])
 	case "withdraw":
 		err = cmdWithdraw(os.Args[2:])
 	case "store":
@@ -148,6 +150,7 @@ func usage() {
   pt status                                     版本與上架資料的審核狀態、退件原因、正式分級
   pt submit [-version 版本] [-replace]           送審已經上傳的草稿版本（與草稿上架資料），不重新上傳；-replace 撤回目前審核中的版本改送這個
   pt withdraw                                   撤回審核中的版本（一起送審的上架資料回到草稿），改好再送
+  pt preview [-version 版本]                    開預覽房間（1 小時，團隊成員才能進），印出網址；用手機在玩聚外殼裡實測
   pt store screenshot                           用本機 Chrome／Chromium 無頭模式擷取實際遊戲畫面，存成上架截圖（store/screenshots/）：
                                                 依畫面方向模擬手機（直式 390×694、橫式 694×390 CSS px），輸出剛好 1080×1920／1920×1080；
                                                 檔名接在既有截圖後面（不覆寫）；全黑或全白的不存檔。先啟動遊戲（例如 pt dev -mock）
