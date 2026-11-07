@@ -169,6 +169,7 @@ func cmdNew(args []string) error {
 	orientation := fs.String("orientation", "portrait", "畫面方向：portrait（直式）、landscape（橫式）或 any（兩者都支援）")
 	profile := fs.String("profile", "", "內容邊界（開發期間的內容上限，不是正式分級）：general（預設）、moderate、strong、custom（在終端機逐項設定）")
 	rating := fs.String("rating", "", "舊的寫法（v0.14）：general、12plus（= moderate）、15plus（= strong）、custom；請改用 -profile")
+	hosting := fs.String("hosting", "", "遊戲伺服器由誰執行：不填＝你自己部署；playtogether＝交給玩聚代管（只限 -server go，要平台開通；在終端機會詢問）")
 	table := fs.String("table-game", "none", "牌桌玩法：none（預設）、card、poker、mahjong、dice、board、slot、roulette、baccarat、other（是否能上架由玩聚平台審核決定）")
 	yes := fs.Bool("y", false, "不詢問，沒指定的項目用預設值")
 	_ = fs.Parse(reorder(args))
@@ -211,6 +212,9 @@ func cmdNew(args []string) error {
 	}
 	if *gameServer != "" && !slices.Contains(gameServerModes, *gameServer) {
 		return fmt.Errorf("-game-server 只能是 playtogether-managed、external 或 none（目前是 %q）", *gameServer)
+	}
+	if *hosting != "" && *hosting != "playtogether" {
+		return fmt.Errorf("-hosting 只能是 playtogether 或不填（目前是 %q）", *hosting)
 	}
 	if *rating != "" {
 		if *profile != "" {
@@ -267,7 +271,7 @@ func cmdNew(args []string) error {
 	canAsk := !*yes && interactive() && !ciEnv()
 	var cp *contentProfile
 	if canAsk && (name == "" || !set["client"] || !set["server"] || !set["orientation"] || aiMode == "" || !set["game-server"] || *profile == "" || *profile == "custom") {
-		if name, err = newWizard(name, client, server, orientation, gameServer, profile, &cp, *table, &aiMode, ai, skills, set, ccgs, gds, checkName); err != nil {
+		if name, err = newWizard(name, client, server, orientation, gameServer, hosting, profile, &cp, *table, &aiMode, ai, skills, set, ccgs, gds, checkName); err != nil {
 			if errors.Is(err, errCanceled) {
 				fmt.Println()
 				return errors.New("已取消，沒有建立任何檔案")
@@ -288,6 +292,9 @@ func cmdNew(args []string) error {
 	}
 	if *gameServer == "" {
 		*gameServer = defaultGameServer
+	}
+	if *hosting != "" && (*gameServer == "none" || *server != "go") {
+		return errors.New("-hosting playtogether 只限有遊戲伺服器（-game-server 不是 none）而且 -server go 的專案：玩聚代管目前只支援 Go")
 	}
 	if cp == nil {
 		// -y、非互動、CI：沒指定時用預設（和精靈的預設相同）；custom 要逐項設定，不能用某個預設頂替
@@ -326,7 +333,7 @@ func cmdNew(args []string) error {
 		"GodotDir": godotDir, "GodotPrefix": godotPrefix, "GodotPath": godotPath, "AI": map[bool]string{true: "studios", false: ""}[studios],
 		"Skills":      map[bool]string{true: *skills, false: ""}[withSkills],
 		"Orientation": *orientation, "OrientationLabel": orientationLabel[*orientation],
-		"AIMode": aiMode, "AIModeLabel": aiModeLabel[aiMode], "GameServer": *gameServer,
+		"AIMode": aiMode, "AIModeLabel": aiModeLabel[aiMode], "GameServer": *gameServer, "Hosting": *hosting,
 		"PolicyJSON": policyJSON(pl), "PolicyVersion": loadPolicyRules().Version,
 		"Multiplayer":   map[bool]string{true: "true", false: ""}[*gameServer != "none"],
 		"SkillsLabel":   map[string]string{"full": "完整（通用＋" + map[string]string{"web": "網頁引擎", "godot": "Godot"}[*client] + "）", "core": "通用", "none": ""}[*skills],
@@ -461,7 +468,7 @@ var (
 
 const newUsage = "用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-game-server playtogether-managed|external|none] [-profile general|moderate|strong|custom] [-table-game none|card|poker|mahjong|dice|board|slot|roulette|baccarat|other] [-mode standard|studio|lightweight|custom] [-skills none|core|full] [-ai studios|none] <專案名稱>"
 
-func newWizard(name string, client, server, orientation, gameServer, profile *string, cp **contentProfile, table string, aiMode, ai, skills *string, set map[string]bool, ccgs, gds ccgsManifest, checkName func(string) error) (string, error) {
+func newWizard(name string, client, server, orientation, gameServer, hosting, profile *string, cp **contentProfile, table string, aiMode, ai, skills *string, set map[string]bool, ccgs, gds ccgsManifest, checkName func(string) error) (string, error) {
 	var err error
 	fmt.Println("建立玩聚遊戲專案（直接按 Enter 用預設值，Ctrl-C 取消）")
 	fmt.Println()
@@ -506,6 +513,14 @@ func newWizard(name string, client, server, orientation, gameServer, profile *st
 			{"go", "Go", ""},
 			{"node", "Node.js", ""},
 		}, "go"); err != nil {
+			return "", err
+		}
+	}
+	if *gameServer != "none" && *server == "go" && !set["hosting"] {
+		if *hosting, err = choose("遊戲伺服器要放在哪裡？", []option{
+			{"playtogether", "交給玩聚代管（建議）", "pt upload 連同伺服器一起上傳，審核通過後由玩聚執行；不用自己找主機、不用另外付主機費用（要平台開通）"},
+			{"", "我自己部署", "放在你自己的主機，把網址填進 playtogether.json 的 serverUrl"},
+		}, "playtogether"); err != nil {
 			return "", err
 		}
 	}
@@ -575,6 +590,9 @@ func newWizard(name string, client, server, orientation, gameServer, profile *st
 	}
 	if table != "none" {
 		flags += " -table-game " + table
+	}
+	if *hosting != "" {
+		flags += " -hosting " + *hosting
 	}
 	cmd := fmt.Sprintf("pt new -client %s -server %s -orientation %s -game-server %s -profile %s%s %s", *client, *server, *orientation, *gameServer, *profile, flags, name)
 	fmt.Printf("即將建立 %s：畫面 %s、%s、伺服器 %s、%s、內容邊界 %s、AI 模式 %s\n", name, *client, gameServerLabel[*gameServer], *server, orientationLabel[*orientation], profileLabel[*profile], aiModeLabel[*aiMode])
@@ -1113,7 +1131,9 @@ func checkProject(p *project, webDir string) []finding {
 	if checkGameServer(p, add) {
 		if p.ServerURL == "" && p.hostedServer() {
 			// 玩聚代管：每個房間的伺服器網址由 SDK 握手提供（launch.serverUrl），不用填；但前端要真的用它
-			if p.Client != "godot" && !webUsesLaunchServerURL(webDir) {
+			if p.Client == "godot" && !godotUsesLaunchServerURL(p.path(p.godotDir())) {
+				add(levelWarn, "遊戲伺服器由玩聚代管，但 Godot 程式沒有讀 PlayTogether.server_url：上傳後會把請求送到遊戲畫面的網址（405）。握手後改用 PlayTogether.server_url 當遊戲伺服器網址（pt new 的範本 main.gd 有範例）")
+			} else if p.Client != "godot" && !webUsesLaunchServerURL(webDir) {
 				add(levelWarn, "遊戲伺服器由玩聚代管，但前端沒有讀 pt.launch.serverUrl：上傳後會把請求送到遊戲畫面的網址（405）。握手後改用 pt.launch.serverUrl 當遊戲伺服器網址（pt new 的範本 game.js 有範例）")
 			}
 		} else if p.ServerURL == "" {
@@ -1335,6 +1355,29 @@ func isGodotEngineJS(webDir, rel, content string) bool {
 		return false
 	}
 	return strings.Contains(content, "GodotRTCPeerConnection") && strings.Contains(content, "Engine")
+}
+
+// godotUsesLaunchServerURL：Godot 專案的 .gd 檔（不含外掛）有沒有讀 PlayTogether.server_url。
+func godotUsesLaunchServerURL(dir string) bool {
+	found := false
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || found {
+			return nil
+		}
+		if d.IsDir() {
+			if d.Name() == "addons" || d.Name() == ".godot" || d.Name() == "node_modules" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(d.Name(), ".gd") {
+			if b, err := os.ReadFile(path); err == nil && strings.Contains(string(b), "PlayTogether.server_url") {
+				found = true
+			}
+		}
+		return nil
+	})
+	return found
 }
 
 // webUsesLaunchServerURL：前端的 JavaScript（不含 SDK 檔案）有沒有讀 launch.serverUrl。

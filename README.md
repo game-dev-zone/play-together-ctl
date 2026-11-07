@@ -306,7 +306,7 @@ claude
 
 | 指令 | 說明 |
 | --- | --- |
-| `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-game-server playtogether-managed\|external\|none] [-mode standard\|studio\|lightweight\|custom] [-skills none\|core\|full] [-ai studios] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定、AI 工作流程）；`-orientation` 選直式、橫式或兩者都支援（預設直式） |
+| `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-game-server playtogether-managed\|external\|none] [-hosting playtogether] [-mode standard\|studio\|lightweight\|custom] [-skills none\|core\|full] [-ai studios] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定、AI 工作流程）；`-orientation` 選直式、橫式或兩者都支援（預設直式）；`-hosting playtogether` 把 Go 遊戲伺服器交給玩聚代管（`pt upload` 連同伺服器一起上傳，不用自己部署；要平台開通，在終端機會詢問） |
 | `pt dev [-addr 127.0.0.1:8090] [-players N] [-no-server] [-site 網址] [-mock] [-smoke]` | 本機開發（Godot 專案會先匯出）：啟動範本／參考伺服器與本機假平台（驗證簽章、控制面板），開啟玩家分頁，預設多人專案 2 個、單人專案（`multiplayer.enabled: false`）1 個，`-players` 可以明確指定；`-no-server` 只啟動假平台（接自己的遊戲伺服器）；`-mock` 舊的模擬模式；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
 | `pt verify server [-json] [-start-action 操作] [-round-wait 時間]` | 用本機假平台自動驗證範本伺服器和玩聚平台的接口（只支援 `playtogether-managed`） |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |

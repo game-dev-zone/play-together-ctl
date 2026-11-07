@@ -107,8 +107,9 @@ func _button(parent: Node, text: String, on_press: Callable) -> Button:
 
 
 func _on_initialized(_info: Dictionary) -> void:
-	# HTTPRequest 不接受相對網址：沒有設定伺服器網址時，網頁版用遊戲畫面自己的來源（pt dev）
-	_base = Config.SERVER_URL
+	# 玩聚代管時，伺服器網址由平台在握手時給（PlayTogether.server_url，每個房間固定）；
+	# 否則用 config.gd 的 SERVER_URL。HTTPRequest 不接受相對網址：都沒有時，網頁版用遊戲畫面自己的來源（pt dev）
+	_base = PlayTogether.server_url.rstrip("/") if PlayTogether.server_url != "" else Config.SERVER_URL
 	if _base == "":
 		_base = str(JavaScriptBridge.get_interface("location").origin) if OS.has_feature("web") else "http://127.0.0.1:8090"
 	_join()

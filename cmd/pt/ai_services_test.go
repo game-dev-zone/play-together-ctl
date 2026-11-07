@@ -232,3 +232,30 @@ func TestWebUsesLaunchServerURL(t *testing.T) {
 		t.Fatal("index.html 裡內嵌的程式要算")
 	}
 }
+
+// Godot 專案：.gd 要讀 PlayTogether.server_url（範本 main.gd 有），外掛裡的字樣不算。
+func TestGodotUsesLaunchServerURL(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/addons/playtogether", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/addons/playtogether/playtogether.gd", []byte("PlayTogether.server_url"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/main.gd", []byte("_base = Config.SERVER_URL"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if godotUsesLaunchServerURL(dir) {
+		t.Fatal("只有外掛提到不算")
+	}
+	tpl, err := embedded.ReadFile("templates/client-godot/main.gd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/main.gd", tpl, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !godotUsesLaunchServerURL(dir) {
+		t.Fatal("範本的 main.gd 要讀 PlayTogether.server_url")
+	}
+}

@@ -227,7 +227,7 @@ func cmdInit(args []string) error {
 
 	// 產生檔案（已經存在的不覆寫）
 	data := map[string]string{"Name": *name, "Client": *client, "Server": "none", "Template": existingTemplate, "Platform": *platform,
-		"SDKVersion": "", "GodotDir": godotDir, "Orientation": *orientation, "AI": "", "Skills": "", "AIMode": "", "GameServer": *gameServer,
+		"SDKVersion": "", "GodotDir": godotDir, "Orientation": *orientation, "AI": "", "Skills": "", "AIMode": "", "GameServer": *gameServer, "Hosting": "",
 		"Multiplayer": map[bool]string{true: "true", false: ""}[*gameServer != "none"], "PolicyJSON": policyJSON(pl), "PolicyVersion": loadPolicyRules().Version}
 	files := map[string][]byte{}
 	renderOne := func(src string) ([]byte, error) {

@@ -118,6 +118,7 @@ func usage() {
          [-orientation portrait|landscape|any]  畫面方向：直式（預設）、橫式、兩者都支援
          [-game-server playtogether-managed|external|none]
                                                 遊戲伺服器架構：玩聚範本伺服器（預設）、自己的遊戲伺服器、不需要
+         [-hosting playtogether]                遊戲伺服器交給玩聚代管（只限 -server go，要平台開通；在終端機會詢問）
          [-profile general|moderate|strong|custom]
                                                 內容邊界（開發期間的內容上限，不是正式分級）：預設 general（-rating 是舊寫法）
          [-table-game none|card|poker|mahjong|dice|board|slot|roulette|baccarat|other]

@@ -60,14 +60,17 @@ func TestNewWizard(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	// 順序：名稱 → 畫面 → 多人？→ 伺服器種類 → 伺服器語言 → 方向 → 內容邊界 → AI 模式 → 確認
-	// 名稱不合格會重問；AI 模式亂打會重問，預設標準（加入完整的遊戲開發 skill，不加 Studios）
-	typeIn(t, "My Game", "wiz-godot", "2", "", "", "", "2", "", "9", "", "")
+	// 順序：名稱 → 畫面 → 多人？→ 伺服器種類 → 伺服器語言 → 伺服器放哪裡（Go 才問）→ 方向 → 內容邊界 → AI 模式 → 確認
+	// 名稱不合格會重問；AI 模式亂打會重問，預設標準（加入完整的遊戲開發 skill，不加 Studios）；伺服器預設玩聚代管
+	typeIn(t, "My Game", "wiz-godot", "2", "", "", "", "", "2", "", "9", "", "")
 	must(t, cmdNew(nil))
 	p := readProject(t, filepath.Join(dir, "wiz-godot"))
 	if p.Client != "godot" || p.Server != "go" || p.AI != "" || p.Godot != "game" || p.Orientation != "landscape" || p.Skills != "full" ||
 		p.AIMode != "standard" || p.gameServerMode() != "playtogether-managed" || !p.multiplayerEnabled() || projectPolicy(t, p).Content.Profile != "general" {
 		t.Fatalf("選 Godot＋標準模式：%+v", p)
+	}
+	if p.GameServer == nil || p.GameServer.Hosting != "playtogether" || p.GameServer.Dir != "server" {
+		t.Fatalf("精靈預設玩聚代管：%+v", p.GameServer)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "wiz-godot", ".agents/skills/godot-audio/SKILL.md")); err != nil {
 		t.Fatal("標準模式應加入 Godot 的遊戲開發 skill")
@@ -85,27 +88,27 @@ func TestNewWizard(t *testing.T) {
 	}
 
 	// 工作室（只限 Godot）：加入 Studios 與完整 skill
-	typeIn(t, "wiz-studio", "2", "", "", "", "", "", "2", "")
+	typeIn(t, "wiz-studio", "2", "", "", "", "", "", "", "2", "")
 	must(t, cmdNew(nil))
 	if p := readProject(t, filepath.Join(dir, "wiz-studio")); p.AI != "studios" || p.Skills != "full" || p.AIMode != "studio" || p.Godot != "." {
 		t.Fatalf("選工作室模式：%+v", p)
 	}
 	// 自訂：問 skill 範圍與是否加入 Studios
-	typeIn(t, "wiz-custom", "2", "", "", "", "", "", "4", "2", "y", "")
+	typeIn(t, "wiz-custom", "2", "", "", "", "", "", "", "4", "2", "y", "")
 	must(t, cmdNew(nil))
 	if p := readProject(t, filepath.Join(dir, "wiz-custom")); p.AI != "studios" || p.Skills != "core" || p.AIMode != "custom" {
 		t.Fatalf("選自訂：%+v", p)
 	}
 	// 網頁專案沒有工作室選項：輸入 studio 會重問；選單是 標準、輕量、自訂
-	typeIn(t, "wiz-webstd", "", "", "", "", "", "", "studio", "1", "")
+	typeIn(t, "wiz-webstd", "", "", "", "", "", "", "", "studio", "1", "")
 	must(t, cmdNew(nil))
 	if p := readProject(t, filepath.Join(dir, "wiz-webstd")); p.Client != "web" || p.AI != "" || p.AIMode != "standard" {
 		t.Fatalf("網頁專案不能選工作室：%+v", p)
 	}
-	// 多人＋自己的遊戲伺服器
-	typeIn(t, "wiz-ext", "", "", "2", "", "", "", "2", "")
+	// 多人＋自己的遊戲伺服器（伺服器放哪裡選「自己部署」）
+	typeIn(t, "wiz-ext", "", "", "2", "", "2", "", "", "2", "")
 	must(t, cmdNew(nil))
-	if p := readProject(t, filepath.Join(dir, "wiz-ext")); p.gameServerMode() != "external" || !p.multiplayerEnabled() || p.AIMode != "lightweight" {
+	if p := readProject(t, filepath.Join(dir, "wiz-ext")); p.gameServerMode() != "external" || !p.multiplayerEnabled() || p.AIMode != "lightweight" || p.GameServer.Hosting != "" {
 		t.Fatalf("選自己的遊戲伺服器：%+v", p)
 	}
 
@@ -143,7 +146,7 @@ func TestNewWizard(t *testing.T) {
 		t.Fatalf("-y 應用預設值（內容邊界和精靈的預設相同，general）：%+v", p)
 	}
 	// 只指定 -ai studios（舊參數＝自訂）：一定是 Godot，不再問 AI 模式
-	typeIn(t, "", "", "", "", "", "")
+	typeIn(t, "", "", "", "", "", "", "")
 	must(t, cmdNew([]string{"wiz-ai", "-ai", "studios"}))
 	if p := readProject(t, filepath.Join(dir, "wiz-ai")); p.Client != "godot" || p.AI != "studios" || p.AIMode != "custom" || p.Skills != "" {
 		t.Fatalf("-ai studios 應建立 Godot 專案：%+v", p)

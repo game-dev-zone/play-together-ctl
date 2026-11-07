@@ -44,11 +44,11 @@ description: 把遊戲上架到玩聚（PlayTogether）：從接上專案（pt i
 
 ### 遊戲伺服器由誰執行（`external`）
 
-`external` 的遊戲伺服器有兩種跑法。玩聚代管目前只開放給平台開通的團隊，文件站還沒寫；**不要只因為文件站沒寫，就告訴開發者玩聚不能代管**。開發者問到時說明這個選項與限制，由開發者（或平台）決定能不能用。
+遊戲伺服器有兩種跑法。**玩聚代管是建議的做法**（開發者不用自己找主機、不用另外付主機費用；目前要平台開通、只支援 Go，見文件站「遊戲伺服器」）。開發者問到時說明這個選項與限制，由開發者（或平台）決定能不能用。
 
 | | 開發者自己部署（`-hosting` 不填） | 玩聚代管（`-hosting playtogether`） |
 | --- | --- | --- |
-| 誰部署 | 開發者（VPS、Cloud Run…），填 `playtogether.json` 的 `serverUrl` | `pt upload` 在 `gameServer.dir` 執行 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .`，和畫面一起上傳；發佈時平台啟動 |
+| 誰部署 | 開發者自己的主機，填 `playtogether.json` 的 `serverUrl` | `pt upload` 在 `gameServer.dir` 執行 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build .`，和畫面一起上傳；發佈時平台啟動 |
 | 語言 | 任何 | **只支援 Go**；`gameServer.dir` 要有 `go.mod`，在那裡 `go build .` 就要得到伺服器（main 在別的資料夾時，在那裡加一個呼叫同一份程式的 `main.go`） |
 | 前端連哪裡 | 設定檔裡的完整網址；上傳加 `-connect` | 握手後的 `pt.launch.serverUrl`（每個房間由平台指定）；不用 `-connect`、不用 `serverUrl` |
 | 金鑰 | 開發者把 `keys/server.key` 放到伺服器 | 平台每次部署自己產生並掛載（`PT_KEY_FILE`），不用處理 |

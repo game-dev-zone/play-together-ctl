@@ -18,7 +18,7 @@
   "skills": "[[.Skills]]"[[end]],
   "aiMode": "[[.AIMode]]",
   "multiplayer": { "enabled": [[if .Multiplayer]]true[[else]]false[[end]] },
-  "gameServer": { "mode": "[[.GameServer]]" },
+  "gameServer": { "mode": "[[.GameServer]]"[[if .Hosting]], "hosting": "[[.Hosting]]", "dir": "server"[[end]] },
   "policyVersion": "[[.PolicyVersion]]",
   [[.PolicyJSON]]
 }
