@@ -69,6 +69,7 @@ Godot 專案需要 Godot 4.3 以上與網頁匯出範本（Godot 編輯器 → �
 | `docs/ai/PROJECT_CONTEXT.md` | 專案背景：畫面、方向、AI 模式、**多人與遊戲伺服器架構**、已安裝的 AI 能力、重要路徑 |
 | `CLAUDE.md`、`AGENTS.md` | Claude Code 與 Codex 的入口：依序讀上面三份（有 `docs/ai/CURRENT_TASK.md` 時也讀） |
 | `.claude/skills/playtogether-store/`、`.agents/skills/playtogether-store/` | `pt` 自己的 skill：請 AI「幫我準備上架資料」時的固定步驟（讀專案 → 起草 `store/listing.json` → 圖示與封面 → `pt store screenshot` 擷取截圖 → `pt check`），Claude Code 與 Codex 內容相同；`pt init` 的既有專案也有 |
+| `.claude/skills/playtogether-multiplayer/`、`.agents/skills/playtogether-multiplayer/` | `pt` 自己的 skill：請 AI「幫我把這個遊戲改成多人」時的固定步驟（判斷適不適合 → **先問你多人怎麼玩** → `pt add server` → 遊戲規則搬到伺服器、前端只送操作 → `pt dev -players 3` 實際玩 → `pt verify server`）；`pt init` 的既有專案也有 |
 | `.claude/skills/playtogether-publish/`、`.agents/skills/playtogether-publish/` | `pt` 自己的 skill：請 AI「幫我上架到玩聚」時一路做到送審（`pt init` → 改到 `pt check` 通過 → 上架資料 → `pt login -register`（你在瀏覽器確認）→ `pt register` → `pt upload`）；`pt skills install` 也可以把它裝到使用者層級，還沒接上玩聚的專案也能用 |
 
 ### AI 開發模式（`-mode`）
@@ -315,6 +316,7 @@ claude
 | `pt keygen -purpose upload\|server [-out 檔案]` | 產生 Ed25519 金鑰；私鑰只在你手上（第一次通常用 `pt register` 自動產生並登記；換金鑰時把公鑰貼到開發者頁的「金鑰」） |
 | `pt login -register` | 另外取得建立遊戲與管理金鑰的權限（團隊擁有者、管理者在瀏覽器同意；7 天，和送審授權分開保存） |
 | `pt init [-name 代號] [-web 資料夾] [-client web\|godot] [-game-server external\|none] [-profile …] [-y]` | 把**不是 `pt new` 建立的既有專案**接上玩聚：只新增 `playtogether.json`、`docs/content/` 的宣告文件、`store/` 上架資料範本、準備上架資料的 AI skill（`.claude/skills/`、`.agents/skills/` 的 `playtogether-store`）與 `.gitignore` 的 `keys/`，已經存在的檔案不覆寫、不動原本的程式；已經接上玩聚的專案再執行只補上缺少的 skill 與 `store/` 說明。上傳資料夾自動找有 `index.html` 的 `web`、`dist`、`build`、`public`；SDK 由你自己管理（`pt sdk export`）。之後和新專案一樣 `pt register`、`pt upload` |
+| `pt add server -server go\|node [-hosting playtogether]` | `pt init` 接入的既有專案（例如單機遊戲）加上玩聚的範本遊戲伺服器，準備改成多人聯機：寫入 `server/`（範本＋SDK 的遊戲伺服器套件）與網頁前端的連線小工具 `multiplayer/playtogether-net.js`，`playtogether.json` 改成範本伺服器（之後 `pt dev`、`pt verify server` 都適用，`pt sdk update` 只更新伺服器的 SDK）；不動原本的遊戲程式。遊戲規則怎麼搬見 `playtogether-multiplayer` skill。適合回合制、問答、派對類；即時動作與物理同步不適合直接改 |
 | `pt skills install`／`pt skills uninstall` | 把「上架到玩聚」skill（`playtogether-publish`）裝到 `~/.claude/skills/` 與 `~/.agents/skills/`：之後在任何遊戲資料夾打開 Claude Code 或 Codex，說「幫我上架到玩聚」，它會從 `pt init` 一路做到送審，只在登入授權等需要你本人時停下來。pt 更新後重跑會更新 skill |
 | `pt register [-title 名稱]` | 建立草稿遊戲（代號是 `playtogether.json` 的 `name`）並登記金鑰：沒有私鑰會自動產生、只送公鑰，金鑰 ID 寫回 `playtogether.json`；上次沒收到回應時重新執行會接手已建立的遊戲 |
 | `pt upload -version <版本> [-notes 說明] [-no-build] [-orientation portrait\|landscape\|any]` | 上傳版本（設定從 `playtogether.json` 讀，包括畫面方向；Godot 專案先匯出；上傳前自動檢查） |

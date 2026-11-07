@@ -153,8 +153,16 @@ func sdkStatus(p *project, online bool) string {
 			ptOld = true
 		}
 	}
-	if p != nil && p.existing() {
+	if p != nil && p.existing() && p.Server == "none" {
 		b.WriteString(existingSDKNote + "\n")
+	} else if p != nil && p.existing() {
+		// pt add server：伺服器的 SDK 由 pt 更新，前端的由開發者自己管理
+		if msg := sdkNotice(p); msg != "" {
+			b.WriteString("！遊戲伺服器的" + msg + "\n")
+		} else if !ptOld {
+			b.WriteString("✓ 遊戲伺服器的 SDK 已經是最新版\n")
+		}
+		b.WriteString(existingClientSDKNote + "\n")
 	} else if p != nil {
 		if msg := sdkNotice(p); msg != "" {
 			b.WriteString("！" + msg + "\n")

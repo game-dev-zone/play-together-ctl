@@ -27,6 +27,9 @@ const existingTemplate = "existing"
 // existing 是 pt init 接入的既有專案（SDK 與伺服器由開發者自己管理）。
 func (p *project) existing() bool { return p.Template == existingTemplate }
 
+// pt add server 之後：伺服器的 SDK 由 pt 更新，前端的仍由開發者自己管理
+const existingClientSDKNote = "前端的 SDK 由你自己管理：要更新時用 pt sdk export <資料夾> 取得新版，再覆蓋到你的專案（例如 playtogether-sdk.iife.js）"
+
 const existingSDKNote = "這是既有專案（pt init）：SDK 檔案由你自己管理，pt 不會改寫。要更新時用 pt sdk export <資料夾> 取得新版，再覆蓋到你的專案（例如 web 的 playtogether-sdk.iife.js）"
 
 // initName 從資料夾名稱推一個遊戲代號（小寫英文、數字、連字號）。
@@ -405,6 +408,10 @@ func initHints(p *project, dir string) {
 		todo = append(todo, "你的遊戲伺服器要兌換玩聚的啟動碼（伺服器 SDK：pt sdk export 的 go／node；文件站「遊戲伺服器」的 external 最低要求），部署後把網址填進 playtogether.json 的 serverUrl")
 		todo = append(todo, "上傳到玩聚後，畫面在 https://<版本>.games.（平台網域），和遊戲伺服器不同網址：前端要連完整的伺服器網址（不能用 location.host），伺服器要允許這個來源（CORS／WebSocket Origin）")
 		todo = append(todo, "不想自己部署遊戲伺服器、而且伺服器是 Go：可以改成玩聚代管（pt init 前用 -hosting playtogether，或在 playtogether.json 的 gameServer 加上 \"hosting\": \"playtogether\"；要平台開通）")
+	}
+	if p.gameServerMode() == "none" {
+		fmt.Println("之後想改成多人聯機：pt add server 會加上玩聚的範本遊戲伺服器；或請 AI 助手「幫我把這個遊戲改成多人」（playtogether-multiplayer skill）。")
+		fmt.Println()
 	}
 	if strings.Contains(p.Platform, "（") {
 		todo = append(todo, "把 playtogether.json 的 platform 改成玩聚的網址（見開發者文件「快速開始」的「平台網址」）")

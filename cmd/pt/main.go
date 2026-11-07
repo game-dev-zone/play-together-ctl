@@ -75,6 +75,8 @@ func main() {
 		err = cmdUpgrade(os.Args[2:])
 	case "migrate":
 		err = cmdMigrate(os.Args[2:])
+	case "add":
+		err = cmdAdd(os.Args[2:])
 	case "keygen":
 		err = keygen(os.Args[2:])
 	case "upload":
@@ -179,6 +181,8 @@ func usage() {
   pt upgrade [-dry-run] [-y] [-delete-removed] 把範本檔案（平台規則、AI 契約、Makefile、pt 的 skill）更新成這個 pt 的版本：
                                                 沒改過的換新、改過的寫 .pt-new；遊戲本身的檔案不碰。舊專案先 pt upgrade -init
   pt migrate server-kit [-apply]                舊專案（server/session.go）改用 SDK 的遊戲伺服器套件：先產生對照與步驟，搬好後 -apply
+  pt add server -server go|node [-hosting playtogether]
+                                                pt init 接入的既有專案（例如單機遊戲）加上玩聚的範本遊戲伺服器，準備改成多人聯機
   pt sdk export <資料夾>                        把 SDK 檔案寫到資料夾（接到既有專案用）
   pt version                                    顯示版本並檢查有沒有新版
 

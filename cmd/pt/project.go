@@ -672,7 +672,8 @@ func cmdSDK(args []string) error {
 	if p == nil {
 		return errors.New("找不到 playtogether.json：請在用 pt new 建立的專案裡執行")
 	}
-	if p.existing() {
+	// 既有專案（pt init）：前端 SDK 由開發者自己管理；pt add server 加上的範本伺服器才由 pt 更新
+	if p.existing() && p.Server == "none" {
 		return errors.New(existingSDKNote)
 	}
 	if err := requireAssets(); err != nil {
@@ -683,6 +684,9 @@ func cmdSDK(args []string) error {
 		return fmt.Errorf("專案的 SDK %s 比這個 pt 內嵌的 %s 新，不會降版：請先更新 pt（go install %s@latest）；確定要降版請加 -force", p.SDKVersion, sdkVersion(), installPath)
 	}
 	files, err := sdkFiles(p.Client, p.Server, p.godotDir())
+	if p.existing() {
+		files, err = serverSDKFiles(p.Client, p.Server)
+	}
 	if err != nil {
 		return err
 	}
@@ -733,6 +737,9 @@ func cmdSDK(args []string) error {
 		}
 	}
 	fmt.Printf("SDK 已更新：%s → %s（%d 個檔案）\n", old, p.SDKVersion, len(files))
+	if p.existing() {
+		fmt.Println("（只更新遊戲伺服器的 SDK）" + existingClientSDKNote)
+	}
 	if hint := legacyServerHint(p); hint != "" {
 		fmt.Println(hint)
 	}
