@@ -30,6 +30,11 @@ function cached(getter) {
 function nullish(input) {
 	return input === null || input === void 0;
 }
+function cleanRegex(source) {
+	const start = source.startsWith("^") ? 1 : 0;
+	const end = source.endsWith("$") ? source.length - 1 : source.length;
+	return source.slice(start, end);
+}
 function assignProp(target, prop, value) {
 	Object.defineProperty(target, prop, {
 		value,
@@ -1134,6 +1139,35 @@ var $ZodEnum = /*@__PURE__*/ $constructor("$ZodEnum", (inst, def) => {
 		return payload;
 	};
 });
+function handleOptionalResult(payload, result) {
+	payload.value = result.issues.length ? void 0 : result.value;
+	return payload;
+}
+var $ZodOptional = /*@__PURE__*/ $constructor("$ZodOptional", (inst, def) => {
+	$ZodType.init(inst, def);
+	defineLazyInternal(inst, "optin", (zod) => zod.def.innerType._zod.optin === "defaulted" ? "defaulted" : "optional");
+	inst._zod.optout = "optional";
+	defineLazyInternal(inst, "values", (zod) => {
+		const values = zod.def.innerType._zod.values;
+		return values ? /* @__PURE__ */ new Set([...values, void 0]) : void 0;
+	});
+	defineLazyInternal(inst, "pattern", (zod) => {
+		const pattern = zod.def.innerType._zod.pattern;
+		return pattern ? new RegExp(`^(${cleanRegex(pattern.source)})?$`) : void 0;
+	});
+	inst._zod.parse = (payload, ctx) => {
+		if (payload.value === void 0) {
+			if (def.innerType._zod.optin !== "defaulted") return payload;
+			const result = def.innerType._zod.run({
+				value: payload.value,
+				issues: []
+			}, ctx);
+			if (result instanceof Promise) return result.then((result) => handleOptionalResult(payload, result));
+			return handleOptionalResult(payload, result);
+		}
+		return def.innerType._zod.run(payload, ctx);
+	};
+});
 var $ZodDefault = /*@__PURE__*/ $constructor("$ZodDefault", (inst, def) => {
 	$ZodType.init(inst, def);
 	inst._zod.optin = "defaulted";
@@ -1388,6 +1422,17 @@ function _enum(values, params) {
 		...normalizeParams(params)
 	});
 }
+var ZodMiniOptional = /*@__PURE__*/ $constructor("ZodMiniOptional", (inst, def) => {
+	$ZodOptional.init(inst, def);
+	ZodMiniType.init(inst, def);
+});
+// @__NO_SIDE_EFFECTS__
+function optional(innerType) {
+	return new ZodMiniOptional({
+		type: "optional",
+		innerType
+	});
+}
 var ZodMiniDefault = /*@__PURE__*/ $constructor("ZodMiniDefault", (inst, def) => {
 	$ZodDefault.init(inst, def);
 	ZodMiniType.init(inst, def);
@@ -1413,6 +1458,7 @@ function refine(fn, _params = {}) {
 var id = (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(128));
 var shortText = (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(64));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(256), /* @__PURE__ */ _regex(/^https?:\/\/d-[a-z0-9]{16}\.[a-z0-9.-]+(:[0-9]{1,5})?$/));
+(/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^pur_[A-Za-z0-9_-]{22}$/));
 var range = (min, max) => (/* @__PURE__ */ number()).check(/* @__PURE__ */ _gte(min), /* @__PURE__ */ _lte(max));
 var playerSummarySchema = /* @__PURE__ */ object({
 	id,
@@ -1424,9 +1470,13 @@ var voiceModeSchema = /* @__PURE__ */ _enum([
 	"turn",
 	"allowlist"
 ]);
+/** 音高分析的模式：ptt＝只在有發言權且按住說話（或開麥）時分析（第一版只有這個） */
+var pitchModeSchema = /* @__PURE__ */ _enum(["ptt"]);
+/** 音高結果給誰看：self＝只送給唱歌者自己的遊戲畫面（第一版只有這個） */
+var pitchAudienceSchema = /* @__PURE__ */ _enum(["self"]);
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(32)), range(0, 1), int().check(/* @__PURE__ */ _gte(0), /* @__PURE__ */ _lte(1e3)), range(0, 86400);
 range(0, 1e4), range(0, 1e4), range(0, 1e4), range(0, 1e4);
-(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), range(0, 1);
+(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0xe8d4a51000), range(0, 0x5af3107a4000), range(20, 5e3), range(0, 127), range(-50, 50), range(0, 1);
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(128));
 /**
 * 發言規則（docs/voice-chat.md）。由遊戲伺服器簽章送給平台。
@@ -1443,6 +1493,21 @@ var voicePolicySchema = (/* @__PURE__ */ object({
 	effectiveAtServerMs: int().check(/* @__PURE__ */ _positive()),
 	expiresAtServerMs: int().check(/* @__PURE__ */ _positive())
 })).check(/* @__PURE__ */ refine((p) => p.expiresAtServerMs > p.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ refine((p) => p.mode !== "turn" || p.allowedSpeakerIds.length === 1, "turn 模式必須剛好一位發言者"), /* @__PURE__ */ refine((p) => p.mode !== "allowlist" || p.allowedSpeakerIds.length >= 1, "allowlist 模式至少要一位發言者"), /* @__PURE__ */ refine((p) => p.mode !== "open" && p.mode !== "host_only" || p.allowedSpeakerIds.length === 0, "open / host_only 模式不帶發言者名單"), /* @__PURE__ */ refine((p) => new Set(p.allowedSpeakerIds).size === p.allowedSpeakerIds.length, "發言者名單不得重複"));
+/**
+* 音高授權（docs/voice-chat.md「三之一」）。由遊戲伺服器簽章送給平台，和發言規則分開。
+* epoch 必須是房間目前的局數；有效期間最多 1 小時；名單 1–64 人
+*/
+var pitchPolicySchema = (/* @__PURE__ */ object({
+	roomId: id,
+	gameInstanceId: id,
+	epoch: int().check(/* @__PURE__ */ _gte(0)),
+	sequence: int().check(/* @__PURE__ */ _gte(0)),
+	allowedPlayerIds: (/* @__PURE__ */ array(id)).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(64)),
+	mode: pitchModeSchema,
+	audience: pitchAudienceSchema,
+	effectiveAtServerMs: int().check(/* @__PURE__ */ _positive()),
+	expiresAtServerMs: int().check(/* @__PURE__ */ _positive())
+})).check(/* @__PURE__ */ refine((p) => p.expiresAtServerMs > p.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ refine((p) => new Set(p.allowedPlayerIds).size === p.allowedPlayerIds.length, "名單不得重複"));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256));
 var launchExchangeResponseSchema = /* @__PURE__ */ object({
 	gameId: id,
@@ -1452,7 +1517,9 @@ var launchExchangeResponseSchema = /* @__PURE__ */ object({
 	/** 房間目前的局數：房主「重新開始」時加一。遊戲伺服器依局數開新局，並拒絕舊局的連線 */
 	epoch: int().check(/* @__PURE__ */ _gte(0)),
 	/** 平台房主的假名 ID：遊戲的房主以此為準（平台的踢人、重新開始也由這個人操作） */
-	hostPlayerId: id
+	hostPlayerId: id,
+	/** 平台點數：這位玩家在這款遊戲擁有的永久解鎖 SKU（點數開啟時才有） */
+	entitlements: /* @__PURE__ */ optional((/* @__PURE__ */ array((/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(64)))).check(/* @__PURE__ */ _maxLength(500)))
 });
 // src/gameserver.ts
 /** onAction 丟出這個錯誤時，玩家收到 400 {"error": code} */
@@ -2149,16 +2216,18 @@ function createServerClient(options) {
 	const doFetch = options.fetch ?? fetch;
 	const base = options.baseUrl.replace(/\/+$/, "");
 	const timeoutMs = options.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : 1e4;
-	async function request(method, path, data, idempotencyKey) {
+	async function request(method, path, data, idempotencyKey, query) {
 		const body = data === void 0 ? "" : JSON.stringify(data);
 		const headers = { ...signRequest({
 			method,
 			path,
-			body
+			body,
+			...query ? { query } : {}
 		}, credentials) };
 		if (data !== void 0) headers["content-type"] = "application/json";
 		if (idempotencyKey) headers[HEADER.idempotencyKey] = idempotencyKey;
-		const res = await doFetch(`${base}${path}`, {
+		const qs = query ? "?" + new URLSearchParams(query).toString() : "";
+		const res = await doFetch(`${base}${path}${qs}`, {
 			method,
 			headers,
 			signal: AbortSignal.timeout(timeoutMs),
@@ -2220,6 +2289,37 @@ function createServerClient(options) {
 		async voicePolicy(policy) {
 			const checked = voicePolicySchema.parse(policy);
 			await post("/v1/voice/policy", checked, `voice:${checked.roomId}:${checked.sequence}`);
+		},
+		async pitchPolicy(policy) {
+			const checked = pitchPolicySchema.parse(policy);
+			await post("/v1/pitch/policy", checked, `pitch:${checked.roomId}:${checked.sequence}`);
+		},
+		async createPurchase(req) {
+			if (!req.roomId || !req.playerId || !req.sku || !/^[A-Za-z0-9._:-]{8,100}$/.test(req.idempotencyKey)) throw new PlatformApiError(400, "bad_request");
+			const json = await post("/v1/game/purchases", {
+				roomId: req.roomId,
+				playerId: req.playerId,
+				sku: req.sku,
+				quantity: 1,
+				idempotencyKey: req.idempotencyKey
+			});
+			if (!json || typeof json.purchaseId !== "string") throw new PlatformApiError(502, "bad_response");
+			return json;
+		},
+		async getPurchase(purchaseId) {
+			const json = await request("GET", `/v1/game/purchases/${encodeURIComponent(purchaseId)}`);
+			if (!json || typeof json.status !== "string") throw new PlatformApiError(502, "bad_response");
+			return json;
+		},
+		async getRoomEntitlements(roomId) {
+			return (await request("GET", `/v1/game/rooms/${encodeURIComponent(roomId)}/entitlements`))?.players ?? {};
+		},
+		async listPurchaseEvents(after) {
+			const json = await request("GET", "/v1/game/purchase-events", void 0, void 0, { after: String(Math.max(0, Math.trunc(after))) });
+			return {
+				events: json?.events ?? [],
+				next: typeof json?.next === "number" ? json.next : after
+			};
 		}
 	};
 }
@@ -2262,7 +2362,25 @@ function mockClient() {
 		},
 		async reportRoundStart() {},
 		async reportRoundEnd() {},
-		async voicePolicy() {}
+		async voicePolicy() {},
+		async pitchPolicy(policy) {
+			pitchPolicySchema.parse(policy);
+		},
+		async createPurchase() {
+			throw new PlatformApiError(503, "points_disabled");
+		},
+		async getPurchase() {
+			throw new PlatformApiError(503, "points_disabled");
+		},
+		async getRoomEntitlements() {
+			return {};
+		},
+		async listPurchaseEvents(after) {
+			return {
+				events: [],
+				next: after
+			};
+		}
 	};
 }
 export { ActionError, HEADER, MAX_CLOCK_SKEW_MS, MOCK_CODE_PREFIX, PlatformApiError, SIGNATURE_SCHEME, aiBaseURL, aiToken, canonicalString, createGameServer, createServerClient, platformFromEnv, retryDelaysMs, signRequest, verifyRequest };

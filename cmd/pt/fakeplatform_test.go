@@ -114,6 +114,35 @@ func TestFakePlatform(t *testing.T) {
 	if rs := fp.roundsFor(roomID); len(rs) != 1 || rs[0].Ended != "completed" {
 		t.Fatalf("回報紀錄：%+v", rs)
 	}
+	// 音高授權：局數、序號、重送、格式
+	nowMs := time.Now().UnixMilli()
+	pitch := playtogether.PitchPolicy{RoomID: roomID, GameInstanceID: "g1", Epoch: 1, Sequence: 1, AllowedPlayerIDs: []string{p1.ID},
+		Mode: "ptt", Audience: "self", EffectiveAtServerMs: nowMs, ExpiresAtServerMs: nowMs + 60_000}
+	must(t, c.SendPitchPolicy(ctx, pitch))
+	must(t, c.SendPitchPolicy(ctx, pitch)) // 同序號同內容是重送
+	changed := pitch
+	changed.AllowedPlayerIDs = []string{"someone-else"}
+	if err := c.SendPitchPolicy(ctx, changed); apiCode(err) != "stale_sequence" {
+		t.Fatalf("同序號不同內容：%v", err)
+	}
+	stale := pitch
+	stale.Sequence, stale.Epoch = 2, 0
+	if err := c.SendPitchPolicy(ctx, stale); apiCode(err) != "stale_epoch" {
+		t.Fatalf("舊局數：%v", err)
+	}
+	late := pitch
+	late.Sequence, late.EffectiveAtServerMs, late.ExpiresAtServerMs = 3, nowMs+5*60_000, nowMs+6*60_000
+	if err := c.SendPitchPolicy(ctx, late); apiCode(err) != "bad_policy_time" {
+		t.Fatalf("生效時間太晚：%v", err)
+	}
+	gone := pitch
+	gone.RoomID, gone.Sequence = "r_nope", 4
+	if err := c.SendPitchPolicy(ctx, gone); apiCode(err) != "room_not_found" {
+		t.Fatalf("沒有這個房間：%v", err)
+	}
+	next := pitch
+	next.Sequence = 5
+	must(t, c.SendPitchPolicy(ctx, next))
 	// 紀錄不含啟動碼
 	raw, _ := json.Marshal(fp.state(0))
 	if bytes.Contains(raw, []byte(code)) {

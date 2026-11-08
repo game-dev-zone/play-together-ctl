@@ -1148,7 +1148,7 @@ func checkProject(p *project, webDir string) []finding {
 			add(levelHard, "%s 使用付款功能（PaymentRequest 或金流 SDK）：遊戲 iframe 沒有付款能力，不能自己接付款（商業模式涉及真實金錢時宣告 economy.realMoney，由平台審核）", rel)
 		}
 		if strings.Contains(s, "getUserMedia") && !isGodotEngineJS(webDir, rel, s) {
-			add(levelHard, "%s 使用 getUserMedia：遊戲不能自己使用麥克風或相機（語音由玩聚平台外殼處理）", rel)
+			add(levelHard, "%s 使用 getUserMedia：遊戲不能自己使用麥克風或相機（語音由玩聚平台外殼處理；要唱歌、哼音高的玩法改用 SDK 的音高功能，見 PLAYTOGETHER.md「用聲音玩：音高」）", rel)
 		}
 		return nil
 	})

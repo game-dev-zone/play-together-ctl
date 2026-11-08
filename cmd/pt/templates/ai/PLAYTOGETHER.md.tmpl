@@ -48,15 +48,15 @@
 3. **玩家身分只來自平台**：畫面端從 SDK 拿到一次性的啟動碼，由遊戲伺服器向玩聚兌換成玩家 ID、暱稱、房號（Ed25519 簽章；用範本或伺服器 SDK，`external` 也可以照規格自己實作）。不得把可重用的 token 交給畫面端；不要另外做登入或帳號，也不要向玩家要任何個人資料。
 4. **畫面端回報的資料不得用於玩家權益**（排名、獎勵、解鎖）。
 5. **有遊戲伺服器時，每一局要回報**：開始與結束時由遊戲伺服器呼叫回報一局（`reportRoundStart`／`reportRoundEnd`），平台用它統計成效。
-6. **語音由平台處理**：遊戲不得使用麥克風、相機、WebRTC；發言規則由遊戲伺服器送給平台。
+6. **語音由平台處理**：遊戲不得自己使用麥克風、相機、WebRTC；發言規則由遊戲伺服器送給平台。要用玩家的聲音當玩法（唱歌、哼音高）時，用平台的音高功能（見下方「用聲音玩：音高」），遊戲拿到的是音高數字，不是聲音。
 7. **私鑰不得外流**：[[if eq .GameServer "none"]]上傳金鑰的私鑰只在你的電腦（`keys/`）[[else]]遊戲伺服器金鑰的私鑰只在遊戲伺服器，上傳金鑰的私鑰只在你的電腦（`keys/`）[[end]]；不得出現在畫面端、版控或上傳的檔案裡。
 8. **不得用第三方服務直接替換玩聚平台 API**（房間、玩家身分、語音、回報一局等），除非開發者明確要求且平台允許。
 9. **發佈只走玩聚流程**：`pt check`、`pt upload` 與玩聚審核；不得加入和玩聚衝突的匯出、發佈、發行流程。
 
 ## 執行環境（遊戲在玩聚的 iframe 裡）
 
-- iframe 只允許 `allow-scripts allow-same-origin`：不能開新分頁或彈出視窗、不能用 `alert`／`confirm`／`prompt`、不能導向上層頁面、不能送出表單。
-- 不能使用 WebRTC、SharedWorker、麥克風、相機、付款。
+- iframe 只允許 `allow-scripts allow-same-origin allow-pointer-lock`：不能開新分頁或彈出視窗、不能用 `alert`／`confirm`／`prompt`、不能導向上層頁面、不能送出表單。
+- 不能自己使用 WebRTC、SharedWorker、麥克風、相機、付款（聲音玩法用平台的音高功能）。
 - 不要用 `eval` 或 `new Function`（平台的內容安全政策會擋）。
 - 檢舉、離開、靜音等按鈕由平台放在畫面上方，遊戲不用做。
 - **手機優先**：先在 iOS Safari、Android Chrome 能玩；觸控目標要夠大。
@@ -68,6 +68,18 @@
 - `HTTPRequest` 要用**完整網址**（`config.gd` 的 `SERVER_URL`），不能用相對路徑。
 - 中文字要用專案附的字型（`fonts/NotoSansTC-Common.otf`），網頁版讀不到系統字型；需要更多字時換成完整字型或自己的子集。
 [[- end]]
+
+
+## 用聲音玩：音高
+
+遊戲不能拿到麥克風或聲音，但可以拿到**玩家的音高**（唱歌、哼歌、比音準、用聲音控制角色）：平台在玩家手機上分析，只把數字交給這位玩家自己的遊戲畫面。
+
+1. **遊戲伺服器授權**：[[if eq .Server "node"]]`platform.pitchPolicy({...})`（`main.mjs` 的 `platform`）[[else]]`pt.SendPitchPolicy(ctx, playtogether.PitchPolicy{...})`（`main.go` 的 `pt`）[[end]]，內容是 `roomId`、`gameInstanceId`（你自己取的這一局識別字）、`epoch`（兌換啟動碼拿到的局數）、遞增的 `sequence`、`allowedPlayerIds`（1–64 人，例如輪到唱歌的人）、`mode: "ptt"`、`audience: "self"`、生效與到期時間（最多 1 小時）。房主重新開始後 `epoch` 會變，要重新授權。[[if eq .GameServer "none"]]**這個專案宣告沒有遊戲伺服器，所以目前不能用音高玩法**；要用時先提出架構變更（架構原則 1）。[[else]]範本伺服器的遊戲函式在鎖裡、不能呼叫網路：在函式裡只記下要授權誰，鎖外再呼叫平台（[[if eq .Server "node"]]例如 `setTimeout(() => platform.pitchPolicy(…), 0)`[[else]]例如 `go func() { _ = pt.SendPitchPolicy(ctx, policy) }()`，`policy` 先在鎖裡組好[[end]]）。[[end]]
+2. **畫面端請求**：[[if eq .Client "godot"]]`PlayTogether.pitch_start()`、`PlayTogether.pitch_stop()`；訊號 `pitch_started`、`pitch_stopped(reason)`、`pitch_changed(payload)`[[else]]`pt.pitch.start({ mode: 'ptt' })`、`pt.pitch.stop()`；`pt.pitch.on('state', s => …)`、`pt.pitch.on('pitch', f => …)`[[end]]。第一次會由平台跳出同意畫面，遊戲不能代按。
+3. **收到的數字**：每秒約 20 次，只在玩家有發言權**而且正在按住說話**時：`voiced`、`hz`、`note`（MIDI，69 = A4）、`cents`（−50～50）、`confidence`（0–1）。沒聲音時 `voiced` 是 false、其他是 null。
+4. **停止原因**（`reason`）：`game`、`user`、`denied`（玩家不同意）、`not_authorized`（伺服器沒授權）、`mic_denied`、`unsupported`、`background`、`timeout`（單次最長 10 分鐘）、`busy`、`closed`。遊戲要能處理每一種，例如顯示「請按住說話唱歌」或改用別的玩法。
+5. **只能當娛樂分數**：音高來自玩家的瀏覽器，不可信，不能用於排名、獎勵、解鎖（架構原則 4）。要比賽時由遊戲伺服器決定規則，並接受「玩家可能作弊」。
+6. **本機測試**：`pt dev` 不用真的麥克風，`start` 之後會送一組假的音高（滑音、靜音、顫音輪流），[[if ne .GameServer "none"]]假平台也會檢查授權的格式與局數；[[end]]真的聲音要在玩聚的預覽房間用手機測。
 
 ## 使用者資格與內容邊界
 
@@ -101,7 +113,7 @@
 - 不得加入廣告、追蹤、分析 SDK（Google Analytics、Tag Manager、Facebook Pixel、Hotjar、A/B 測試服務等）；成效數據由平台提供。
 - 不得自行建立點對點連線（WebRTC）、使用 SharedWorker、需要 `unsafe-eval`；多人遊戲要用宣告的遊戲伺服器架構，不得自行改成引擎內建多人連線或 P2P。
 - 不得繞過玩聚的玩家身分（啟動碼）；分數、勝負、經濟不得以畫面端為唯一權威。
-- 遊戲 iframe 沒有付款、麥克風、相機能力：不得自己接金流 SDK、`PaymentRequest`、`getUserMedia`。
+- 遊戲 iframe 沒有付款、麥克風、相機能力：不得自己接金流 SDK、`PaymentRequest`、`getUserMedia`（聲音玩法用 SDK 的音高功能）。
 - 外部載入只限下面「從 CDN 載入」的規則；遊戲伺服器要用 `https://` 或 `wss://`。
 
 ```
@@ -200,8 +212,8 @@ codex exec --skip-git-repo-check -s workspace-write -i art/generated/hero.png "�
 - **存檔**：可信任的分數、進度、勝負不能只存在[[if eq .Client "godot"]] `user://`[[else]] `localStorage`[[end]]（見架構原則 2）；玩家偏好（例如音量）可以存在本機。
 - **多人連線**：照 `docs/ai/PROJECT_CONTEXT.md` 宣告的遊戲伺服器架構；不要用[[if eq .Client "godot"]] Godot 的 ENet、`MultiplayerAPI`、`@rpc`[[else]] WebRTC 或其他點對點連線[[end]]取代它。
 - **物理、AI、關卡產生、卡牌與題目**：多人遊戲中影響分數或勝負的判定都在遊戲伺服器；畫面端只做顯示與預測。
-- **音效**[[if eq .Client "godot"]]（godot-audio）[[end]]：不要自動播放音樂（要等玩家在遊戲裡點一下）；不要用麥克風收音[[if eq .Client "godot"]]（`AudioStreamMicrophone`）[[end]]；要接平台的「遊戲聲音」開關。
-- **輸入與畫面**：不要用指標鎖定（pointer lock），不要自己進入全螢幕（用 SDK 的全螢幕請求）。
+- **音效**[[if eq .Client "godot"]]（godot-audio）[[end]]：不要自動播放音樂（要等玩家在遊戲裡點一下）；不要用麥克風收音[[if eq .Client "godot"]]（`AudioStreamMicrophone`）[[end]]，要用玩家的聲音時用 SDK 的音高功能；要接平台的「遊戲聲音」開關。
+- **輸入與畫面**：可以用指標鎖定（pointer lock）：要在玩家點擊時請求，玩家按 Esc 一定能解除，遊戲要能處理被解除（例如顯示「點一下繼續」）；手機沒有滑鼠，不能只靠它操作。不要自己進入全螢幕（用 SDK 的全螢幕請求）。
 [[- if eq .Client "godot"]]
 - **匯出**：不要開 `thread_support`、不要改匯出設定（見上方「Godot 網頁匯出」）；匯出用 `pt build`。
 [[- end]]

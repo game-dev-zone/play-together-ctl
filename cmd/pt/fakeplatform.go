@@ -87,6 +87,10 @@ type fakeRoom struct {
 	Host   string          // 房主的玩家代號
 	Joined map[string]bool // 兌換過啟動碼的玩家代號
 	Kicked map[string]bool
+	// 音高授權（pitch.policy）最後一次的序號與內容；序號只能遞增，同序號同內容視為重送
+	PitchSeq  int64
+	PitchBody string
+	HasPitch  bool
 }
 
 type fakePlayer struct{ Code, ID, Name string }
@@ -282,6 +286,7 @@ func (f *fakePlatform) handler(panel http.Handler) http.Handler {
 	mux.HandleFunc("GET /v1/game/rooms/{id}/members", f.members)
 	mux.HandleFunc("POST /v1/game/rounds", f.roundReport)
 	mux.HandleFunc("POST /v1/voice/policy", f.voicePolicy)
+	mux.HandleFunc("POST /v1/pitch/policy", f.pitchPolicy)
 	mux.HandleFunc("GET /v1/game/status", f.gameStatus)
 	mux.HandleFunc("GET /dev/launch-code", f.launchCode)
 	mux.HandleFunc("OPTIONS /dev/launch-code", f.launchCode)
@@ -559,6 +564,64 @@ func (f *fakePlatform) voicePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.logLocked(ep, 200, fmt.Sprintf("%s（序號 %d）；本機不實際切換語音", p.Mode, p.Sequence), true)
+	f.write(w, 200, map[string]any{"ok": true})
+}
+
+// pitchPolicy：音高授權。和正式平台相同的檢查：格式、生效時間在現在附近、最多 1 小時、房間開著、局數是目前這一局、
+// 序號遞增（同序號同內容當成重送）。本機不實際分析聲音：畫面端的 SDK 在 pt dev 會送假的音高。
+func (f *fakePlatform) pitchPolicy(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	const ep = "音高授權"
+	body, ok := f.verifyLocked(w, r, ep)
+	if !ok {
+		return
+	}
+	fail := func(code int, errCode, hint string) {
+		msg := errCode
+		if hint != "" {
+			msg += "（" + hint + "）"
+		}
+		f.logLocked(ep, code, msg, true)
+		f.write(w, code, map[string]string{"error": errCode})
+	}
+	var p playtogether.PitchPolicy
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&p); err != nil {
+		fail(400, "bad_policy", "格式不符")
+		return
+	}
+	if err := p.Validate(); err != nil {
+		fail(400, "bad_policy", err.Error())
+		return
+	}
+	nowMs := f.now().Add(f.skew).UnixMilli()
+	if p.EffectiveAtServerMs < nowMs-10_000 || p.EffectiveAtServerMs > nowMs+30_000 || p.ExpiresAtServerMs-p.EffectiveAtServerMs > time.Hour.Milliseconds() {
+		fail(400, "bad_policy_time", "生效時間要在現在前 10 秒到後 30 秒，有效期間最多 1 小時")
+		return
+	}
+	room := f.rooms[p.RoomID]
+	if room == nil || !room.Open {
+		fail(404, "room_not_found", "")
+		return
+	}
+	if p.Epoch != room.Epoch {
+		fail(409, "stale_epoch", fmt.Sprintf("房間目前是第 %d 局；房主重新開始後要用新的局數重新授權", room.Epoch))
+		return
+	}
+	canon, _ := json.Marshal(p)
+	if room.HasPitch && p.Sequence <= room.PitchSeq {
+		if p.Sequence == room.PitchSeq && string(canon) == room.PitchBody {
+			f.logLocked(ep, 200, fmt.Sprintf("序號 %d 重送", p.Sequence), true)
+			f.write(w, 200, map[string]any{"ok": true})
+			return
+		}
+		fail(409, "stale_sequence", fmt.Sprintf("序號要大於上一次的 %d", room.PitchSeq))
+		return
+	}
+	room.HasPitch, room.PitchSeq, room.PitchBody = true, p.Sequence, string(canon)
+	f.logLocked(ep, 200, fmt.Sprintf("授權 %d 位玩家（序號 %d）；本機的畫面端會收到假的音高", len(p.AllowedPlayerIDs), p.Sequence), true)
 	f.write(w, 200, map[string]any{"ok": true})
 }
 
