@@ -16,7 +16,10 @@ var previewErrors = map[string]string{
 	"game_disabled":              "遊戲已停用",
 	"onboarding_required":        "這個玩聚帳號還沒完成成人自我聲明：先在玩聚網站登入並完成首次設定",
 	"too_many_previews":          "同時開著的預覽房間太多了（每人 3 間、每個團隊 5 間）；等舊的到期（1 小時）再開",
-	"preview_server_unavailable": "這個版本有玩聚代管的遊戲伺服器，預覽要等平台啟動伺服器（送審後由審核者啟動，或聯絡平台）；可以先用 pt dev 在本機測試",
+	"preview_server_unavailable": "這個版本有玩聚代管的遊戲伺服器，要送審後才能在預覽啟動伺服器；先用 pt dev 在本機測試，或用 pt upload 送審",
+	"preview_server_starting":    "玩聚正在啟動這個版本的預覽遊戲伺服器（約 30 秒）：稍後再執行一次 pt preview",
+	"no_server_host":             "目前沒有可用的遊戲伺服器主機，請稍後重試或聯絡平台",
+	"server_artifact_not_ready":  "伺服器套件還沒檢查通過（pt status 看狀態），稍後再試",
 	"login_required":             "送審授權已失效：重新執行 pt login",
 }
 
