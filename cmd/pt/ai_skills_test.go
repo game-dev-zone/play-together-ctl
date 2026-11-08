@@ -210,3 +210,20 @@ func TestStoreSkillCodex(t *testing.T) {
 		}
 	}
 }
+
+// 改寫既有遊戲的 skill：先保護原本的程式（git 還原點、新分支、不 push、不替開發者提交他自己的改動）。
+func TestSkillsProtectExistingCode(t *testing.T) {
+	for _, name := range []string{"playtogether-publish", "playtogether-multiplayer"} {
+		raw, err := embedded.ReadFile("templates/skills/" + name + "/SKILL.md")
+		must(t, err)
+		for _, want := range []string{"保護原本的程式", "git switch -c", "git status --porcelain", "不要替他提交", "不要** push", "git diff <原分支>..."} {
+			if !strings.Contains(string(raw), want) {
+				t.Errorf("%s 要提到 %q", name, want)
+			}
+		}
+	}
+	raw, _ := embedded.ReadFile("templates/skills/playtogether-store/SKILL.md")
+	if !strings.Contains(string(raw), "保護原本的程式") {
+		t.Error("playtogether-store 單獨使用時也要先保護原本的程式")
+	}
+}

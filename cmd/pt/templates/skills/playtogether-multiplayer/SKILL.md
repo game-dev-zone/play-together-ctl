@@ -9,6 +9,21 @@ description: 把單機遊戲改成玩聚的多人聯機版本：先和開發者�
 
 最重要的規則：**伺服器決定遊戲狀態**。分數、勝負、輪到誰、計時、隨機結果都在伺服器算；前端只送「操作」（按了什麼、選了什麼），畫面照伺服器回傳的狀態顯示。前端回報的分數或結果不能直接採用。
 
+## 0. 保護原本的程式
+
+1. `git rev-parse --is-inside-work-tree` 確認是不是 git 專案。
+2. **不是 git 專案**：**問開發者**要不要先建立一個還原點。強烈建議，因為接下來會改到原本的程式。開發者同意時：
+   - 先確認 `.gitignore` 排除了私鑰與密鑰（`keys/`、`*.key`、`.env*`）、`node_modules/` 與建置產物；
+   - `git init`、`git add -A`、`git commit -m "改成多人前的原始版本"`；
+   - commit 前用 `git status` 看一次要提交的檔案，有密鑰、密碼檔或很大的檔案就先排除，並告訴開發者。
+
+   開發者不要時照樣繼續，但告訴他：之後的改動沒辦法一鍵還原。
+3. **有還沒提交的改動**（`git status --porcelain` 不是空的）：**問開發者**先自己提交或暫存（stash）。**不要替他提交、stash 或丟棄**這些改動。
+4. **開一個新分支**再改：`git switch -c playtogether-multiplayer`。名稱已經存在時加上 `-2`、`-3`。告訴開發者分支名稱，以及原本的分支（例如 `main`）完全沒動。已經在這個流程開的 `playtogether` 開頭分支上（例如上架時開的），繼續用它，不用再開。
+5. 改的過程中，在這個分支上每完成一個階段就提交一次，訊息寫清楚做了什麼，例如「加上範本遊戲伺服器」「遊戲規則搬到伺服器」「前端改成只送操作」。
+6. **不要** push、不要 force、不要改其他分支、不要改寫歷史（rebase、amend 開發者的 commit）。
+7. 最後告訴開發者怎麼檢查與合併：`git diff <原分支>...playtogether-multiplayer` 看全部改動，滿意後由他自己合併。
+
 ## 1. 讀專案、判斷可不可行
 
 - 讀 `playtogether.json`（`client`、`server`、`template`、`web`、`gameServer`）、`PLAYTOGETHER.md`（有的話）、`docs/content/GAMEPLAY_ECONOMY.md`。

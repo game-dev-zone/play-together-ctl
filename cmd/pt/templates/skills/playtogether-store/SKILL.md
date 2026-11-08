@@ -20,6 +20,8 @@ description: 準備玩聚上架資料（store/）：依專案內容起草 store/
 - 既有的 `store/`：`store/README.md`（格式與規格）、`store/listing.json`、圖片。**開發者已經寫好的內容不要整段改掉**；只補缺的、修錯的，改動前先說明。
 - `art/STYLE.md`（美術風格卡）與 `art/SOURCES.md`（素材來源）。
 
+單獨使用這個 skill 時（不是從 playtogether-publish 呼叫），開始寫檔案前照 playtogether-publish 第 0 步的「保護原本的程式」做：確認是 git 專案、沒有未提交的改動，在新分支（`playtogether-store`）上改，不 push。
+
 ## 2. 起草 `store/listing.json`
 
 格式照 `store/README.md`。範本裡「（請填寫…」和 `TODO` 是還沒填的意思，全部換掉。
