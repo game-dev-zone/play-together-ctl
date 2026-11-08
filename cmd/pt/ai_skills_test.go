@@ -199,3 +199,14 @@ func TestPtStoreSkill(t *testing.T) {
 		}
 	}
 }
+
+// 上架資料 skill：圖示與封面用 Codex 生成（既有遊戲用實際截圖當參考），不能用時才請開發者提供。
+func TestStoreSkillCodex(t *testing.T) {
+	raw, err := embedded.ReadFile("templates/skills/playtogether-store/SKILL.md")
+	must(t, err)
+	for _, want := range []string{"codex --version", "codex login status", "codex exec", "-i store/screenshots/01.png", "-i art/generated/icon.png", "--skip-git-repo-check", "不要用截圖硬裁成圖示"} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("playtogether-store 要提到 %q", want)
+		}
+	}
+}

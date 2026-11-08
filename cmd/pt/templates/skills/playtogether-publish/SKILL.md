@@ -93,7 +93,7 @@ description: 把遊戲上架到玩聚（PlayTogether）：從接上專案（pt i
 
 ## 3. 上架資料（`store/`）
 
-照 `.claude/skills/playtogether-store/SKILL.md`（Codex：`.agents/skills/playtogether-store/SKILL.md`；`pt init` 會放進專案）的步驟做：起草繁中＋英文的 `store/listing.json`、圖示與封面、用 `pt store screenshot` 擷取截圖。開發者已經寫好的內容不要整段改掉。沒有圖片生成工具時，**問開發者**提供圖示（與封面）。
+照 `.claude/skills/playtogether-store/SKILL.md`（Codex：`.agents/skills/playtogether-store/SKILL.md`；`pt init` 會放進專案）的步驟做：起草繁中＋英文的 `store/listing.json`、圖示與封面、用 `pt store screenshot` 擷取截圖。開發者已經寫好的內容不要整段改掉。圖示與封面用 Codex 生成（`codex exec`，以遊戲的實際截圖當參考，步驟在 playtogether-store）；Codex 沒有安裝或沒有登入時，**問開發者**要安裝登入，還是由他提供圖示（與封面）。
 
 playtogether-store 最後說「不要自己執行 `pt upload`」：開發者說「幫我上架」就是明確要求，做完上架資料後繼續第 4 步，不用再問。
 
