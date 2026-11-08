@@ -25,6 +25,24 @@ go install github.com/game-dev-zone/play-together-ctl/cmd/pt@latest
 
 ## 五分鐘開始
 
+### 交給 AI 助手（建議）
+
+```sh
+mkdir my-party-game && cd my-party-game
+claude                           # Claude Code
+```
+
+在 Claude Code 裡依序輸入（`!` 會在終端機執行指令，並把結果放進對話）：
+
+```
+!pt                              # 讓 Claude 讀到 pt 的總覽與指令（三種開始方式、玩聚代管、pt dev）
+!pt skills install               # 安裝玩聚的 skill：playtogether-new（開新遊戲）、playtogether-publish（上架到送審）
+```
+
+然後說「幫我做一款玩聚遊戲：<你想做的玩法>」。Claude 會先問你單人或多人、伺服器放哪裡（建議交給玩聚代管）等設定，用 `pt new .` 在這個資料夾建立專案、讀專案裡的平台規則，做出可以試玩的原型；你在另一個終端機執行 `pt dev` 試玩。已經有遊戲時，在遊戲資料夾做同樣兩步，然後說「幫我上架到玩聚」。
+
+### 自己來
+
 ```sh
 pt new                           # 逐步選擇名稱、畫面（網頁或 Godot）、多人與遊戲伺服器、方向、AI 開發模式
 cd my-party-game
@@ -308,7 +326,7 @@ claude
 
 | 指令 | 說明 |
 | --- | --- |
-| `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-game-server playtogether-managed\|external\|none] [-hosting playtogether] [-mode standard\|studio\|lightweight\|custom] [-skills none\|core\|full] [-ai studios] [-platform 平台網址] [-y] [名稱]` | 建立新專案（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定、AI 工作流程）；`-orientation` 選直式、橫式或兩者都支援（預設直式）；`-hosting playtogether` 把 Go 遊戲伺服器交給玩聚代管（`pt upload` 連同伺服器一起上傳，不用自己部署；要平台開通，在終端機會詢問） |
+| `pt new [-client web\|godot] [-server go\|node] [-orientation portrait\|landscape\|any] [-game-server playtogether-managed\|external\|none] [-hosting playtogether] [-mode standard\|studio\|lightweight\|custom] [-skills none\|core\|full] [-ai studios] [-platform 平台網址] [-y] [名稱\|.]` | 建立新專案（`.`：在目前的空資料夾建立，名稱預設用資料夾名稱，`-name` 指定）（前端＋遊戲伺服器，已接好 SDK、模擬模式、跨來源設定、AI 工作流程）；`-orientation` 選直式、橫式或兩者都支援（預設直式）；`-hosting playtogether` 把 Go 遊戲伺服器交給玩聚代管（`pt upload` 連同伺服器一起上傳，不用自己部署；要平台開通，在終端機會詢問） |
 | `pt dev [-addr 127.0.0.1:8090] [-players N] [-no-server] [-site 網址] [-mock] [-smoke]` | 本機開發（Godot 專案會先匯出）：啟動範本／參考伺服器與本機假平台（驗證簽章、控制面板），開啟玩家分頁，預設多人專案 2 個、單人專案（`multiplayer.enabled: false`）1 個，`-players` 可以明確指定；`-no-server` 只啟動假平台（接自己的遊戲伺服器）；`-mock` 舊的模擬模式；`-smoke` 啟動驗證：啟動、確認首頁與 SDK 載入得到後結束 |
 | `pt verify server [-json] [-start-action 操作] [-round-wait 時間]` | 用本機假平台自動驗證範本伺服器和玩聚平台的接口（只支援 `playtogether-managed`） |
 | `pt build` | Godot 專案：用無頭模式匯出網頁版到 `build/` 並放上 SDK 轉接檔（網頁專案不需要） |
@@ -317,7 +335,7 @@ claude
 | `pt login -register` | 另外取得建立遊戲與管理金鑰的權限（團隊擁有者、管理者在瀏覽器同意；7 天，和送審授權分開保存） |
 | `pt init [-name 代號] [-web 資料夾] [-client web\|godot] [-game-server external\|none] [-profile …] [-y]` | 把**不是 `pt new` 建立的既有專案**接上玩聚：只新增 `playtogether.json`、`docs/content/` 的宣告文件、`store/` 上架資料範本、準備上架資料的 AI skill（`.claude/skills/`、`.agents/skills/` 的 `playtogether-store`）與 `.gitignore` 的 `keys/`，已經存在的檔案不覆寫、不動原本的程式；已經接上玩聚的專案再執行只補上缺少的 skill 與 `store/` 說明。上傳資料夾自動找有 `index.html` 的 `web`、`dist`、`build`、`public`；SDK 由你自己管理（`pt sdk export`）。之後和新專案一樣 `pt register`、`pt upload` |
 | `pt add server -server go\|node [-hosting playtogether]` | `pt init` 接入的既有專案（例如單機遊戲）加上玩聚的範本遊戲伺服器，準備改成多人聯機：寫入 `server/`（範本＋SDK 的遊戲伺服器套件）與網頁前端的連線小工具 `multiplayer/playtogether-net.js`，`playtogether.json` 改成範本伺服器（之後 `pt dev`、`pt verify server` 都適用，`pt sdk update` 只更新伺服器的 SDK）；不動原本的遊戲程式。遊戲規則怎麼搬見 `playtogether-multiplayer` skill。適合回合制、問答、派對類；即時動作與物理同步不適合直接改 |
-| `pt skills install`／`pt skills uninstall` | 把「上架到玩聚」skill（`playtogether-publish`）裝到 `~/.claude/skills/` 與 `~/.agents/skills/`：之後在任何遊戲資料夾打開 Claude Code 或 Codex，說「幫我上架到玩聚」，它會從 `pt init` 一路做到送審，只在登入授權等需要你本人時停下來。pt 更新後重跑會更新 skill |
+| `pt skills install`／`pt skills uninstall` | 把玩聚的 skill 裝到 `~/.claude/skills/` 與 `~/.agents/skills/`（`pt install skills` 也可以）：`playtogether-new`（空資料夾說「幫我做一款玩聚遊戲」：先問設定、`pt new .`、讀平台規則、做出可試玩的原型）、`playtogether-publish`（說「幫我上架到玩聚」：從 `pt init` 一路做到送審，只在登入授權等需要你本人時停下來）。pt 更新後重跑會更新 skill |
 | `pt register [-title 名稱]` | 建立草稿遊戲（代號是 `playtogether.json` 的 `name`）並登記金鑰：沒有私鑰會自動產生、只送公鑰，金鑰 ID 寫回 `playtogether.json`；上次沒收到回應時重新執行會接手已建立的遊戲 |
 | `pt upload -version <版本> [-notes 說明] [-no-build] [-orientation portrait\|landscape\|any]` | 上傳版本（設定從 `playtogether.json` 讀，包括畫面方向；Godot 專案先匯出；上傳前自動檢查） |
 | `pt store screenshot [-url 網址] [-wait 5s] [-n 張數] [-interval 3s] [-locale en] [-o 資料夾] [-replace] [-orientation portrait\|landscape] [-chrome 路徑]` | 用本機 Chrome／Chromium 無頭模式擷取實際遊戲畫面，存成上架截圖（`store/screenshots/`，尺寸剛好符合規格、不覆寫既有截圖） |

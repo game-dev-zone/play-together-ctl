@@ -1,7 +1,7 @@
 package main
 
-// pt skills install：把 pt 的「上架到玩聚」skill 裝到使用者層級（Claude Code：~/.claude/skills；Codex：~/.agents/skills），
-// 在任何遊戲資料夾打開 AI 助手說「幫我上架到玩聚」就會照它做（包含還沒 pt init 的專案）。
+// pt skills install：把 pt 的 skill 裝到使用者層級（Claude Code：~/.claude/skills；Codex：~/.agents/skills）：
+// playtogether-new（在空資料夾開一款新遊戲）、playtogether-publish（上架到送審，包含還沒 pt init 的專案）。
 // 只裝 globalSkills 列出的 skill；其他 pt 的 skill（例如 playtogether-store）由 pt init／pt new 放進專案。
 // 這些檔案由 pt 管理：重跑會更新成這個 pt 內嵌的版本；pt skills uninstall 移除。
 
@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-var globalSkills = []string{"playtogether-publish"}
+var globalSkills = []string{"playtogether-new", "playtogether-publish"}
 
 // globalSkillFiles 回傳使用者層級要寫的檔案（家目錄內路徑 → 內容）。
 func globalSkillFiles() (map[string][]byte, error) {
@@ -79,10 +79,13 @@ func cmdSkills(args []string) error {
 		changed++
 	}
 	if changed == 0 {
-		fmt.Println("上架 skill 已經是這個 pt 的版本，沒有改任何檔案")
+		fmt.Println("玩聚的 skill 已經是這個 pt 的版本，沒有改任何檔案")
 	} else {
-		fmt.Println("已安裝上架 skill（" + strings.Join(globalSkills, "、") + "；pt 更新後重跑這個指令會更新它）")
+		fmt.Println("已安裝玩聚的 skill（" + strings.Join(globalSkills, "、") + "；pt 更新後重跑這個指令會更新它）")
 	}
-	fmt.Println("\n在遊戲的資料夾打開 Claude Code（或 Codex），說「幫我上架到玩聚」，它會從 pt init 一路做到送審。")
+	fmt.Println("\n接下來在 Claude Code（或 Codex）說：")
+	fmt.Println("  空資料夾：「幫我做一款玩聚遊戲：<你想做的玩法>」→ 照 playtogether-new 建立專案（多人遊戲建議交給玩聚代管伺服器）")
+	fmt.Println("  已經有遊戲：「幫我上架到玩聚」→ 照 playtogether-publish 從 pt init 一路做到送審")
+	fmt.Println("Claude Code 已經開著時，沒看到新的 skill 就重新開一次對話。")
 	return nil
 }

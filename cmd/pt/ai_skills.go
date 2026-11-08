@@ -101,6 +101,9 @@ var ptSkillRoots = []string{".claude/skills", ".agents/skills"}
 func ptSkillFiles() (map[string][]byte, error) {
 	files := map[string][]byte{}
 	err := fs2Walk("templates/skills", func(rel string, content []byte) error {
+		if strings.HasPrefix(rel, "playtogether-new/") {
+			return nil // 開新遊戲的 skill 只裝在使用者層級（pt skills install），專案建好後用不到
+		}
 		for _, root := range ptSkillRoots {
 			files[path.Join(root, rel)] = content
 		}

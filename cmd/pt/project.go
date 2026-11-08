@@ -172,6 +172,7 @@ func cmdNew(args []string) error {
 	hosting := fs.String("hosting", "", "遊戲伺服器由誰執行：不填＝你自己部署；playtogether＝交給玩聚代管（只限 -server go，要平台開通；在終端機會詢問）")
 	table := fs.String("table-game", "none", "牌桌玩法：none（預設）、card、poker、mahjong、dice、board、slot、roulette、baccarat、other（是否能上架由玩聚平台審核決定）")
 	yes := fs.Bool("y", false, "不詢問，沒指定的項目用預設值")
+	nameFlag := fs.String("name", "", "pt new . 時的專案名稱（預設用資料夾名稱）")
 	_ = fs.Parse(reorder(args))
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
@@ -263,7 +264,16 @@ func cmdNew(args []string) error {
 
 	// 終端機裡逐步詢問沒用參數指定的項目
 	name := fs.Arg(0)
-	if name != "" {
+	root := name // 寫入的資料夾；pt new . 是目前的資料夾
+	if name == "." {
+		// 在目前的空資料夾建立（例如先開好資料夾、在裡面打開 AI 助手）：專案名稱預設用資料夾名稱
+		if name, err = newHere(*nameFlag); err != nil {
+			return err
+		}
+		root = "."
+	} else if *nameFlag != "" {
+		return errors.New("-name 只用在 pt new .（其他情況把名稱寫在 pt new 後面）")
+	} else if name != "" {
 		if err := checkName(name); err != nil {
 			return err
 		}
@@ -280,6 +290,9 @@ func cmdNew(args []string) error {
 		}
 		if name == "" {
 			return nil
+		}
+		if root != "." {
+			root = name
 		}
 	}
 	if name == "" {
@@ -364,8 +377,16 @@ func cmdNew(args []string) error {
 			manifest.remove(rel)
 		}
 	}
+	if root == "." {
+		// 目前的資料夾：不覆寫任何既有檔案（檢查完才開始寫）
+		for rel := range files {
+			if _, err := os.Stat(filepath.FromSlash(rel)); err == nil {
+				return fmt.Errorf("%s 已經存在：pt new . 不覆寫既有檔案", rel)
+			}
+		}
+	}
 	for rel, content := range files {
-		dst := filepath.Join(name, filepath.FromSlash(rel))
+		dst := filepath.Join(root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
@@ -373,10 +394,10 @@ func cmdNew(args []string) error {
 			return err
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(name, "keys"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "keys"), 0o700); err != nil {
 		return err
 	}
-	if err := manifest.save(name); err != nil {
+	if err := manifest.save(root); err != nil {
 		return err
 	}
 	fmt.Printf("已建立 %s（畫面 %s、伺服器 %s、%s、%s、內容邊界 %s、AI 模式 %s、SDK %s）\n\n", name, *client, *server, orientationLabel[*orientation], gameServerLabel[*gameServer], profileLabel[pl.Content.Profile], aiModeLabel[aiMode], sdkVersion())
@@ -384,7 +405,9 @@ func cmdNew(args []string) error {
 		fmt.Printf("需要玩聚平台人工審核（可以開發與送審，不代表已批准）：%s\n\n", strings.Join(review, "；"))
 	}
 	fmt.Println("下一步：")
-	fmt.Printf("  cd %s\n", name)
+	if root != "." {
+		fmt.Printf("  cd %s\n", name)
+	}
 	if *client == "godot" {
 		fmt.Printf("  pt dev        # 匯出 Godot 網頁版，啟動本機假平台並打開%s與控制面板（需要 Godot 4.3 以上與網頁匯出範本）\n", devTabsLabel[*gameServer != "none"])
 		if studios {
@@ -414,6 +437,33 @@ func cmdNew(args []string) error {
 	return nil
 }
 
+// newHere：pt new . 的檢查。目前的資料夾要是空的（隱藏檔如 .git、.claude 可以有），名稱預設用資料夾名稱。
+func newHere(name string) (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(projectFile); err == nil {
+		return "", errors.New("這個資料夾已經是玩聚專案（有 playtogether.json）")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".") {
+			return "", fmt.Errorf("目前的資料夾不是空的（有 %s）：pt new . 只能在空資料夾使用；已經有遊戲請用 pt init", e.Name())
+		}
+	}
+	if name == "" {
+		name = initName(dir)
+	}
+	if !namePattern.MatchString(name) {
+		return "", fmt.Errorf("專案名稱 %q 不符合格式（小寫英文、數字與連字號，3–40 字，英文開頭）：用 -name 指定，例如 pt new . -name my-party-game", name)
+	}
+	return name, nil
+}
+
 // newWizard 逐步詢問專案名稱、畫面、多人與遊戲伺服器、伺服器語言、方向、內容分級、AI 開發模式，最後確認。回傳空名稱表示開發者選擇不建立。
 var (
 	orientationLabel = map[string]string{"portrait": "直式", "landscape": "橫式", "any": "直式橫式都支援"}
@@ -422,7 +472,7 @@ var (
 	gameServerLabel  = map[string]string{"playtogether-managed": "多人（玩聚範本伺服器）", "external": "多人（自己的遊戲伺服器）", "none": "不需要遊戲伺服器"}
 )
 
-const newUsage = "用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-game-server playtogether-managed|external|none] [-profile general|moderate|strong|custom] [-table-game none|card|poker|mahjong|dice|board|slot|roulette|baccarat|other] [-mode standard|studio|lightweight|custom] [-skills none|core|full] [-ai studios|none] <專案名稱>"
+const newUsage = "用法：pt new [-client web|godot] [-server go|node] [-orientation portrait|landscape|any] [-game-server playtogether-managed|external|none] [-profile general|moderate|strong|custom] [-table-game none|card|poker|mahjong|dice|board|slot|roulette|baccarat|other] [-mode standard|studio|lightweight|custom] [-skills none|core|full] [-ai studios|none] <專案名稱>（或 . 在目前的空資料夾建立）"
 
 func newWizard(name string, client, server, orientation, gameServer, hosting, profile *string, cp **contentProfile, table string, aiMode, ai, skills *string, set map[string]bool, ccgs, gds ccgsManifest, checkName func(string) error) (string, error) {
 	var err error

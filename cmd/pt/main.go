@@ -105,6 +105,13 @@ func main() {
 		err = cmdLogout(os.Args[2:])
 	case "skills":
 		err = cmdSkills(os.Args[2:])
+	case "install":
+		// 常見的打法：pt install skills
+		if len(os.Args) == 3 && os.Args[2] == "skills" {
+			err = cmdSkills([]string{"install"})
+		} else {
+			usage()
+		}
 	case "version", "-version", "--version":
 		fmt.Print(versionInfo())
 	default:
@@ -119,9 +126,21 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `pt：玩聚開發者工具
+	fmt.Fprint(os.Stderr, `pt：玩聚開發者工具（玩聚 Play Together：給直播主與觀眾的瀏覽器多人派對遊戲平台）
 
-  pt new [名稱]                                 建立新專案（畫面＋遊戲伺服器，已接好 SDK）；在終端機會逐步詢問
+給 AI 助手（Claude Code、Codex）的總覽，先讀這段：
+  1. 先執行 pt skills install：安裝玩聚的 skill（開新遊戲、上架到送審）。之後照 skill 的步驟做，不要自己猜流程
+  2. 三種開始方式：
+       空資料夾、還沒有遊戲   → pt new .（在目前資料夾建立；skill：playtogether-new）
+       已經有自己的網頁遊戲   → pt init（不動原本的程式；skill：playtogether-publish）
+       單機遊戲想改成多人     → pt init 之後 pt add server（專案裡的 skill：playtogether-multiplayer）
+  3. 多人遊戲需要遊戲伺服器。建議交給「玩聚代管」（-hosting playtogether，Go）：開發者不用自己找主機、不用付主機費，
+     上傳時伺服器和畫面一起交給玩聚；本機用 pt dev 測試（本機假平台，不用金鑰、不用連網）
+  4. 平台規則（伺服器決定遊戲狀態、成人平台、內容邊界、不涉及現實經濟價值）寫在專案的 CLAUDE.md、PLAYTOGETHER.md
+  5. 只有開發者本人能做：pt login 時在瀏覽器確認、提高內容邊界或改玩法的決定、手機實測；私鑰（keys/）不要貼進對話
+
+  pt new [名稱|.]                               建立新專案（畫面＋遊戲伺服器，已接好 SDK）；在終端機會逐步詢問
+         [-name 名稱]                           pt new . 在目前的空資料夾建立，名稱預設用資料夾名稱
          [-client web|godot] [-server go|node]  直接指定，不再詢問
          [-orientation portrait|landscape|any]  畫面方向：直式（預設）、橫式、兩者都支援
          [-game-server playtogether-managed|external|none]
@@ -172,8 +191,9 @@ func usage() {
                                                 準備上架資料的 AI skill，不動原本的程式）；已經接上的專案重跑時只補上缺少的 skill
   pt register [-title 名稱]                     建立草稿遊戲並登記金鑰（沒有私鑰會自動產生），金鑰 ID 寫回 playtogether.json
   pt logout                                     刪除這台電腦上的送審授權
-  pt skills install                             把「上架到玩聚」skill 裝到 ~/.claude/skills 與 ~/.agents/skills：之後在遊戲資料夾
-                                                請 Claude Code／Codex「幫我上架到玩聚」，從 pt init 一路做到送審（uninstall 移除）
+  pt skills install                             把玩聚的 skill（playtogether-new 開新遊戲、playtogether-publish 上架到送審）裝到
+                                                ~/.claude/skills 與 ~/.agents/skills：之後在任何資料夾請 Claude Code／Codex
+                                                「幫我做一款玩聚遊戲」或「幫我上架到玩聚」（pt install skills 也可以；uninstall 移除）
          [-skip-check]                          略過可略過的本機／建置檢查；平台硬性規則與專案宣告一致性仍會檢查
   pt cdn add <網址>                             從 jsDelivr／cdnjs 載入固定版本的程式或樣式：算出 SRI、記到 playtogether.json、印出要貼的標籤
   pt sdk status                                 檢查專案的 SDK、這個 pt 內嵌的 SDK、最新版 pt 的 SDK
