@@ -24,6 +24,16 @@ signal insets_changed(insets: Dictionary)
 signal voice_state_changed(state: Dictionary)
 ## 某位玩家正在說話，level 為 0–1 的音量，可用來做角色說話動畫
 signal speaking(player_id: String, level: float)
+## 平台點數的兌換結果（purchase 的回覆）：status 是 completed、cancelled 或 failed。
+## 只是提示：遊戲伺服器要向平台查兌換狀態（GetPurchase），是 completed 才給玩家外觀
+signal purchase_result(purchase_id: String, status: String)
+## 音高玩法（pitch_start 之後）：平台開始分析
+signal pitch_started
+## 音高分析停止：reason 是 game、user、denied、not_authorized、mic_denied、unsupported、background、timeout、busy、closed
+signal pitch_stopped(reason: String)
+## 音高（每秒 15–20 次，只在玩家正在說話時）：voiced、hz、note（MIDI，69 = A4）、cents、confidence、seq、t。
+## 沒有聲音時 voiced 是 false，hz、note、cents 是 null。只能當娛樂分數，不能用於任何玩家權益
+signal pitch_changed(payload: Dictionary)
 
 ## "platform"：在玩聚平台中；"mock"：模擬模式
 var mode: String = ""
@@ -120,6 +130,61 @@ func request_speak() -> void:
 		_bridge.requestSpeak()
 
 
+## 平台點數的兌換：purchase_id 是遊戲伺服器建立的兌換意圖（pur_…）。平台外殼顯示確認畫面，結果用 purchase_result 送回。
+## 模擬模式（不是網頁版）一律 failed
+func purchase(purchase_id: String) -> void:
+	if _bridge:
+		_bridge.purchase(purchase_id)
+	else:
+		purchase_result.emit.call_deferred(purchase_id, "failed")
+
+
+## 音高玩法：請平台開始分析這位玩家的音高。遊戲伺服器要先送 pitch.policy 授權，玩家要在平台畫面同意。
+## 模擬模式（不是網頁版）產生假資料：滑音 220→440 Hz、斷音、穩定 440 Hz 加抖音、低信心
+func pitch_start() -> void:
+	if _bridge:
+		_bridge.pitchStart()
+	elif not _mock_pitch:
+		_mock_pitch = true
+		_mock_pitch_t = 0.0
+		_mock_pitch_next = 0.0
+		_mock_pitch_seq = 0
+		pitch_started.emit.call_deferred()
+
+
+func pitch_stop() -> void:
+	if _bridge:
+		_bridge.pitchStop()
+	elif _mock_pitch:
+		_mock_pitch = false
+		pitch_stopped.emit.call_deferred("game")
+
+
+var _mock_pitch := false
+var _mock_pitch_t := 0.0
+var _mock_pitch_next := 0.0
+var _mock_pitch_seq := 0
+
+
+func _process(delta: float) -> void:
+	if not _mock_pitch:
+		return
+	_mock_pitch_t += delta
+	if _mock_pitch_t < _mock_pitch_next:
+		return
+	_mock_pitch_next = _mock_pitch_t + 0.05
+	var phase := fmod(_mock_pitch_t, 6.0)
+	var frame := {"playerId": "mock-player", "sessionId": "mock", "seq": _mock_pitch_seq, "t": _mock_pitch_t * 1000.0,
+		"voiced": false, "hz": null, "note": null, "cents": null, "confidence": 0.1}
+	_mock_pitch_seq += 1
+	if (phase < 2.0) or (phase >= 2.6 and phase < 5.0):
+		var hz: float = 220.0 * pow(2.0, phase / 2.0) if phase < 2.0 else 440.0 * pow(2.0, sin(phase * TAU * 5.0) * 15.0 / 1200.0)
+		var exact: float = 69.0 + 12.0 * log(hz / 440.0) / log(2.0)
+		var note: int = roundi(exact)
+		frame.merge({"voiced": true, "hz": hz, "note": note, "cents": clampf((exact - note) * 100.0, -50.0, 50.0), "confidence": 0.92}, true)
+	pitch_changed.emit(frame)
+
+
 func _init_mock() -> void:
 	var bytes: PackedByteArray = Crypto.new().generate_random_bytes(16)
 	_apply({
@@ -178,3 +243,12 @@ func _on_event(args: Array) -> void:
 			voice_state_changed.emit(payload)
 		"speaking":
 			speaking.emit(str(payload.get("playerId", "")), float(payload.get("level", 0.0)))
+		"purchase_result":
+			purchase_result.emit(str(payload.get("purchaseId", "")), str(payload.get("status", "failed")))
+		"pitch_state":
+			if str(payload.get("state", "")) == "started":
+				pitch_started.emit()
+			else:
+				pitch_stopped.emit(str(payload.get("reason", "")))
+		"pitch":
+			pitch_changed.emit(payload)

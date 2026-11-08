@@ -86,6 +86,9 @@ type LaunchExchange struct {
 	// HostPlayerID 是平台房主的假名 ID。遊戲的房主（開始遊戲、設定）請以此為準：
 	// 平台的踢人、重新開始也是這個人操作。房主可能還沒進遊戲。
 	HostPlayerID string `json:"hostPlayerId"`
+	// Entitlements 是這位玩家在這款遊戲擁有的永久解鎖 SKU（平台點數，docs/points.md）。
+	// 平台是權益的唯一來源：不要快取超過一個房間的時間
+	Entitlements []string `json:"entitlements,omitempty"`
 }
 
 // APIError 是平台 API 回傳的錯誤。
@@ -124,13 +127,22 @@ func (c *Client) post(ctx context.Context, path string, body any, idempotencyKey
 }
 
 func (c *Client) do(ctx context.Context, method, path string, data []byte, idempotencyKey string, out any) error {
+	return c.doQuery(ctx, method, path, nil, data, idempotencyKey, out)
+}
+
+// doQuery 和 do 相同，另外帶查詢字串（查詢字串也在簽章範圍內）。
+func (c *Client) doQuery(ctx context.Context, method, path string, query url.Values, data []byte, idempotencyKey string, out any) error {
 	now := time.Now
 	if c.Now != nil {
 		now = c.Now
 	}
-	headers := SignRequest(SignableRequest{Method: method, Path: path, Body: data},
+	headers := SignRequest(SignableRequest{Method: method, Path: path, Query: query, Body: data},
 		c.KeyID, c.PrivateKey, now().UnixMilli(), NewNonce())
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, bytes.NewReader(data))
+	target := strings.TrimRight(c.BaseURL, "/") + path
+	if len(query) > 0 {
+		target += "?" + query.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -209,6 +221,65 @@ func (c *Client) SendVoicePolicy(ctx context.Context, p VoicePolicy) error {
 	}
 	key := fmt.Sprintf("voice:%s:%d", p.RoomID, p.Sequence)
 	return c.post(ctx, "/v1/voice/policy", p, key, nil)
+}
+
+// PitchPolicy 是遊戲伺服器送給平台的音高授權（docs/voice-chat.md「三之一」），和發言規則分開。
+// Epoch 必須是房間目前的局數（兌換啟動碼回傳的 epoch；房主重新開始後要重新授權）。
+// 第一版 Mode 只有 "ptt"（只在玩家有發言權且正在說話時分析）、Audience 只有 "self"（只給唱歌者自己的畫面）。
+// 有效期間最多 1 小時；名單 1–64 人。
+type PitchPolicy struct {
+	RoomID              string   `json:"roomId"`
+	GameInstanceID      string   `json:"gameInstanceId"`
+	Epoch               int      `json:"epoch"`
+	Sequence            int64    `json:"sequence"`
+	AllowedPlayerIDs    []string `json:"allowedPlayerIds"`
+	Mode                string   `json:"mode"`
+	Audience            string   `json:"audience"`
+	EffectiveAtServerMs int64    `json:"effectiveAtServerMs"`
+	ExpiresAtServerMs   int64    `json:"expiresAtServerMs"`
+}
+
+// Validate 和 packages/protocol 的 pitchPolicySchema 規則相同。
+func (p PitchPolicy) Validate() error {
+	if p.RoomID == "" || p.GameInstanceID == "" {
+		return errors.New("roomId 與 gameInstanceId 必填")
+	}
+	if p.Epoch < 0 || p.Sequence < 0 {
+		return errors.New("epoch 與 sequence 不得為負數")
+	}
+	if p.EffectiveAtServerMs <= 0 || p.ExpiresAtServerMs <= p.EffectiveAtServerMs {
+		return errors.New("expiresAtServerMs 必須晚於 effectiveAtServerMs")
+	}
+	if p.Mode != "ptt" {
+		return fmt.Errorf("未知的模式：%q（目前只有 ptt）", p.Mode)
+	}
+	if p.Audience != "self" {
+		return fmt.Errorf("未知的對象：%q（目前只有 self）", p.Audience)
+	}
+	n := len(p.AllowedPlayerIDs)
+	if n < 1 || n > 64 {
+		return errors.New("名單要 1–64 人")
+	}
+	seen := make(map[string]bool, n)
+	for _, id := range p.AllowedPlayerIDs {
+		if id == "" || seen[id] {
+			return errors.New("名單不得為空字串或重複")
+		}
+		seen[id] = true
+	}
+	return nil
+}
+
+// SendPitchPolicy 送出音高授權；同一房間同一序號重送不會重複執行。
+func (c *Client) SendPitchPolicy(ctx context.Context, p PitchPolicy) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	if c.Mock {
+		return nil
+	}
+	key := fmt.Sprintf("pitch:%s:%d", p.RoomID, p.Sequence)
+	return c.post(ctx, "/v1/pitch/policy", p, key, nil)
 }
 
 // RoomMembers 是房間目前的狀態：是否開放、局數，以及每位成員是否被房主踢出。
