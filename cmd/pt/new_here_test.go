@@ -89,7 +89,7 @@ func TestGlobalSkillsIncludeNew(t *testing.T) {
 		}
 	}
 	raw, _ := embedded.ReadFile("templates/skills/playtogether-new/SKILL.md")
-	for _, want := range []string{"name: playtogether-new", "pt new .", "玩聚代管", "CLAUDE.md", "make verify", "playtogether-publish"} {
+	for _, want := range []string{"name: playtogether-new", "pt new .", "玩聚代管", "CLAUDE.md", "make verify", "playtogether-publish", "依類型建議做法", "AVG"} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("playtogether-new 要提到 %q", want)
 		}
