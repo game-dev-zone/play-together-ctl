@@ -436,10 +436,11 @@ func TestNoKeywordDetection(t *testing.T) {
 // 平台與安全架構硬性規則：私鑰字串、付款、麥克風。
 func TestSecurityHardRules(t *testing.T) {
 	for name, src := range map[string]string{
-		"私鑰":  "const k = `-----BEGIN PRIVATE KEY-----\nMC4C\n-----END PRIVATE KEY-----`;",
-		"付款":  "new PaymentRequest([], {});",
-		"金流":  `import("https://js.stripe.com/v3/")`,
-		"麥克風": "navigator.mediaDevices.getUserMedia({audio: true});",
+		"私鑰":   "const k = `-----BEGIN PRIVATE KEY-----\nMC4C\n-----END PRIVATE KEY-----`;",
+		"付款":   "new PaymentRequest([], {});",
+		"金流":   `import("https://js.stripe.com/v3/")`,
+		"麥克風":  "navigator.mediaDevices.getUserMedia({audio: true});",
+		"語音辨識": "const rec = new (window.SpeechRecognition || window.webkitSpeechRecognition)();",
 	} {
 		dir := t.TempDir()
 		must(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte(`<script src="playtogether-sdk.iife.js"></script>`), 0o644))

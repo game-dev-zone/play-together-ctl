@@ -75,7 +75,8 @@ type fakePlatform struct {
 	seq      int
 	polls    map[string][]time.Time // 房號 → 最近幾次查成員的時間
 	now      func() time.Time
-	ai       http.Handler // 本機 AI 閘道（ai_services.go）；nil 時 /v1/ai/ 回 404
+	ai       http.Handler           // 本機 AI 閘道（ai_services.go）；nil 時 /v1/ai/ 回 404
+	speech   map[string]*fakeSpeech // 玩家代號 → 語音指令的狀態（fakespeech.go）
 	// serverURL：代管專案在本機的遊戲伺服器網址；發啟動碼時一起給畫面（SDK 放進 launch.serverUrl），和正式平台一樣
 	serverURL string
 }
@@ -91,6 +92,10 @@ type fakeRoom struct {
 	PitchSeq  int64
 	PitchBody string
 	HasPitch  bool
+	// 語音指令授權（speech.policy）：最後一次的內容（fakespeech.go）
+	Speech      *playtogether.SpeechPolicy
+	SpeechBody  string
+	speechMatch map[string]speechMatch // 詞彙表展開後的對照，用到時才建立
 }
 
 type fakePlayer struct{ Code, ID, Name string }
@@ -287,6 +292,9 @@ func (f *fakePlatform) handler(panel http.Handler) http.Handler {
 	mux.HandleFunc("POST /v1/game/rounds", f.roundReport)
 	mux.HandleFunc("POST /v1/voice/policy", f.voicePolicy)
 	mux.HandleFunc("POST /v1/pitch/policy", f.pitchPolicy)
+	mux.HandleFunc("POST /v1/speech/policy", f.speechPolicy)
+	mux.HandleFunc("GET /dev/speech", f.devSpeech)
+	mux.HandleFunc("OPTIONS /dev/speech", f.devSpeech)
 	mux.HandleFunc("GET /v1/game/status", f.gameStatus)
 	mux.HandleFunc("GET /dev/launch-code", f.launchCode)
 	mux.HandleFunc("OPTIONS /dev/launch-code", f.launchCode)
@@ -691,6 +699,8 @@ type fakeState struct {
 		Host   bool   `json:"host"`
 		Joined bool   `json:"joined"`
 		Kicked bool   `json:"kicked"`
+		// 語音指令："listening"（畫面正在聽）、"allowed"（已授權、畫面還沒開始聽）或空字串
+		Speech string `json:"speech"`
 	} `json:"players"`
 	Down        bool       `json:"down"`
 	Disabled    bool       `json:"disabled"`
@@ -706,6 +716,13 @@ func (f *fakePlatform) state(after int) fakeState {
 	s.Room.ID, s.Room.Epoch, s.Room.Open = f.room.ID, f.room.Epoch, f.room.Open
 	for _, code := range f.order {
 		p := f.players[code]
+		speech := ""
+		if f.speechAllowedLocked(code) {
+			speech = "allowed"
+			if f.speechListeningLocked(code) {
+				speech = "listening"
+			}
+		}
 		s.Players = append(s.Players, struct {
 			Code   string `json:"code"`
 			ID     string `json:"id"`
@@ -713,7 +730,8 @@ func (f *fakePlatform) state(after int) fakeState {
 			Host   bool   `json:"host"`
 			Joined bool   `json:"joined"`
 			Kicked bool   `json:"kicked"`
-		}{code, p.ID, p.Name, f.room.Host == code, f.room.Joined[code], f.room.Kicked[code]})
+			Speech string `json:"speech"`
+		}{code, p.ID, p.Name, f.room.Host == code, f.room.Joined[code], f.room.Kicked[code], speech})
 	}
 	s.Down, s.Disabled, s.SkewSeconds = f.down, f.disabled, int(f.skew.Seconds())
 	if ps := f.polls[f.room.ID]; len(ps) >= 2 {

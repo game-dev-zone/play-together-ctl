@@ -73,6 +73,31 @@
     </div>
   </section>
 
+  <section style="margin-bottom:12px">
+    <h2>語音指令</h2>
+    <p class="muted" style="margin:0 0 8px">本機不用麥克風：在這裡輸入一句話，當成那位玩家說的辨識結果。遊戲伺服器要先用 speech.policy 授權，遊戲畫面要先呼叫 speech.start。</p>
+    <div class="row">
+      <select id="say-player" aria-label="玩家"></select>
+      <input id="say-text" type="text" maxlength="100" placeholder="例如：四個五" aria-label="要說的話" style="flex:1; min-width:140px">
+      <button id="say-send">說</button>
+      <button id="say-silent" title="模擬按住說話但沒聽到東西（空的結果）">沒聽到</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <select id="say-reason" aria-label="停止原因">
+        <option value="denied">玩家不同意（denied）</option>
+        <option value="mic_denied">麥克風被拒（mic_denied）</option>
+        <option value="unsupported">裝置不支援（unsupported）</option>
+        <option value="user">玩家按停止（user）</option>
+        <option value="background">切到背景（background）</option>
+        <option value="timeout">逾時（timeout）</option>
+        <option value="busy">忙碌（busy）</option>
+        <option value="closed">房間結束（closed）</option>
+      </select>
+      <button id="say-stop">模擬停止</button>
+      <span id="say-status" class="muted" role="status"></span>
+    </div>
+  </section>
+
   <section>
     <h2>遊戲伺服器的呼叫紀錄</h2>
     <div class="log-wrap">
@@ -93,10 +118,28 @@
   let players = [];
   const rows = [];
 
-  async function control(action, player) {
-    await fetch('/dev/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, player }) });
+  async function control(action, player, text) {
+    const res = await fetch('/dev/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, player, text }) });
     refresh();
+    return res.ok ? '' : ((await res.json().catch(() => ({}))).error || '失敗');
   }
+
+  // 語音指令：輸入一句話當成辨識結果、模擬停止原因
+  async function say(action, text) {
+    const player = $('say-player').value;
+    if (!player) return;
+    const err = await control(action, player, text);
+    $('say-status').textContent = err;
+    if (!err && action === 'say') {
+      $('say-text').value = '';
+      $('say-text').focus();
+    }
+  }
+  $('say-send').addEventListener('click', () => $('say-text').value.trim() && say('say', $('say-text').value));
+  $('say-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && $('say-text').value.trim()) say('say', $('say-text').value); });
+  $('say-silent').addEventListener('click', () => say('say', ''));
+  $('say-stop').addEventListener('click', () => say('speech-stop', $('say-reason').value));
+  const SPEECH_LABEL = { listening: '正在聽', allowed: '已授權，畫面還沒開始聽', '': '沒有授權' };
 
   function playerURL(code) {
     const u = new URL(site);
@@ -138,6 +181,18 @@
       kick.addEventListener('click', () => control(p.kicked ? 'unkick' : 'kick', p.code));
       li.append(open, kick);
       list.append(li);
+    }
+
+    // 語音指令的玩家選單：內容有變才重畫（不打斷正在選的人）；正在聽的人排前面當預設
+    const sel = $('say-player');
+    const options = players.map((p) => [p.code, `${p.name}（${SPEECH_LABEL[p.speech || '']}）`]);
+    const sig = JSON.stringify(options);
+    if (sel.dataset.sig !== sig) {
+      const current = sel.value;
+      sel.replaceChildren(...options.map(([code, label]) => { const o = el('option', label); o.value = code; return o; }));
+      const listening = players.find((p) => p.speech === 'listening');
+      sel.value = players.some((p) => p.code === current) && sel.dataset.sig ? current : (listening ? listening.code : (players[0] ? players[0].code : ''));
+      sel.dataset.sig = sig;
     }
 
     const health = $('health');

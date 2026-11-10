@@ -562,6 +562,7 @@ var safeParseAsync = /* @__PURE__*/ _safeParseAsync($ZodRealError);
 // ../../node_modules/zod/v4/core/regexes.js
 var anyString = /^[\s\S]{0,}$/;
 var number$1 = /^-?\d+(?:\.\d+)?$/;
+var boolean$1 = /^(?:true|false)$/i;
 // ../../node_modules/zod/v4/core/checks.js
 var $ZodCheck = /*@__PURE__*/ $constructor("$ZodCheck", (inst, def) => {
 	var _a;
@@ -910,6 +911,24 @@ var $ZodNumberFormat = /*@__PURE__*/ $constructor("$ZodNumberFormat", (inst, def
 	$ZodCheckNumberFormat.init(inst, def);
 	$ZodNumber.init(inst, def);
 });
+var $ZodBoolean = /*@__PURE__*/ $constructor("$ZodBoolean", (inst, def) => {
+	$ZodType.init(inst, def);
+	inst._zod.pattern = boolean$1;
+	inst._zod.parse = (payload, _ctx) => {
+		if (def.coerce) try {
+			payload.value = Boolean(payload.value);
+		} catch (_) {}
+		const input = payload.value;
+		if (typeof input === "boolean") return payload;
+		payload.issues.push({
+			expected: "boolean",
+			code: "invalid_type",
+			input,
+			inst
+		});
+		return payload;
+	};
+});
 function capSize(inst, size) {
 	const caps = sizeCaps(inst._zod.def.checks);
 	if (!caps.length) return;
@@ -1118,6 +1137,193 @@ var $ZodObject = /*@__PURE__*/ $constructor("$ZodObject", (inst, def) => {
 		return handleCatchall(proms, input, payload, ctx, _normalized.value, inst, abortEarly === true);
 	};
 });
+function handleUnionResults(results, final, inst, ctx) {
+	for (const result of results) if (result.issues.length === 0) {
+		final.value = result.value;
+		return final;
+	}
+	const nonaborted = results.filter((r) => !aborted(r));
+	if (nonaborted.length === 1) {
+		final.value = nonaborted[0].value;
+		return nonaborted[0];
+	}
+	final.issues.push({
+		code: "invalid_union",
+		input: final.value,
+		inst,
+		errors: results.map((result) => result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
+	});
+	return final;
+}
+var $ZodUnion = /*@__PURE__*/ $constructor("$ZodUnion", (inst, def) => {
+	$ZodType.init(inst, def);
+	defineLazyInternal(inst, "optin", (zod) => zod.def.options.some((o) => o._zod.optin === "defaulted") ? "defaulted" : zod.def.options.some((o) => o._zod.optin !== void 0) ? "optional" : void 0);
+	defineLazyInternal(inst, "optout", (zod) => zod.def.options.some((o) => o._zod.optout === "optional") ? "optional" : void 0);
+	defineLazyInternal(inst, "values", (zod) => {
+		if (zod.def.options.every((o) => o._zod.values)) return new Set(zod.def.options.flatMap((option) => Array.from(option._zod.values)));
+	});
+	defineLazyInternal(inst, "pattern", (zod) => {
+		if (zod.def.options.every((o) => o._zod.pattern)) {
+			const patterns = zod.def.options.map((o) => o._zod.pattern);
+			return new RegExp(`^(${patterns.map((p) => cleanRegex(p.source)).join("|")})$`);
+		}
+	});
+	const first = def.options.length === 1 ? def.options[0]._zod.run : null;
+	inst._zod.parse = (payload, ctx) => {
+		if (first) return first(payload, ctx);
+		let async = false;
+		const results = [];
+		for (const option of def.options) {
+			const result = option._zod.run({
+				value: payload.value,
+				issues: []
+			}, ctx);
+			if (result instanceof Promise) {
+				results.push(result);
+				async = true;
+			} else {
+				if (result.issues.length === 0) return result;
+				results.push(result);
+			}
+		}
+		if (!async) return handleUnionResults(results, payload, inst, ctx);
+		return Promise.all(results).then((results) => {
+			return handleUnionResults(results, payload, inst, ctx);
+		});
+	};
+});
+var $ZodRecord = /*@__PURE__*/ $constructor("$ZodRecord", (inst, def) => {
+	$ZodType.init(inst, def);
+	const memo = globalConfig.memoizer;
+	memo?.attach(inst);
+	inst._zod.parse = (payload, ctx) => {
+		const input = payload.value;
+		if (!isPlainObject(input)) {
+			payload.issues.push({
+				expected: "record",
+				code: "invalid_type",
+				input,
+				inst
+			});
+			return payload;
+		}
+		const proms = [];
+		const values = def.keyType._zod.values;
+		if (values && !def.partial) {
+			payload.value = memo ? memo.alloc(inst, payload, {}, ctx) : {};
+			const recordKeys = /* @__PURE__ */ new Set();
+			for (const key of values) if (typeof key === "string" || typeof key === "number" || typeof key === "symbol") {
+				recordKeys.add(typeof key === "number" ? key.toString() : key);
+				if (key === "__proto__") continue;
+				const keyResult = def.keyType._zod.run({
+					value: key,
+					issues: []
+				}, ctx);
+				if (keyResult instanceof Promise) throw new Error("Async schemas not supported in object keys currently");
+				if (keyResult.issues.length) {
+					payload.issues.push({
+						code: "invalid_key",
+						origin: "record",
+						issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config())),
+						input: key,
+						path: [key],
+						inst
+					});
+					continue;
+				}
+				const outKey = keyResult.value;
+				if (outKey === "__proto__") continue;
+				const result = def.valueType._zod.run({
+					value: input[key],
+					issues: []
+				}, ctx);
+				if (result instanceof Promise) proms.push(result.then((result) => {
+					if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+					payload.value[outKey] = result.value;
+				}));
+				else {
+					if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+					payload.value[outKey] = result.value;
+				}
+			}
+			let unrecognized;
+			for (const key in input) if (!recordKeys.has(key)) {
+				if (def.mode === "loose") {
+					if (key === "__proto__") continue;
+					payload.value[key] = input[key];
+				} else {
+					unrecognized = unrecognized ?? [];
+					unrecognized.push(key);
+				}
+			}
+			if (unrecognized && unrecognized.length > 0) payload.issues.push({
+				code: "unrecognized_keys",
+				input,
+				inst,
+				keys: unrecognized,
+				continue: true
+			});
+		} else {
+			payload.value = memo ? memo.alloc(inst, payload, {}, ctx) : {};
+			let unrecognized;
+			for (const key of Reflect.ownKeys(input)) {
+				if (key === "__proto__") continue;
+				if (!Object.prototype.propertyIsEnumerable.call(input, key)) continue;
+				let keyResult = def.keyType._zod.run({
+					value: key,
+					issues: []
+				}, ctx);
+				if (keyResult instanceof Promise) throw new Error("Async schemas not supported in object keys currently");
+				if (typeof key === "string" && number$1.test(key) && keyResult.issues.length) {
+					const retryResult = def.keyType._zod.run({
+						value: Number(key),
+						issues: []
+					}, ctx);
+					if (retryResult instanceof Promise) throw new Error("Async schemas not supported in object keys currently");
+					if (retryResult.issues.length === 0) keyResult = retryResult;
+				}
+				if (keyResult.issues.length) {
+					if (def.mode === "loose") payload.value[key] = input[key];
+					else if (values) {
+						unrecognized = unrecognized ?? [];
+						unrecognized.push(key);
+					} else payload.issues.push({
+						code: "invalid_key",
+						origin: "record",
+						issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config())),
+						input: key,
+						path: [key],
+						inst
+					});
+					continue;
+				}
+				const outKey = keyResult.value;
+				if (outKey === "__proto__") continue;
+				const result = def.valueType._zod.run({
+					value: input[key],
+					issues: []
+				}, ctx);
+				if (result instanceof Promise) proms.push(result.then((result) => {
+					if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+					payload.value[outKey] = result.value;
+				}));
+				else {
+					if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+					payload.value[outKey] = result.value;
+				}
+			}
+			if (unrecognized && unrecognized.length > 0) payload.issues.push({
+				code: "unrecognized_keys",
+				input,
+				inst,
+				keys: unrecognized,
+				continue: true
+			});
+		}
+		if (proms.length) return Promise.all(proms).then(() => payload);
+		return payload;
+	};
+});
 var $ZodEnum = /*@__PURE__*/ $constructor("$ZodEnum", (inst, def) => {
 	$ZodType.init(inst, def);
 	const values = getEnumValues(def.entries);
@@ -1133,6 +1339,26 @@ var $ZodEnum = /*@__PURE__*/ $constructor("$ZodEnum", (inst, def) => {
 		payload.issues.push({
 			code: "invalid_value",
 			values,
+			input,
+			inst
+		});
+		return payload;
+	};
+});
+var $ZodLiteral = /*@__PURE__*/ $constructor("$ZodLiteral", (inst, def) => {
+	$ZodType.init(inst, def);
+	const values = new Set(def.values);
+	inst._zod.values = values;
+	defineLazyInternal(inst, "pattern", (zod) => {
+		const vals = zod.def.values;
+		return new RegExp(vals.length ? `^(${vals.map((o) => typeof o === "string" ? escapeRegex(o) : o ? escapeRegex(o.toString()) : String(o)).join("|")})$` : "^[^\\s\\S]$");
+	});
+	inst._zod.parse = (payload, _ctx) => {
+		const input = payload.value;
+		if (values.has(input)) return payload;
+		payload.issues.push({
+			code: "invalid_value",
+			values: def.values,
 			input,
 			inst
 		});
@@ -1165,6 +1391,22 @@ var $ZodOptional = /*@__PURE__*/ $constructor("$ZodOptional", (inst, def) => {
 			if (result instanceof Promise) return result.then((result) => handleOptionalResult(payload, result));
 			return handleOptionalResult(payload, result);
 		}
+		return def.innerType._zod.run(payload, ctx);
+	};
+});
+var $ZodNullable = /*@__PURE__*/ $constructor("$ZodNullable", (inst, def) => {
+	$ZodType.init(inst, def);
+	defineLazyInternal(inst, "optin", (zod) => zod.def.innerType._zod.optin);
+	defineLazyInternal(inst, "optout", (zod) => zod.def.innerType._zod.optout);
+	defineLazyInternal(inst, "pattern", (zod) => {
+		const pattern = zod.def.innerType._zod.pattern;
+		return pattern ? new RegExp(`^(${cleanRegex(pattern.source)}|null)$`) : void 0;
+	});
+	defineLazyInternal(inst, "values", (zod) => {
+		return zod.def.innerType._zod.values ? /* @__PURE__ */ new Set([...zod.def.innerType._zod.values, null]) : void 0;
+	});
+	inst._zod.parse = (payload, ctx) => {
+		if (payload.value === null) return payload;
 		return def.innerType._zod.run(payload, ctx);
 	};
 });
@@ -1243,6 +1485,13 @@ function _int(Class, params) {
 		check: "number_format",
 		abort: false,
 		format: "safeint",
+		...normalizeParams(params)
+	});
+}
+// @__NO_SIDE_EFFECTS__
+function _boolean(Class, params) {
+	return new Class({
+		type: "boolean",
 		...normalizeParams(params)
 	});
 }
@@ -1384,6 +1633,14 @@ var ZodMiniNumberFormat = /*@__PURE__*/ $constructor("ZodMiniNumberFormat", (ins
 function int(params) {
 	return /* @__PURE__ */ _int(ZodMiniNumberFormat, params);
 }
+var ZodMiniBoolean = /*@__PURE__*/ $constructor("ZodMiniBoolean", (inst, def) => {
+	$ZodBoolean.init(inst, def);
+	ZodMiniType.init(inst, def);
+});
+// @__NO_SIDE_EFFECTS__
+function boolean(params) {
+	return /* @__PURE__ */ _boolean(ZodMiniBoolean, params);
+}
 var ZodMiniArray = /*@__PURE__*/ $constructor("ZodMiniArray", (inst, def) => {
 	$ZodArray.init(inst, def);
 	ZodMiniType.init(inst, def);
@@ -1409,6 +1666,37 @@ function object(shape, params) {
 		...normalizeParams(params)
 	});
 }
+var ZodMiniUnion = /*@__PURE__*/ $constructor("ZodMiniUnion", (inst, def) => {
+	$ZodUnion.init(inst, def);
+	ZodMiniType.init(inst, def);
+});
+// @__NO_SIDE_EFFECTS__
+function union(options, params) {
+	return new ZodMiniUnion({
+		type: "union",
+		options,
+		...normalizeParams(params)
+	});
+}
+var ZodMiniRecord = /*@__PURE__*/ $constructor("ZodMiniRecord", (inst, def) => {
+	$ZodRecord.init(inst, def);
+	ZodMiniType.init(inst, def);
+});
+// @__NO_SIDE_EFFECTS__
+function record(keyType, valueType, params) {
+	if (!valueType || !valueType._zod) return new ZodMiniRecord({
+		type: "record",
+		keyType: /* @__PURE__ */ string(),
+		valueType: keyType,
+		...normalizeParams(valueType)
+	});
+	return new ZodMiniRecord({
+		type: "record",
+		keyType,
+		valueType,
+		...normalizeParams(params)
+	});
+}
 var ZodMiniEnum = /*@__PURE__*/ $constructor("ZodMiniEnum", (inst, def) => {
 	$ZodEnum.init(inst, def);
 	ZodMiniType.init(inst, def);
@@ -1422,6 +1710,18 @@ function _enum(values, params) {
 		...normalizeParams(params)
 	});
 }
+var ZodMiniLiteral = /*@__PURE__*/ $constructor("ZodMiniLiteral", (inst, def) => {
+	$ZodLiteral.init(inst, def);
+	ZodMiniType.init(inst, def);
+});
+// @__NO_SIDE_EFFECTS__
+function literal(value, params) {
+	return new ZodMiniLiteral({
+		type: "literal",
+		values: Array.isArray(value) ? value : [value],
+		...normalizeParams(params)
+	});
+}
 var ZodMiniOptional = /*@__PURE__*/ $constructor("ZodMiniOptional", (inst, def) => {
 	$ZodOptional.init(inst, def);
 	ZodMiniType.init(inst, def);
@@ -1430,6 +1730,17 @@ var ZodMiniOptional = /*@__PURE__*/ $constructor("ZodMiniOptional", (inst, def) 
 function optional(innerType) {
 	return new ZodMiniOptional({
 		type: "optional",
+		innerType
+	});
+}
+var ZodMiniNullable = /*@__PURE__*/ $constructor("ZodMiniNullable", (inst, def) => {
+	$ZodNullable.init(inst, def);
+	ZodMiniType.init(inst, def);
+});
+// @__NO_SIDE_EFFECTS__
+function nullable(innerType) {
+	return new ZodMiniNullable({
+		type: "nullable",
 		innerType
 	});
 }
@@ -1474,9 +1785,69 @@ var voiceModeSchema = /* @__PURE__ */ _enum([
 var pitchModeSchema = /* @__PURE__ */ _enum(["ptt"]);
 /** 音高結果給誰看：self＝只送給唱歌者自己的遊戲畫面（第一版只有這個） */
 var pitchAudienceSchema = /* @__PURE__ */ _enum(["self"]);
+/** 語音指令的模式：ptt＝只在有發言權且按住說話（或開麥）時辨識（第一版只有這個） */
+var speechModeSchema = /* @__PURE__ */ _enum(["ptt"]);
+/** 辨識結果給誰看：self＝只送給說話者自己的遊戲畫面（第一版只有這個） */
+var speechAudienceSchema = /* @__PURE__ */ _enum(["self"]);
+/** 語音指令支援的語言（BCP 47）。第一版只有台灣華語 */
+var speechLanguageSchema = /* @__PURE__ */ _enum(["zh-TW"]);
+/** 詞彙表展開後最多幾句 */
+var SPEECH_MAX_PHRASES = 5e3;
+var speechSlotName = /^[a-z][a-z0-9_]{0,15}$/;
+/** 句型：詞之間用空白分開，{名稱} 是欄位，例如「{n} 個 {m} 齋」。不能有控制字元 */
+var speechPhrase = (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(60), /* @__PURE__ */ _regex(/^[^\u0000-\u001f\u007f]+$/));
+var speechSlotSchema = /* @__PURE__ */ union([/* @__PURE__ */ object({
+	type: /* @__PURE__ */ literal("integer"),
+	min: int().check(/* @__PURE__ */ _gte(0), /* @__PURE__ */ _lte(9999)),
+	max: int().check(/* @__PURE__ */ _gte(0), /* @__PURE__ */ _lte(9999))
+}), /* @__PURE__ */ object({
+	type: /* @__PURE__ */ literal("enum"),
+	values: (/* @__PURE__ */ array((/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(20), /* @__PURE__ */ _regex(/^[^\s{}\u0000-\u001f\u007f]+$/)))).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(200))
+})]);
+/** 句型裡用到的欄位名稱（依出現順序，可能重複） */
+function speechPhraseSlots(phrase) {
+	return [...phrase.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1] ?? "");
+}
+/** 詞彙表展開後有幾句；欄位沒有定義或範圍顛倒時回 -1 */
+function speechVocabularySize(v) {
+	let total = 0;
+	for (const phrase of v.phrases) {
+		let n = 1;
+		for (const name of speechPhraseSlots(phrase)) {
+			const slot = v.slots?.[name];
+			if (!slot || !speechSlotName.test(name)) return -1;
+			const size = slot.type === "integer" ? slot.max - slot.min + 1 : slot.values.length;
+			if (size < 1) return -1;
+			n *= size;
+			if (n > 5e3) return 5001;
+		}
+		if (/[{}]/.test(phrase.replace(/\{[^{}]*\}/g, ""))) return -1;
+		total += n;
+		if (total > 5e3) return 5001;
+	}
+	return total;
+}
+/**
+* 語音指令的詞彙表（docs/speech-commands.md）：遊戲提供句型與欄位，平台用來限制（strict）或偏重辨識結果。
+* 展開後最多 SPEECH_MAX_PHRASES 句
+*/
+var speechVocabularySchema = (/* @__PURE__ */ object({
+	phrases: (/* @__PURE__ */ array(speechPhrase)).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(50)),
+	slots: /* @__PURE__ */ optional(/* @__PURE__ */ record((/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(speechSlotName)), speechSlotSchema)),
+	/** true：只回符合詞彙表的結果；false：詞彙表只用來偏重，仍可能回其他文字 */
+	strict: /* @__PURE__ */ boolean()
+})).check(/* @__PURE__ */ refine((v) => Object.keys(v.slots ?? {}).length <= 8, "欄位最多 8 個"), /* @__PURE__ */ refine((v) => new Set(v.phrases).size === v.phrases.length, "句型不得重複"), /* @__PURE__ */ refine((v) => {
+	const n = speechVocabularySize(v);
+	return n >= 1 && n <= 5e3;
+}, `句型用到的欄位要有定義，展開後最多 ${SPEECH_MAX_PHRASES} 句`));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(32)), range(0, 1), int().check(/* @__PURE__ */ _gte(0), /* @__PURE__ */ _lte(1e3)), range(0, 86400);
 range(0, 1e4), range(0, 1e4), range(0, 1e4), range(0, 1e4);
-(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0xe8d4a51000), range(0, 0x5af3107a4000), range(20, 5e3), range(0, 127), range(-50, 50), range(0, 1);
+(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0xe8d4a51000), range(0, 0x5af3107a4000), range(20, 5e3), range(0, 127), range(-50, 50), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0x5af3107a4000), (/* @__PURE__ */ array(/* @__PURE__ */ object({
+	text: (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(100)),
+	confidence: /* @__PURE__ */ nullable(range(0, 1)),
+	phrase: /* @__PURE__ */ optional(speechPhrase),
+	slots: /* @__PURE__ */ optional(/* @__PURE__ */ record((/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(speechSlotName)), /* @__PURE__ */ union([int(), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(20))])))
+}))).check(/* @__PURE__ */ _maxLength(5));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(128));
 /**
 * 發言規則（docs/voice-chat.md）。由遊戲伺服器簽章送給平台。
@@ -1505,6 +1876,23 @@ var pitchPolicySchema = (/* @__PURE__ */ object({
 	allowedPlayerIds: (/* @__PURE__ */ array(id)).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(64)),
 	mode: pitchModeSchema,
 	audience: pitchAudienceSchema,
+	effectiveAtServerMs: int().check(/* @__PURE__ */ _positive()),
+	expiresAtServerMs: int().check(/* @__PURE__ */ _positive())
+})).check(/* @__PURE__ */ refine((p) => p.expiresAtServerMs > p.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ refine((p) => new Set(p.allowedPlayerIds).size === p.allowedPlayerIds.length, "名單不得重複"));
+/**
+* 語音指令授權（docs/speech-commands.md）。由遊戲伺服器簽章送給平台，和發言規則、音高授權分開。
+* epoch 必須是房間目前的局數；有效期間最多 1 小時；名單 1–64 人；vocabulary 選填
+*/
+var speechPolicySchema = (/* @__PURE__ */ object({
+	roomId: id,
+	gameInstanceId: id,
+	epoch: int().check(/* @__PURE__ */ _gte(0)),
+	sequence: int().check(/* @__PURE__ */ _gte(0)),
+	allowedPlayerIds: (/* @__PURE__ */ array(id)).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(64)),
+	mode: speechModeSchema,
+	audience: speechAudienceSchema,
+	language: speechLanguageSchema,
+	vocabulary: /* @__PURE__ */ optional(speechVocabularySchema),
 	effectiveAtServerMs: int().check(/* @__PURE__ */ _positive()),
 	expiresAtServerMs: int().check(/* @__PURE__ */ _positive())
 })).check(/* @__PURE__ */ refine((p) => p.expiresAtServerMs > p.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ refine((p) => new Set(p.allowedPlayerIds).size === p.allowedPlayerIds.length, "名單不得重複"));
@@ -2294,6 +2682,10 @@ function createServerClient(options) {
 			const checked = pitchPolicySchema.parse(policy);
 			await post("/v1/pitch/policy", checked, `pitch:${checked.roomId}:${checked.sequence}`);
 		},
+		async speechPolicy(policy) {
+			const checked = speechPolicySchema.parse(policy);
+			await post("/v1/speech/policy", checked, `speech:${checked.roomId}:${checked.sequence}`);
+		},
 		async createPurchase(req) {
 			if (!req.roomId || !req.playerId || !req.sku || !/^[A-Za-z0-9._:-]{8,100}$/.test(req.idempotencyKey)) throw new PlatformApiError(400, "bad_request");
 			const json = await post("/v1/game/purchases", {
@@ -2365,6 +2757,9 @@ function mockClient() {
 		async voicePolicy() {},
 		async pitchPolicy(policy) {
 			pitchPolicySchema.parse(policy);
+		},
+		async speechPolicy(policy) {
+			speechPolicySchema.parse(policy);
 		},
 		async createPurchase() {
 			throw new PlatformApiError(503, "points_disabled");

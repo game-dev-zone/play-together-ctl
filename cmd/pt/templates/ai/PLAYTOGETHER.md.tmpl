@@ -48,7 +48,7 @@
 3. **玩家身分只來自平台**：畫面端從 SDK 拿到一次性的啟動碼，由遊戲伺服器向玩聚兌換成玩家 ID、暱稱、房號（Ed25519 簽章；用範本或伺服器 SDK，`external` 也可以照規格自己實作）。不得把可重用的 token 交給畫面端；不要另外做登入或帳號，也不要向玩家要任何個人資料。
 4. **畫面端回報的資料不得用於玩家權益**（排名、獎勵、解鎖）。
 5. **有遊戲伺服器時，每一局要回報**：開始與結束時由遊戲伺服器呼叫回報一局（`reportRoundStart`／`reportRoundEnd`），平台用它統計成效。
-6. **語音由平台處理**：遊戲不得自己使用麥克風、相機、WebRTC；發言規則由遊戲伺服器送給平台。要用玩家的聲音當玩法（唱歌、哼音高）時，用平台的音高功能（見下方「用聲音玩：音高」），遊戲拿到的是音高數字，不是聲音。
+6. **語音由平台處理**：遊戲不得自己使用麥克風、相機、WebRTC；發言規則由遊戲伺服器送給平台。要用玩家的聲音當玩法時，用平台的功能：唱歌、哼音高用音高功能（見下方「用聲音玩：音高」，遊戲拿到的是音高數字）；用說的操作用語音指令（見「用聲音玩：語音指令」，遊戲拿到的是辨識出的文字）。兩者遊戲都拿不到聲音。
 7. **私鑰不得外流**：[[if eq .GameServer "none"]]上傳金鑰的私鑰只在你的電腦（`keys/`）[[else]]遊戲伺服器金鑰的私鑰只在遊戲伺服器，上傳金鑰的私鑰只在你的電腦（`keys/`）[[end]]；不得出現在畫面端、版控或上傳的檔案裡。
 8. **不得用第三方服務直接替換玩聚平台 API**（房間、玩家身分、語音、回報一局等），除非開發者明確要求且平台允許。
 9. **發佈只走玩聚流程**：`pt check`、`pt upload` 與玩聚審核；不得加入和玩聚衝突的匯出、發佈、發行流程。
@@ -56,7 +56,7 @@
 ## 執行環境（遊戲在玩聚的 iframe 裡）
 
 - iframe 只允許 `allow-scripts allow-same-origin allow-pointer-lock`：不能開新分頁或彈出視窗、不能用 `alert`／`confirm`／`prompt`、不能導向上層頁面、不能送出表單。
-- 不能自己使用 WebRTC、SharedWorker、麥克風、相機、付款（聲音玩法用平台的音高功能）。
+- 不能自己使用 WebRTC、SharedWorker、麥克風、相機、付款，也不能用瀏覽器的語音辨識（Web Speech API）；聲音玩法用平台的音高或語音指令功能。
 - 不要用 `eval` 或 `new Function`（平台的內容安全政策會擋）。
 - 檢舉、離開、靜音等按鈕由平台放在畫面上方，遊戲不用做。
 - **手機優先**：先在 iOS Safari、Android Chrome 能玩；觸控目標要夠大。
@@ -80,6 +80,18 @@
 4. **停止原因**（`reason`）：`game`、`user`、`denied`（玩家不同意）、`not_authorized`（伺服器沒授權）、`mic_denied`、`unsupported`、`background`、`timeout`（單次最長 10 分鐘）、`busy`、`closed`。遊戲要能處理每一種，例如顯示「請按住說話唱歌」或改用別的玩法。
 5. **只能當娛樂分數**：音高來自玩家的瀏覽器，不可信，不能用於排名、獎勵、解鎖（架構原則 4）。要比賽時由遊戲伺服器決定規則，並接受「玩家可能作弊」。
 6. **本機測試**：`pt dev` 不用真的麥克風，`start` 之後會送一組假的音高（滑音、靜音、顫音輪流），[[if ne .GameServer "none"]]假平台也會檢查授權的格式與局數；[[end]]真的聲音要在玩聚的預覽房間用手機測。
+
+## 用聲音玩：語音指令
+
+遊戲不能拿到麥克風或聲音，但可以讓玩家**用說的操作**（喊數、投票、搶答，例如「四個五」「投三號」「碰」）：平台在玩家手機上辨識，只把文字交給這位玩家自己的遊戲畫面。
+
+1. **遊戲伺服器授權**：[[if eq .Server "node"]]`platform.speechPolicy({...})`（`main.mjs` 的 `platform`）[[else]]`pt.SendSpeechPolicy(ctx, playtogether.SpeechPolicy{...})`（`main.go` 的 `pt`）[[end]]，欄位和音高授權相同，另外加 `language: "zh-TW"` 與 `vocabulary`（詞彙表）。回合制遊戲輪到誰就只授權誰（`allowedPlayerIds`），換人就送新的 `sequence`。[[if eq .GameServer "none"]]**這個專案宣告沒有遊戲伺服器，所以目前不能用語音指令**；要用時先提出架構變更（架構原則 1）。[[else]]和音高一樣在鎖外送出（`policy` 先在鎖裡組好）。[[end]]
+2. **詞彙表**（強烈建議提供，準確度差很多）：`phrases` 是句型，詞之間用空白分開，`{名稱}` 是欄位；`slots` 定義欄位，`integer`（整數，平台負責念法：「二十三」「兩」）或 `enum`（固定幾個詞）；`strict: true` 時平台只回符合詞彙表的結果。例如[[if eq .Server "node"]] `{ phrases: ['{n} 個 {m}', '開'], slots: { n: { type: 'integer', min: 1, max: 30 }, m: { type: 'integer', min: 1, max: 6 } }, strict: true }`[[else]] `&playtogether.SpeechVocabulary{Phrases: []string{"{n} 個 {m}", "開"}, Slots: map[string]playtogether.SpeechSlot{"n": playtogether.SpeechIntegerSlot(1, 30), "m": playtogether.SpeechIntegerSlot(1, 6)}, Strict: true}`[[end]]。句型最多 50 個、展開後最多 5000 句。
+3. **畫面端請求**：[[if eq .Client "godot"]]`PlayTogether.speech_start()`、`PlayTogether.speech_stop()`；訊號 `speech_started`、`speech_stopped(reason)`、`speech_result(payload)`[[else]]`pt.speech.start()`、`pt.speech.stop()`；`pt.speech.on('state', s => …)`、`pt.speech.on('result', r => …)`[[end]]。`start` 之後是一段「可以說話的期間」（例如自己的回合），玩家每按住說完一句就收到一個結果；第一次會由平台跳出同意畫面，遊戲不能代按。按住說話用平台的按鈕，或[[if eq .Client "godot"]] `PlayTogether.push_to_talk(true／false)`[[else]] `pt.voice.pushToTalk('start'／'stop')`[[end]]。
+4. **收到的結果**：`alternatives` 是候選（最多 5 個，依可能性排序；沒聽到時是空的），每個有 `text`（辨識出的文字）、`confidence`；符合詞彙表時另有 `phrase`（符合的句型，例如 `"{n} 個 {m}"`）與 `slots`（欄位的值，例如 `{"n": 4, "m": 5}`）。用 `phrase` 分辨是哪一種操作，不用自己解析文字。
+5. **停止原因**和音高相同。玩家可以不同意、裝置可能不支援：**一定要保留不用說話也能玩的方式**（按鈕）。音高與語音指令同一時間只能用一種（另一個回 `busy`）。
+6. **只能當成和按按鈕一樣的操作**：辨識結果來自玩家的瀏覽器，不可信；轉成和按鈕相同的操作送給遊戲伺服器，合法性與結果照常由遊戲伺服器判定（架構原則 2、4）。建議先在畫面上顯示聽到什麼、讓玩家可以取消，再送出。
+7. **本機測試**：`pt dev` 不用麥克風。在控制面板的「語音指令」選玩家、輸入一句話，就當成那位玩家說的（照詞彙表對回句型與欄位），也可以模擬每一種停止原因；[[if eq .Client "godot"]]`PlayTogether.speech_mock_result("四個五")`[[else]]`pt.speech.mockResult('四個五')`[[end]] 可以在測試裡直接送結果。真的聲音要在玩聚的預覽房間用手機測。
 
 ## 使用者資格與內容邊界
 
@@ -113,7 +125,7 @@
 - 不得加入廣告、追蹤、分析 SDK（Google Analytics、Tag Manager、Facebook Pixel、Hotjar、A/B 測試服務等）；成效數據由平台提供。
 - 不得自行建立點對點連線（WebRTC）、使用 SharedWorker、需要 `unsafe-eval`；多人遊戲要用宣告的遊戲伺服器架構，不得自行改成引擎內建多人連線或 P2P。
 - 不得繞過玩聚的玩家身分（啟動碼）；分數、勝負、經濟不得以畫面端為唯一權威。
-- 遊戲 iframe 沒有付款、麥克風、相機能力：不得自己接金流 SDK、`PaymentRequest`、`getUserMedia`（聲音玩法用 SDK 的音高功能）。
+- 遊戲 iframe 沒有付款、麥克風、相機能力：不得自己接金流 SDK、`PaymentRequest`、`getUserMedia`、`SpeechRecognition`（聲音玩法用 SDK 的音高或語音指令功能）。
 - 外部載入只限下面「從 CDN 載入」的規則；遊戲伺服器要用 `https://` 或 `wss://`。
 
 ```
@@ -239,6 +251,7 @@ codex exec --skip-git-repo-check -s workspace-write -i art/generated/hero.png "�
   | 狼人殺、陣營推理 | 階段制（身分 → 討論 → 投票）；發言規則用 `voice.policy` 交給平台 |
   | AI 主持、AI 角色 | 用玩聚 AI 閘道，金鑰不進畫面 |
   | 唱歌、比音準 | 音高玩法（見「用聲音玩：音高」） |
+  | 用說的操作（喊數、投票、搶答） | 語音指令（見「用聲音玩：語音指令」），詞彙表由遊戲伺服器提供；保留按鈕 |
   | 卡牌、桌遊 | 回合制，手牌只給本人 |
   | 反應、節奏 | 各玩各的、伺服器計時與比結果 |
   | 經營、養成 | 限時一局版，同一個開局種子比成績 |

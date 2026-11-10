@@ -88,9 +88,16 @@ func TestCheckGodot(t *testing.T) {
 func _ready(): JavaScriptBridge.eval("1")`), 0o644))
 	must(t, os.WriteFile(filepath.Join(root, "game/p2p.gd"), []byte(`extends Node
 var peer := WebRTCPeerConnection.new()`), 0o644))
+	must(t, os.WriteFile(filepath.Join(root, "game/mic.gd"), []byte(`extends Node
+func _ready(): JavaScriptBridge.get_interface("navigator").mediaDevices.getUserMedia(null)`), 0o644))
+	must(t, os.WriteFile(filepath.Join(root, "game/speech.gd"), []byte(`extends Node
+var rec := JavaScriptBridge.create_object("webkitSpeechRecognition")`), 0o644))
 	fs = checkProject(p, filepath.Join(root, "build"))
 	if !has(fs, "執行緒") || !has(fs, "JavaScriptBridge.eval") || !has(fs, "p2p.gd 使用 WebRTC") {
 		t.Fatalf("要擋下執行緒支援、eval 與 WebRTC：%+v", fs)
+	}
+	if !has(fs, "mic.gd 使用麥克風") || !has(fs, "speech.gd 使用麥克風") {
+		t.Fatalf("要擋下 GDScript 透過 JavaScriptBridge 使用麥克風與語音辨識：%+v", fs)
 	}
 }
 

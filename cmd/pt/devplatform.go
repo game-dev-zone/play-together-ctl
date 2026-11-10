@@ -52,12 +52,12 @@ func (d *devPanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			d.fp.write(w, 403, map[string]string{"error": "origin"})
 			return
 		}
-		var in struct{ Action, Player string }
+		var in struct{ Action, Player, Text string }
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in) != nil {
 			d.fp.write(w, 400, map[string]string{"error": "bad_request"})
 			return
 		}
-		if err := d.control(in.Action, in.Player); err != nil {
+		if err := d.control(in.Action, in.Player, in.Text); err != nil {
 			d.fp.write(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
@@ -67,7 +67,7 @@ func (d *devPanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (d *devPanel) control(action, player string) error {
+func (d *devPanel) control(action, player, text string) error {
 	f := d.fp
 	switch action {
 	case "kick", "unkick":
@@ -79,6 +79,14 @@ func (d *devPanel) control(action, player string) error {
 		} else {
 			f.unkick(player)
 		}
+	case "say", "speech-stop": // 語音指令：輸入一句話當成辨識結果、模擬停止原因（text 是原因）
+		if !fakePlayerCode.MatchString(player) {
+			return errors.New("bad_player")
+		}
+		if action == "say" {
+			return f.say(player, text)
+		}
+		return f.stopSpeech(player, text)
 	case "restart":
 		f.restart()
 	case "close":

@@ -231,6 +231,10 @@ func checkGodot(p *project, add func(level, format string, a ...any)) {
 		if err == nil && strings.Contains(string(raw), "WebRTC") {
 			add(levelHard, "%s 使用 WebRTC（WebRTCPeerConnection／WebRTCMultiplayerPeer）：玩聚不允許遊戲自己建立點對點連線，請透過遊戲伺服器", rel)
 		}
+		// GDScript 可以透過 JavaScriptBridge 使用瀏覽器的麥克風與語音辨識；程式在 .pck 裡，上傳資料夾的 .js 檢查看不到
+		if err == nil && (strings.Contains(string(raw), "getUserMedia") || strings.Contains(string(raw), "SpeechRecognition")) {
+			add(levelHard, "%s 使用麥克風或瀏覽器語音辨識（getUserMedia／SpeechRecognition）：遊戲不能自己使用麥克風（語音由玩聚平台外殼處理；唱歌、哼音高改用 PlayTogether.pitch_start，用說的操作改用 PlayTogether.speech_start，見 PLAYTOGETHER.md「用聲音玩」）", rel)
+		}
 		return nil
 	})
 	if raw, err := os.ReadFile(filepath.Join(game, "config.gd")); err == nil {

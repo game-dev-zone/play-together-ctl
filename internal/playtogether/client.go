@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // VoiceMode 是發言規則的模式（docs/voice-chat.md）。
@@ -280,6 +283,155 @@ func (c *Client) SendPitchPolicy(ctx context.Context, p PitchPolicy) error {
 	}
 	key := fmt.Sprintf("pitch:%s:%d", p.RoomID, p.Sequence)
 	return c.post(ctx, "/v1/pitch/policy", p, key, nil)
+}
+
+// SpeechPolicy 是遊戲伺服器送給平台的語音指令授權（docs/speech-commands.md），和發言規則、音高授權分開。
+// 玩家用說的操作（例如「四個五」「投三號」）：平台在玩家手機上辨識，只把文字交給這位玩家自己的遊戲畫面。
+// Epoch 必須是房間目前的局數（房主重新開始後要重新授權）。第一版 Mode 只有 "ptt"、Audience 只有 "self"、
+// Language 只有 "zh-TW"。有效期間最多 1 小時；名單 1–64 人。Vocabulary 選填（強烈建議提供，準確度差很多）。
+type SpeechPolicy struct {
+	RoomID              string            `json:"roomId"`
+	GameInstanceID      string            `json:"gameInstanceId"`
+	Epoch               int               `json:"epoch"`
+	Sequence            int64             `json:"sequence"`
+	AllowedPlayerIDs    []string          `json:"allowedPlayerIds"`
+	Mode                string            `json:"mode"`
+	Audience            string            `json:"audience"`
+	Language            string            `json:"language"`
+	Vocabulary          *SpeechVocabulary `json:"vocabulary,omitempty"`
+	EffectiveAtServerMs int64             `json:"effectiveAtServerMs"`
+	ExpiresAtServerMs   int64             `json:"expiresAtServerMs"`
+}
+
+// SpeechVocabulary 是語音指令的詞彙表：Phrases 是句型（詞之間用空白分開，{名稱} 是欄位，例如 "{n} 個 {m} 齋"），
+// Slots 定義欄位。Strict 為 true 時平台只回符合詞彙表的結果；false 時只用來偏重。展開後最多 SpeechMaxPhrases 句。
+type SpeechVocabulary struct {
+	Phrases []string              `json:"phrases"`
+	Slots   map[string]SpeechSlot `json:"slots,omitempty"`
+	Strict  bool                  `json:"strict"`
+}
+
+// SpeechSlot 是句型裡的欄位。Type "integer"：Min–Max 的整數（平台負責念法，例如「二十三」「兩」）；
+// Type "enum"：Values 裡的詞（例如「碰」「槓」「胡」）。
+type SpeechSlot struct {
+	Type   string   `json:"type"`
+	Min    *int     `json:"min,omitempty"`
+	Max    *int     `json:"max,omitempty"`
+	Values []string `json:"values,omitempty"`
+}
+
+// SpeechIntegerSlot 建立整數欄位。
+func SpeechIntegerSlot(min, max int) SpeechSlot {
+	return SpeechSlot{Type: "integer", Min: &min, Max: &max}
+}
+
+// SpeechEnumSlot 建立固定幾個詞的欄位。
+func SpeechEnumSlot(values ...string) SpeechSlot { return SpeechSlot{Type: "enum", Values: values} }
+
+// SpeechMaxPhrases 是詞彙表展開後的句數上限。
+const SpeechMaxPhrases = 5000
+
+var (
+	speechSlotName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,15}$`)
+	speechSlotRef  = regexp.MustCompile(`\{([^{}]*)\}`)
+)
+
+func hasControl(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f })
+}
+
+// Size 回傳詞彙表展開後有幾句；格式不對時回錯誤。規則和 packages/protocol 的 speechVocabularySchema 相同。
+func (v SpeechVocabulary) Size() (int, error) {
+	if len(v.Phrases) < 1 || len(v.Phrases) > 50 {
+		return 0, errors.New("句型要 1–50 個")
+	}
+	if len(v.Slots) > 8 {
+		return 0, errors.New("欄位最多 8 個")
+	}
+	sizes := make(map[string]int, len(v.Slots))
+	for name, slot := range v.Slots {
+		if !speechSlotName.MatchString(name) {
+			return 0, fmt.Errorf("欄位名稱 %q 要是小寫英文開頭、最多 16 個字元", name)
+		}
+		switch slot.Type {
+		case "integer":
+			if slot.Min == nil || slot.Max == nil || len(slot.Values) != 0 || *slot.Min < 0 || *slot.Max > 9999 || *slot.Max < *slot.Min {
+				return 0, fmt.Errorf("整數欄位 %q 要有 0–9999 的 min、max，而且 max 不小於 min", name)
+			}
+			sizes[name] = *slot.Max - *slot.Min + 1
+		case "enum":
+			if slot.Min != nil || slot.Max != nil || len(slot.Values) < 1 || len(slot.Values) > 200 {
+				return 0, fmt.Errorf("欄位 %q 的 values 要 1–200 個", name)
+			}
+			for _, val := range slot.Values {
+				if val == "" || utf8.RuneCountInString(val) > 20 || hasControl(val) || strings.ContainsFunc(val, unicode.IsSpace) || strings.ContainsAny(val, "{}") {
+					return 0, fmt.Errorf("欄位 %q 的值 %q 不能是空的、超過 20 個字，或含空白與大括號", name, val)
+				}
+			}
+			sizes[name] = len(slot.Values)
+		default:
+			return 0, fmt.Errorf("欄位 %q 的 type 只能是 integer 或 enum", name)
+		}
+	}
+	total := 0
+	seen := make(map[string]bool, len(v.Phrases))
+	for _, phrase := range v.Phrases {
+		if phrase == "" || utf8.RuneCountInString(phrase) > 60 || hasControl(phrase) {
+			return 0, fmt.Errorf("句型 %q 不能是空的、超過 60 個字或含控制字元", phrase)
+		}
+		if seen[phrase] {
+			return 0, fmt.Errorf("句型 %q 重複", phrase)
+		}
+		seen[phrase] = true
+		n := 1
+		for _, m := range speechSlotRef.FindAllStringSubmatch(phrase, -1) {
+			size, ok := sizes[m[1]]
+			if !ok {
+				return 0, fmt.Errorf("句型 %q 用到沒有定義的欄位 %q", phrase, m[1])
+			}
+			if n *= size; n > SpeechMaxPhrases {
+				return 0, fmt.Errorf("詞彙表展開後超過 %d 句", SpeechMaxPhrases)
+			}
+		}
+		if strings.ContainsAny(speechSlotRef.ReplaceAllString(phrase, ""), "{}") {
+			return 0, fmt.Errorf("句型 %q 的大括號沒有成對", phrase)
+		}
+		if total += n; total > SpeechMaxPhrases {
+			return 0, fmt.Errorf("詞彙表展開後超過 %d 句", SpeechMaxPhrases)
+		}
+	}
+	return total, nil
+}
+
+// Validate 和 packages/protocol 的 speechPolicySchema 規則相同。
+func (p SpeechPolicy) Validate() error {
+	base := PitchPolicy{RoomID: p.RoomID, GameInstanceID: p.GameInstanceID, Epoch: p.Epoch, Sequence: p.Sequence,
+		AllowedPlayerIDs: p.AllowedPlayerIDs, Mode: p.Mode, Audience: p.Audience,
+		EffectiveAtServerMs: p.EffectiveAtServerMs, ExpiresAtServerMs: p.ExpiresAtServerMs}
+	if err := base.Validate(); err != nil {
+		return err
+	}
+	if p.Language != "zh-TW" {
+		return fmt.Errorf("未知的語言：%q（目前只有 zh-TW）", p.Language)
+	}
+	if p.Vocabulary != nil {
+		if _, err := p.Vocabulary.Size(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SendSpeechPolicy 送出語音指令授權；同一房間同一序號重送不會重複執行。
+func (c *Client) SendSpeechPolicy(ctx context.Context, p SpeechPolicy) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	if c.Mock {
+		return nil
+	}
+	key := fmt.Sprintf("speech:%s:%d", p.RoomID, p.Sequence)
+	return c.post(ctx, "/v1/speech/policy", p, key, nil)
 }
 
 // RoomMembers 是房間目前的狀態：是否開放、局數，以及每位成員是否被房主踢出。

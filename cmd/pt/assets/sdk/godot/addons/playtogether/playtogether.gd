@@ -34,6 +34,15 @@ signal pitch_stopped(reason: String)
 ## 音高（每秒 15–20 次，只在玩家正在說話時）：voiced、hz、note（MIDI，69 = A4）、cents、confidence、seq、t。
 ## 沒有聲音時 voiced 是 false，hz、note、cents 是 null。只能當娛樂分數，不能用於任何玩家權益
 signal pitch_changed(payload: Dictionary)
+## 語音指令（speech_start 之後）：平台開始聽
+signal speech_started
+## 語音指令停止：reason 和 pitch_stopped 相同
+signal speech_stopped(reason: String)
+## 語音指令的辨識結果：玩家每說完一句（放開按住說話）送一次。payload.alternatives 是候選（依可能性排序，沒聽到時是空的），
+## 每個候選有 text（辨識出的文字）、confidence（0–1 或 null）；符合詞彙表時另有 phrase（符合的句型，例如 "{n} 個 {m}"）
+## 與 slots（欄位的值，例如 {"n": 4, "m": 5}）。
+## 只能當成和按按鈕一樣的操作：合法性由遊戲伺服器判定，不能用於任何玩家權益
+signal speech_result(payload: Dictionary)
 
 ## "platform"：在玩聚平台中；"mock"：模擬模式
 var mode: String = ""
@@ -144,6 +153,8 @@ func purchase(purchase_id: String) -> void:
 func pitch_start() -> void:
 	if _bridge:
 		_bridge.pitchStart()
+	elif _mock_speech:
+		pitch_stopped.emit.call_deferred("busy")
 	elif not _mock_pitch:
 		_mock_pitch = true
 		_mock_pitch_t = 0.0
@@ -160,6 +171,42 @@ func pitch_stop() -> void:
 		pitch_stopped.emit.call_deferred("game")
 
 
+## 語音指令：請平台開始辨識這位玩家說的話（例如「四個五」「投三號」）。遊戲伺服器要先送 speech.policy 授權，
+## 玩家要在平台畫面同意；遊戲拿不到聲音，只拿到文字。模擬模式沒有麥克風：用 speech_mock_result(文字) 測試
+func speech_start() -> void:
+	if _bridge:
+		_bridge.speechStart()
+	elif _mock_pitch:
+		speech_stopped.emit.call_deferred("busy")  # 和平台相同：音高與語音指令同一時間只能用一種
+	elif not _mock_speech:
+		_mock_speech = true
+		_mock_speech_seq = 0
+		speech_started.emit.call_deferred()
+
+
+func speech_stop() -> void:
+	if _bridge:
+		_bridge.speechStop()
+	elif _mock_speech:
+		_mock_speech = false
+		speech_stopped.emit.call_deferred("game")
+
+
+## 只在模擬模式有作用（測試用）：speech_start 之後把這段文字當成辨識結果；空字串表示沒聽到。
+## 網頁版在 pt dev 可以改在控制面板輸入
+func speech_mock_result(text: String) -> void:
+	if _bridge:
+		_bridge.speechMockResult(text)
+	elif _mock_speech:
+		var t := text.strip_edges().left(100)
+		var alternatives: Array = [{"text": t, "confidence": 1.0}] if t != "" else []
+		speech_result.emit.call_deferred({"playerId": "mock-player", "sessionId": "mock", "seq": _mock_speech_seq,
+			"serverTimeMs": Time.get_unix_time_from_system() * 1000.0, "final": true, "alternatives": alternatives})
+		_mock_speech_seq += 1
+
+
+var _mock_speech := false
+var _mock_speech_seq := 0
 var _mock_pitch := false
 var _mock_pitch_t := 0.0
 var _mock_pitch_next := 0.0
@@ -252,3 +299,10 @@ func _on_event(args: Array) -> void:
 				pitch_stopped.emit(str(payload.get("reason", "")))
 		"pitch":
 			pitch_changed.emit(payload)
+		"speech_state":
+			if str(payload.get("state", "")) == "started":
+				speech_started.emit()
+			else:
+				speech_stopped.emit(str(payload.get("reason", "")))
+		"speech":
+			speech_result.emit(payload)
