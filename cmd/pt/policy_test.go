@@ -170,13 +170,13 @@ func TestCheckPolicyMatrix(t *testing.T) {
 		want []string
 	}{
 		{"一般益智遊戲", func(pl *policy) {}, nil},
-		// 經濟硬性規則
-		{"realMoneyWagering", func(pl *policy) { pl.Economy.RealMoneyWagering = true }, []string{levelHard}},
-		{"purchasableStake", func(pl *policy) { table("poker")(pl); pl.Economy.PurchasableStake = true }, []string{levelHard, levelReview}},
-		{"withdrawableValue", func(pl *policy) { pl.Economy.WithdrawableValue = true }, []string{levelHard}},
-		{"redeemableValue", func(pl *policy) { pl.Economy.RedeemableValue = true }, []string{levelHard}},
-		{"transferableRealWorldValue", func(pl *policy) { pl.Economy.TransferableRealWorldValue = true }, []string{levelHard}},
-		{"paidRandomReward", func(pl *policy) { pl.Economy.PaidRandomReward = true }, []string{levelHard}},
+		// 經濟（審核準則 1.3，2026-11-11 起全部由玩聚平台與律師決定：需要審核，不是硬性規則）
+		{"realMoneyWagering", func(pl *policy) { pl.Economy.RealMoneyWagering = true }, []string{levelReview}},
+		{"purchasableStake", func(pl *policy) { table("poker")(pl); pl.Economy.PurchasableStake = true }, []string{levelReview}},
+		{"withdrawableValue", func(pl *policy) { pl.Economy.WithdrawableValue = true }, []string{levelReview}},
+		{"redeemableValue", func(pl *policy) { pl.Economy.RedeemableValue = true }, []string{levelReview}},
+		{"transferableRealWorldValue", func(pl *policy) { pl.Economy.TransferableRealWorldValue = true }, []string{levelReview}},
+		{"paidRandomReward", func(pl *policy) { pl.Economy.PaidRandomReward = true }, []string{levelReview}},
 		{"realMoney 但不是下注", func(pl *policy) { pl.Economy.RealMoney = true }, []string{levelReview}},
 		// 經平台專用接口使用點數：由玩聚平台與律師決定（需要審核，不是硬性規則）
 		{"platformPointsStake", func(pl *policy) { v := true; pl.Economy.PlatformPointsStake = &v }, []string{levelReview}},
@@ -364,8 +364,8 @@ func TestCheckPolicyLegacy(t *testing.T) {
 	}{
 		{"wagering=true", legacy(func(r *contentRating) { r.Gambling.Wagering = true }), []string{levelReview}},
 		{"simulated=allowed", legacy(func(r *contentRating) { r.Gambling.Simulated = "allowed" }), []string{levelReview}},
-		{"realMoney=true", legacy(func(r *contentRating) { r.Gambling.RealMoney = true }), []string{levelHard}},
-		{"paidRandomReward=true", legacy(func(r *contentRating) { r.Gambling.PaidRandomReward = true }), []string{levelHard}},
+		{"realMoney=true", legacy(func(r *contentRating) { r.Gambling.RealMoney = true }), []string{levelReview}},
+		{"paidRandomReward=true", legacy(func(r *contentRating) { r.Gambling.PaidRandomReward = true }), []string{levelReview}},
 		{"超過平台上限的血腥", legacy(func(r *contentRating) { r.Blood = "strong" }), []string{levelHard}},
 		{"超過目標年齡", legacy(func(r *contentRating) { r.Profile, r.TargetAge = "custom", "12+" }), []string{levelSchema}},
 		{"缺 simulated", legacy(func(r *contentRating) { r.Gambling.Simulated = "" }), nil},
