@@ -27,6 +27,9 @@ signal speaking(player_id: String, level: float)
 ## 平台點數的兌換結果（purchase 的回覆）：status 是 completed、cancelled 或 failed。
 ## 只是提示：遊戲伺服器要向平台查兌換狀態（GetPurchase），是 completed 才給玩家外觀
 signal purchase_result(purchase_id: String, status: String)
+## 比賽水池（原型，只用測試點數）的投入結果（join_pool 的回覆）：status 是 staked、declined 或 failed。
+## 只是提示：比賽是否開始由遊戲伺服器向平台查
+signal pool_result(pool_id: String, status: String)
 ## 音高玩法（pitch_start 之後）：平台開始分析
 signal pitch_started
 ## 音高分析停止：reason 是 game、user、denied、not_authorized、mic_denied、unsupported、background、timeout、busy、closed
@@ -146,6 +149,15 @@ func purchase(purchase_id: String) -> void:
 		_bridge.purchase(purchase_id)
 	else:
 		purchase_result.emit.call_deferred(purchase_id, "failed")
+
+
+## 比賽水池（原型，只用測試點數）：pool_id 是遊戲伺服器建立的比賽（pool_…）。平台外殼顯示投入確認畫面，結果用 pool_result 送回。
+## 模擬模式（不是網頁版）一律 failed
+func join_pool(pool_id: String) -> void:
+	if _bridge:
+		_bridge.joinPool(pool_id)
+	else:
+		pool_result.emit.call_deferred(pool_id, "failed")
 
 
 ## 音高玩法：請平台開始分析這位玩家的音高。遊戲伺服器要先送 pitch.policy 授權，玩家要在平台畫面同意。
@@ -294,6 +306,8 @@ func _on_event(args: Array) -> void:
 			speaking.emit(str(payload.get("playerId", "")), float(payload.get("level", 0.0)))
 		"purchase_result":
 			purchase_result.emit(str(payload.get("purchaseId", "")), str(payload.get("status", "failed")))
+		"pool_result":
+			pool_result.emit(str(payload.get("poolId", "")), str(payload.get("status", "failed")))
 		"pitch_state":
 			if str(payload.get("state", "")) == "started":
 				pitch_started.emit()

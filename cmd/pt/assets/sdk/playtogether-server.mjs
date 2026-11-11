@@ -1,7 +1,7 @@
 import { createHash, createPrivateKey, randomBytes, sign, verify } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
-// ../../node_modules/zod/v4/core/util.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
 	const numericValues = Object.values(entries).filter((v) => typeof v === "number");
 	return Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
@@ -313,7 +313,7 @@ function installLazyProp(inst, key, make, enumerable) {
 		}
 	});
 }
-// ../../node_modules/zod/v4/core/core.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/core.js
 var _a;
 var _zodDesc = {
 	value: void 0,
@@ -413,7 +413,7 @@ function config(newConfig) {
 	if (newConfig) Object.assign(globalConfig, newConfig);
 	return globalConfig;
 }
-// ../../node_modules/zod/v4/core/errors.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/errors.js
 function _getMessage() {
 	const internals = this._zod;
 	internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -465,7 +465,7 @@ var initializer = (inst, def) => {
 	}
 };
 var $ZodRealError = /* @__PURE__ */ $constructor("$ZodError", initializer, void 0, { Parent: Error });
-// ../../node_modules/zod/v4/core/parse.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => {
 	const fn = (schema, value, _ctx, _params) => {
 		const ctx = _ctx ? {
@@ -559,11 +559,11 @@ var _safeParseAsync = (_Err) => async (schema, value, _ctx) => {
 	};
 };
 var safeParseAsync = /* @__PURE__*/ _safeParseAsync($ZodRealError);
-// ../../node_modules/zod/v4/core/regexes.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/regexes.js
 var anyString = /^[\s\S]{0,}$/;
 var number$1 = /^-?\d+(?:\.\d+)?$/;
 var boolean$1 = /^(?:true|false)$/i;
-// ../../node_modules/zod/v4/core/checks.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /*@__PURE__*/ $constructor("$ZodCheck", (inst, def) => {
 	var _a;
 	inst._zod ?? (inst._zod = {});
@@ -750,13 +750,13 @@ var $ZodCheckRegex = /*@__PURE__*/ $constructor("$ZodCheckRegex", (inst, def) =>
 		});
 	};
 });
-// ../../node_modules/zod/v4/core/versions.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/versions.js
 var version = {
 	major: 4,
 	minor: 6,
 	patch: 7
 };
-// ../../node_modules/zod/v4/core/schemas.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/schemas.js
 var $ZodType = /*@__PURE__*/ $constructor("$ZodType", (inst, def) => {
 	var _a;
 	inst ?? (inst = {});
@@ -1458,7 +1458,7 @@ function handleRefineResult(result, payload, input, inst) {
 		payload.issues.push(issue(_iss));
 	}
 }
-// ../../node_modules/zod/v4/core/api.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
 	if (def.checks) def.checks = [...def.checks];
 	return def;
@@ -1560,7 +1560,7 @@ function _refine(Class, fn, _params) {
 		...normalizeParams(_params)
 	});
 }
-// ../../node_modules/zod/v4/mini/schemas.js
+// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/mini/schemas.js
 var ZodMiniType = /*@__PURE__*/ $constructor("ZodMiniType", (inst, def) => {
 	if (!inst._zod) throw new Error("Uninitialized schema in ZodMiniType.");
 	$ZodType.init(inst, def);
@@ -1770,6 +1770,7 @@ var id = (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__P
 var shortText = (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(64));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(256), /* @__PURE__ */ _regex(/^https?:\/\/d-[a-z0-9]{16}\.[a-z0-9.-]+(:[0-9]{1,5})?$/));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^pur_[A-Za-z0-9_-]{22}$/));
+(/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^pool_[A-Za-z0-9_-]{22}$/));
 var range = (min, max) => (/* @__PURE__ */ number()).check(/* @__PURE__ */ _gte(min), /* @__PURE__ */ _lte(max));
 var playerSummarySchema = /* @__PURE__ */ object({
 	id,
@@ -2717,6 +2718,82 @@ function createServerClient(options) {
 			if (!json || typeof json.status !== "string") throw new PlatformApiError(502, "bad_response");
 			return json;
 		},
+		async createPool(req) {
+			if (!req.roomId || !req.format || !Array.isArray(req.players) || req.players.length < 2 || !/^[A-Za-z0-9._:-]{8,100}$/.test(req.idempotencyKey)) throw new PlatformApiError(400, "bad_request");
+			return asPool(await post("/v1/game/pools", {
+				roomId: req.roomId,
+				format: req.format,
+				players: req.players,
+				idempotencyKey: req.idempotencyKey
+			}));
+		},
+		async getPool(poolId) {
+			return asPool(await request("GET", `/v1/game/pools/${encodeURIComponent(poolId)}`));
+		},
+		async reportPoolResult(poolId, result) {
+			const draw = result.draw === true;
+			if (!/^[A-Za-z0-9._:-]{8,100}$/.test(result.idempotencyKey) || draw === (result.ranks?.length ?? 0) > 0) throw new PlatformApiError(400, "bad_request");
+			const body = { idempotencyKey: result.idempotencyKey };
+			if (draw) body.draw = true;
+			else body.ranks = result.ranks;
+			if (result.actions && Object.keys(result.actions).length) body.actions = result.actions;
+			if (result.suspectedThrowing?.length) body.suspectedThrowing = result.suspectedThrowing;
+			return asPool(await post(`/v1/game/pools/${encodeURIComponent(poolId)}/result`, body));
+		},
+		async cancelPool(poolId) {
+			return asPool(await post(`/v1/game/pools/${encodeURIComponent(poolId)}/cancel`, {}));
+		},
+		async getPointsBalance(roomId, playerId) {
+			const json = await request("GET", "/v1/game/points/balance", void 0, void 0, {
+				roomId,
+				playerId
+			});
+			if (!json || typeof json.balance !== "number") throw new PlatformApiError(502, "bad_response");
+			return json;
+		},
+		async settleBet(bet) {
+			checkBet(bet);
+			if (bet.stake <= 0) throw new PlatformApiError(400, "bad_amount");
+			return asBet(await post("/v1/game/points/settle", {
+				...betBody(bet),
+				payout: bet.payout ?? 0
+			}));
+		},
+		async stakeBet(bet) {
+			checkBet(bet);
+			if (bet.stake <= 0) throw new PlatformApiError(400, "bad_amount");
+			return asBet(await post("/v1/game/points/stake", betBody(bet)));
+		},
+		async payoffBet(betId, payout, result) {
+			if (!refPattern.test(betId) || !Number.isInteger(payout) || payout < 0) throw new PlatformApiError(400, "bad_request");
+			return asBet(await post("/v1/game/points/payoff", {
+				betId,
+				payout,
+				...result ? { result } : {}
+			}));
+		},
+		async cancelBet(betId) {
+			if (!refPattern.test(betId)) throw new PlatformApiError(400, "bad_request");
+			return asBet(await post("/v1/game/points/cancel", { betId }));
+		},
+		async tableBuyIn(b) {
+			if (!b.roomId || !b.playerId || !refPattern.test(b.tableId) || !refPattern.test(b.sessionId) || !Number.isInteger(b.amount) || b.amount <= 0) throw new PlatformApiError(400, "bad_request");
+			return asTable(await post("/v1/game/points/table/buyin", {
+				roomId: b.roomId,
+				playerId: b.playerId,
+				epoch: b.epoch,
+				tableId: b.tableId,
+				sessionId: b.sessionId,
+				amount: b.amount
+			}));
+		},
+		async tableCashOut(sessionId, amount) {
+			if (!refPattern.test(sessionId) || !Number.isInteger(amount) || amount < 0) throw new PlatformApiError(400, "bad_request");
+			return asTable(await post("/v1/game/points/table/cashout", {
+				sessionId,
+				amount
+			}));
+		},
 		async getRoomEntitlements(roomId) {
 			return (await request("GET", `/v1/game/rooms/${encodeURIComponent(roomId)}/entitlements`))?.players ?? {};
 		},
@@ -2789,7 +2866,70 @@ function mockClient() {
 				events: [],
 				next: after
 			};
+		},
+		async createPool() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async getPool() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async reportPoolResult() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async cancelPool() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async getPointsBalance() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async settleBet() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async stakeBet() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async payoffBet() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async cancelBet() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async tableBuyIn() {
+			throw new PlatformApiError(503, "points_pool_disabled");
+		},
+		async tableCashOut() {
+			throw new PlatformApiError(503, "points_pool_disabled");
 		}
 	};
+}
+function asPool(json) {
+	const p = json;
+	if (!p || typeof p.poolId !== "string" || typeof p.status !== "string") throw new PlatformApiError(502, "bad_response");
+	return p;
+}
+var refPattern = /^[A-Za-z0-9._:-]{1,100}$/;
+function checkBet(bet) {
+	if (!bet.roomId || !bet.playerId || !refPattern.test(bet.betId) || !refPattern.test(bet.roundId) || !Number.isInteger(bet.stake) || bet.stake < 0 || bet.payout !== void 0 && (!Number.isInteger(bet.payout) || bet.payout < 0) || !Number.isInteger(bet.epoch)) throw new PlatformApiError(400, "bad_request");
+}
+function betBody(bet) {
+	return {
+		roomId: bet.roomId,
+		playerId: bet.playerId,
+		epoch: bet.epoch,
+		betId: bet.betId,
+		roundId: bet.roundId,
+		stake: bet.stake,
+		...bet.result ? { result: bet.result } : {}
+	};
+}
+function asBet(json) {
+	const b = json;
+	if (!b || typeof b.betId !== "string" || typeof b.balance !== "number") throw new PlatformApiError(502, "bad_response");
+	return b;
+}
+function asTable(json) {
+	const t = json;
+	if (!t || typeof t.sessionId !== "string" || typeof t.balance !== "number") throw new PlatformApiError(502, "bad_response");
+	return t;
 }
 export { ActionError, HEADER, MAX_CLOCK_SKEW_MS, MOCK_CODE_PREFIX, PlatformApiError, SIGNATURE_SCHEME, aiBaseURL, aiToken, canonicalString, createGameServer, createServerClient, platformFromEnv, retryDelaysMs, signRequest, verifyRequest };
