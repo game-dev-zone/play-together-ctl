@@ -1,0 +1,70 @@
+{
+  "engine": "652d832eccb61d81",
+  "files": [
+    {
+      "path": "speech/LICENSE-sherpa-onnx.txt",
+      "size": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "speech/NOTICE.txt",
+      "size": 2715,
+      "sha256": "f3b92d9612a5f1b9f2a8eb0958b059f2732eae94b04fbb472a7a4c99a9375c22"
+    },
+    {
+      "path": "speech/SOURCE.md",
+      "size": 5652,
+      "sha256": "df09b792454289e96f50cf28a2977f44ed89ed9b218b266f8b39eb1c74d35c58"
+    },
+    {
+      "path": "speech/kws-zh-decoder.int8.onnx",
+      "size": 181069,
+      "sha256": "ed83454004d5bd16d831eaf00adcd181ed7734886aab6ef440f3ffa5aa3cfe3b"
+    },
+    {
+      "path": "speech/kws-zh-encoder.int8.onnx",
+      "size": 4777666,
+      "sha256": "dd784973fc9d2fabb3b800d6dcd20fc3b0ca84f8e2415afe54b032878e447f4d"
+    },
+    {
+      "path": "speech/kws-zh-joiner.int8.onnx",
+      "size": 65242,
+      "sha256": "f79760052b87239e325f0567c752ad3130b30d92effb847d4307743c20c59a24"
+    },
+    {
+      "path": "speech/kws-zh-tokens.txt",
+      "size": 1627,
+      "sha256": "72316508d9119696145abc6f1f8cdc46287535c34e5ce7e595f845cb1499cf2e"
+    },
+    {
+      "path": "speech/pinyin-zh.json",
+      "size": 378414,
+      "sha256": "8d48edb1a83e005cbe315d44891255f0bdc16e94c3b0395f66a89c250142d385"
+    },
+    {
+      "path": "speech/sherpa-onnx-kws.js",
+      "size": 9925,
+      "sha256": "03b44e372795fd907e84eecd29419e1d052dc6704ac06935c9bf9fe19b3e3434"
+    },
+    {
+      "path": "speech/sherpa-onnx-wasm-web.js",
+      "size": 80340,
+      "sha256": "8559c7f0cd2e9a0b25e1531120cbf29d718f8d5841120c7ac14fcad948a3586d"
+    },
+    {
+      "path": "speech/sherpa-onnx-wasm-web.wasm",
+      "size": 13495068,
+      "sha256": "d1ea278280d6288317854bb2f4a075425331e87daf8824533024f6e714532285"
+    },
+    {
+      "path": "speech/speech-worker.js",
+      "size": 4731,
+      "sha256": "32820f1d163d6bb84b042c2314b16b308fc39cc8eaa0d9f7753255ec5486c2d5"
+    },
+    {
+      "path": "speech-worklet.js",
+      "size": 7211,
+      "sha256": "95792050e1e665ec0120f250a1acecf6cb92b18a0fbcddf00b3b6d7c9c40006f"
+    }
+  ]
+}

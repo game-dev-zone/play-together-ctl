@@ -27,7 +27,22 @@ type devPanel struct {
 }
 
 func (d *devPanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 本機語音辨識的引擎與模型（從玩聚網站下載到快取，路徑和平台相同；devspeech.go）
+	if d.serveSpeechAsset(w, r) {
+		return
+	}
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/dev/speech.js":
+		js, err := embedded.ReadFile("assets/dev/speech.js")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(js)
+	case r.Method == http.MethodGet && r.URL.Path == "/dev/speech-info":
+		d.speechInfo(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/":
 		page, err := embedded.ReadFile("assets/dev/panel.html")
 		if err != nil {
@@ -239,6 +254,7 @@ func devPlatformOnly(p *project, site, addr string, players int, serverURL strin
 	fp := newFakePlatform(pub)
 	fp.serverURL = serverURL
 	fp.shell = devShell(p)
+	fp.speechFrom = speechSource(p)
 	platform, srv, err := startFakePlatform(fp, site)
 	if err != nil {
 		return fmt.Errorf("啟動本機假平台失敗：%w", err)

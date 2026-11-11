@@ -66,18 +66,20 @@ type fakePlatform struct {
 	down     bool          // 模擬平台暫時連不到：遊戲伺服器的 API 回 503
 	disabled bool          // 模擬遊戲被平台停用：GET /v1/game/status 回 serving:false，其他 API 和真的平台一樣回 401 unknown_key
 	shell    shellConfig   // playtogether.json 的外殼樣式（控制面板的「用平台外殼開啟」預覽）
-	rooms    map[string]*fakeRoom
-	room     *fakeRoom // 目前的房間
-	players  map[string]*fakePlayer
-	order    []string // 玩家代號，依加入順序
-	codes    map[string]*fakeCode
-	rounds   map[string]*fakeRound
-	calls    []fakeCall
-	seq      int
-	polls    map[string][]time.Time // 房號 → 最近幾次查成員的時間
-	now      func() time.Time
-	ai       http.Handler           // 本機 AI 閘道（ai_services.go）；nil 時 /v1/ai/ 回 404
-	speech   map[string]*fakeSpeech // 玩家代號 → 語音指令的狀態（fakespeech.go）
+	// speechFrom 是下載本機語音辨識引擎的玩聚網站（devspeech.go）；空字串時預覽頁的麥克風辨識不能用
+	speechFrom string
+	rooms      map[string]*fakeRoom
+	room       *fakeRoom // 目前的房間
+	players    map[string]*fakePlayer
+	order      []string // 玩家代號，依加入順序
+	codes      map[string]*fakeCode
+	rounds     map[string]*fakeRound
+	calls      []fakeCall
+	seq        int
+	polls      map[string][]time.Time // 房號 → 最近幾次查成員的時間
+	now        func() time.Time
+	ai         http.Handler           // 本機 AI 閘道（ai_services.go）；nil 時 /v1/ai/ 回 404
+	speech     map[string]*fakeSpeech // 玩家代號 → 語音指令的狀態（fakespeech.go）
 	// serverURL：代管專案在本機的遊戲伺服器網址；發啟動碼時一起給畫面（SDK 放進 launch.serverUrl），和正式平台一樣
 	serverURL string
 }

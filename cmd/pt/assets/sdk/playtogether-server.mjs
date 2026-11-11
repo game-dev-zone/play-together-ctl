@@ -1781,12 +1781,16 @@ var voiceModeSchema = /* @__PURE__ */ _enum([
 	"turn",
 	"allowlist"
 ]);
-/** 音高分析的模式：ptt＝只在有發言權且按住說話（或開麥）時分析（第一版只有這個） */
-var pitchModeSchema = /* @__PURE__ */ _enum(["ptt"]);
+/**
+* 音高分析的模式：ptt＝只在有發言權且按住說話（或開麥）時分析；
+* hands_free＝授權期間持續分析，玩家不用加入語音、不用按住（聲音不傳給其他人；平台另外取得同意、畫面常駐顯示）。
+* 遊戲畫面要求 hands_free 時，遊戲伺服器的授權也必須是 hands_free
+*/
+var pitchModeSchema = /* @__PURE__ */ _enum(["ptt", "hands_free"]);
 /** 音高結果給誰看：self＝只送給唱歌者自己的遊戲畫面（第一版只有這個） */
 var pitchAudienceSchema = /* @__PURE__ */ _enum(["self"]);
-/** 語音指令的模式：ptt＝只在有發言權且按住說話（或開麥）時辨識（第一版只有這個） */
-var speechModeSchema = /* @__PURE__ */ _enum(["ptt"]);
+/** 語音指令的模式：和音高相同（ptt、hands_free） */
+var speechModeSchema = pitchModeSchema;
 /** 辨識結果給誰看：self＝只送給說話者自己的遊戲畫面（第一版只有這個） */
 var speechAudienceSchema = /* @__PURE__ */ _enum(["self"]);
 /** 語音指令支援的語言（BCP 47）。第一版只有台灣華語 */

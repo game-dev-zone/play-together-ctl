@@ -47,6 +47,26 @@
     font: inherit; font-weight: 700;
   }
   .sheet button.primary { background: #d83a3a; border-color: #d83a3a; color: #fff; }
+  /* 本機語音辨識（pt dev）：和平台相同的辨識程式，結果走控制面板「輸入一句話」的路 */
+  .speech-fab { position: absolute; left: calc(10px + env(safe-area-inset-left)); top: calc(62px + env(safe-area-inset-top)); width: auto; padding: 0 12px;
+    border-radius: 22px; font-size: 0.85rem; font-weight: 700; }
+  .speech { position: absolute; left: 10px; top: calc(112px + env(safe-area-inset-top)); width: min(360px, calc(100% - 20px));
+    max-height: calc(100% - 180px); overflow-y: auto; display: grid; gap: 8px; padding: 12px; border-radius: 14px;
+    background: rgba(15, 23, 34, 0.97); color: #f3f5fa; border: 1px solid rgba(255, 255, 255, 0.28); font-size: 0.85rem; }
+  .speech[hidden] { display: none; }
+  .speech p { margin: 0; }
+  .speech .muted { color: #aab3c5; }
+  .speech .warn { color: #ffcf8a; }
+  .speech .err { color: #ffb4b4; }
+  .speech button { min-height: 40px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.3); background: transparent; color: inherit;
+    font: inherit; font-weight: 700; padding: 0 12px; cursor: pointer; }
+  .speech button.primary { background: #d83a3a; border-color: #d83a3a; }
+  .speech button:disabled { opacity: 0.5; cursor: default; }
+  .speech .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .speech .hold { min-height: 64px; width: 100%; font-size: 1rem; touch-action: none; user-select: none; }
+  .speech .hold.live { background: #d83a3a; border-color: #d83a3a; }
+  .speech ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+  .speech li code { font-size: 0.8rem; }
   .note {
     position: absolute; left: calc(10px + env(safe-area-inset-left)); bottom: calc(14px + env(safe-area-inset-bottom));
     max-width: calc(100% - 160px); margin: 0; padding: 4px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.6); color: #fff;
@@ -68,6 +88,25 @@
     <button type="button">檢舉</button>
     <button type="button">離開房間</button>
   </div>
+  <button type="button" class="fab speech-fab" id="speech-fab" aria-expanded="false">🗣 語音指令（本機）</button>
+  <div class="speech" id="speech" role="dialog" aria-label="語音指令（本機辨識）" hidden>
+    <p><strong>語音指令：用麥克風在本機辨識</strong></p>
+    <p class="muted">和玩聚平台相同的辨識程式與詞彙表比對。辨識出的文字會當成這位玩家說的話交給遊戲（和控制面板「輸入一句話」相同）。</p>
+    <p id="sp-status"></p>
+    <p id="sp-engine" class="muted"></p>
+    <div class="row">
+      <label><input type="radio" name="sp-mode" value="ptt" checked> 按住說話</label>
+      <label><input type="radio" name="sp-mode" value="hands_free"> 免按住（停頓分句）</label>
+    </div>
+    <div class="row">
+      <button type="button" class="primary" id="sp-start">啟動麥克風</button>
+      <button type="button" id="sp-stop" hidden>停止</button>
+    </div>
+    <button type="button" class="hold" id="sp-hold" hidden>按住說話</button>
+    <p id="sp-live" class="muted" hidden></p>
+    <p class="muted">辨識結果（新的在上面）：</p>
+    <ol id="sp-log" reversed></ol>
+  </div>
   <p class="note" id="note"></p>
 </div>
 <script>
@@ -79,6 +118,135 @@
     $('sheet').hidden = !open;
     $('menu').setAttribute('aria-expanded', String(open));
   });
+  // ---------- 本機語音辨識 ----------
+  const SP = { info: null, engine: null, recognizer: null, matcher: null, sequence: null, mode: 'ptt', busy: false };
+  const spPlayer = new URLSearchParams(location.search).get('player') || 'p1';
+  $('speech-fab').addEventListener('click', () => {
+    const open = $('speech').hidden;
+    $('speech').hidden = !open;
+    $('speech-fab').setAttribute('aria-expanded', String(open));
+  });
+  function spLog(main, detail, cls) {
+    const li = document.createElement('li');
+    const head = document.createElement('div');
+    head.textContent = new Date().toLocaleTimeString() + '　' + main;
+    if (cls) head.className = cls;
+    li.appendChild(head);
+    if (detail) {
+      const d = document.createElement('div');
+      d.className = 'muted';
+      d.textContent = detail;
+      li.appendChild(d);
+    }
+    $('sp-log').prepend(li);
+    while ($('sp-log').children.length > 30) $('sp-log').lastChild.remove();
+  }
+  async function spRefresh() {
+    try {
+      const info = await (await fetch('/dev/speech-info?player=' + encodeURIComponent(spPlayer))).json();
+      SP.info = info;
+      const st = $('sp-status');
+      st.className = info.allowed && info.listening ? '' : 'warn';
+      st.textContent = !info.allowed ? '這位玩家沒有語音指令的授權：遊戲伺服器要先送 speech.policy。'
+        : !info.vocabulary ? '授權沒有詞彙表：目前的辨識引擎一定要有詞彙表。'
+          : !info.listening ? '已授權，但遊戲畫面還沒開始聽（遊戲要先呼叫 speech.start）。現在辨識的結果不會送出。'
+            : '已授權，遊戲正在聽（詞彙表 ' + (info.vocabulary.phrases || []).length + ' 個句型）。';
+      $('sp-engine').textContent = !info.source ? '沒有玩聚網站可以下載辨識引擎：請在 playtogether.json 填 platform，或設定 PT_SPEECH_FROM 後重新執行 pt dev。'
+        : info.engineCached ? '辨識引擎：已下載（' + info.source + '）' : '辨識引擎：第一次啟動時從 ' + info.source + ' 下載約 18 MB 到本機快取。';
+      // 遊戲伺服器換了詞彙表：重新準備
+      if (SP.engine && info.vocabulary && info.sequence !== SP.sequence && !SP.busy) await spPrepare();
+    } catch {
+      $('sp-status').textContent = '讀不到 pt dev 的狀態。';
+    }
+  }
+  setInterval(spRefresh, 1500);
+  spRefresh();
+  function spLoadScript() {
+    if (window.PTDevSpeech) return Promise.resolve();
+    return new Promise((ok, fail) => {
+      const el = document.createElement('script');
+      el.src = '/dev/speech.js';
+      el.onload = ok;
+      el.onerror = () => fail(new Error('載入辨識程式失敗'));
+      document.head.appendChild(el);
+    });
+  }
+  async function spPrepare() {
+    SP.busy = true;
+    try {
+      const v = SP.info.vocabulary;
+      SP.matcher = PTDevSpeech.createSpeechMatcher(v, SP.info.language || 'zh-TW');
+      await SP.engine.prepare({ language: SP.info.language || 'zh-TW', matcher: SP.matcher, strict: !!v.strict });
+      SP.sequence = SP.info.sequence;
+      spLog('辨識器準備好（詞彙表序號 ' + SP.sequence + '）', '', 'muted');
+    } finally {
+      SP.busy = false;
+    }
+  }
+  async function spSend(alternatives) {
+    const text = alternatives[0] ? alternatives[0].text : '';
+    const detail = alternatives.length ? alternatives.map((a, i) => (i + 1) + '. ' + a.text + (a.phrase ? '（句型「' + a.phrase + '」' + (a.slots && Object.keys(a.slots).length ? ' ' + JSON.stringify(a.slots) : '') + '）' : '')).join('　') : '';
+    if (!alternatives.length && SP.mode === 'hands_free') {
+      spLog('沒聽出指令（免按住時和平台一樣不送）', '', 'muted');
+      return;
+    }
+    const res = await fetch('/dev/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'say', player: spPlayer, text }) });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) spLog((text || '（沒聽到）') + '：沒有送出', out.error || ('HTTP ' + res.status), 'err');
+    else spLog(text ? '送出「' + text + '」' : '送出「沒聽到」（空的候選）', detail);
+  }
+  $('sp-start').addEventListener('click', async () => {
+    if (!SP.info || !SP.info.source) return spLog('沒有玩聚網站可以下載辨識引擎', '', 'err');
+    if (!SP.info.vocabulary) return spLog('授權沒有詞彙表，不能辨識', '', 'err');
+    SP.mode = document.querySelector('input[name=sp-mode]:checked').value;
+    $('sp-start').disabled = true;
+    $('sp-start').textContent = SP.info.engineCached ? '啟動中…' : '下載辨識引擎中（約 18 MB）…';
+    try {
+      await spLoadScript();
+      if (!PTDevSpeech.speechEngineSupported()) throw new Error('這個瀏覽器不支援（要 WebAssembly 與 AudioWorklet）');
+      SP.engine = PTDevSpeech.createSpeechEngine();
+      SP.recognizer = new PTDevSpeech.SpeechRecognizer(SP.engine, SP.mode === 'hands_free');
+      // 麥克風要在點擊裡先要；引擎準備（含下載）同時做
+      const prepared = spPrepare();
+      prepared.catch(() => {});
+      await SP.recognizer.start((alts) => spSend(alts), () => spStop('麥克風停止了'));
+      await prepared;
+      if (SP.mode === 'hands_free') {
+        SP.recognizer.setActive(true);
+        $('sp-live').hidden = false;
+        $('sp-live').textContent = '免按住：直接說，停頓約 0.5 秒算一句。';
+      } else {
+        $('sp-hold').hidden = false;
+      }
+      $('sp-stop').hidden = false;
+      $('sp-start').hidden = true;
+    } catch (e) {
+      spLog('啟動失敗：' + (e && e.code === 'mic_denied' ? '沒有麥克風權限' : (e && e.message) || e), '', 'err');
+      spStop();
+    }
+  });
+  function spStop(reason) {
+    if (SP.recognizer) SP.recognizer.stop();
+    if (SP.engine) SP.engine.dispose();
+    SP.recognizer = SP.engine = null;
+    SP.sequence = null;
+    $('sp-start').hidden = false;
+    $('sp-start').disabled = false;
+    $('sp-start').textContent = '啟動麥克風';
+    $('sp-stop').hidden = $('sp-hold').hidden = $('sp-live').hidden = true;
+    if (reason) spLog(reason, '', 'warn');
+  }
+  $('sp-stop').addEventListener('click', () => spStop());
+  const hold = (on) => {
+    if (!SP.recognizer) return;
+    SP.recognizer.setActive(on);
+    $('sp-hold').classList.toggle('live', on);
+    $('sp-hold').textContent = on ? '正在聽…放開送出' : '按住說話';
+  };
+  $('sp-hold').addEventListener('pointerdown', (e) => { $('sp-hold').setPointerCapture(e.pointerId); hold(true); });
+  $('sp-hold').addEventListener('pointerup', () => hold(false));
+  $('sp-hold').addEventListener('pointercancel', () => hold(false));
+
   (async () => {
     const player = new URLSearchParams(location.search).get('player') || 'p1';
     if (!/^[\w-]{1,32}$/.test(player)) return;

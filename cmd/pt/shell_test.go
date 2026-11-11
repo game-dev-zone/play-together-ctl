@@ -49,7 +49,10 @@ func TestCheckShell(t *testing.T) {
 	if _, ok := shellBody(&project{}); ok {
 		t.Fatal("沒有設定時不送 shell")
 	}
-	if !strings.Contains(func() string { _, _, e := (shellConfig{Style: "light", Accent: "#eeeeee"}).normalize(); return e.Error() }(), "3:1") {
+	if !strings.Contains(func() string {
+		_, _, e := (shellConfig{Style: "light", Accent: "#eeeeee"}).normalize()
+		return e.Error()
+	}(), "3:1") {
 		t.Fatal("錯誤訊息要說明對比門檻")
 	}
 }

@@ -88,6 +88,7 @@ func devHosted(p *project, addr string, players int, smoke, mock bool) error {
 		fp := newFakePlatform(pub)
 		fp.serverURL = serverURL
 		fp.shell = devShell(p)
+		fp.speechFrom = speechSource(p)
 		var srv *http.Server
 		platform, srv, err = startFakePlatform(fp, site)
 		if err != nil {
