@@ -43,9 +43,20 @@ func (d *devPanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s := d.fp.state(after)
 		d.fp.write(w, 200, struct {
 			fakeState
-			Site string `json:"site"`
-			Self string `json:"self"`
-		}{s, d.site, d.self})
+			Site  string      `json:"site"`
+			Self  string      `json:"self"`
+			Shell shellConfig `json:"shell"`
+		}{s, d.site, d.self, d.fp.shell})
+	case r.Method == http.MethodGet && r.URL.Path == "/dev/shell":
+		// 平台外殼預覽：用和平台相同的 iframe 權限放進遊戲，疊上平台的浮動按鈕（配色照 playtogether.json 的 shell）
+		page, err := embedded.ReadFile("assets/dev/shell.html")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(page)
 	case r.Method == http.MethodPost && r.URL.Path == "/dev/control":
 		// 只接受面板自己送的（擋住其他網站對本機的跨站請求）
 		if r.Header.Get("Origin") != d.self || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
@@ -227,6 +238,7 @@ func devPlatformOnly(p *project, site, addr string, players int, serverURL strin
 	defer cleanup()
 	fp := newFakePlatform(pub)
 	fp.serverURL = serverURL
+	fp.shell = devShell(p)
 	platform, srv, err := startFakePlatform(fp, site)
 	if err != nil {
 		return fmt.Errorf("啟動本機假平台失敗：%w", err)

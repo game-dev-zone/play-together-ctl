@@ -384,6 +384,10 @@ func upload(args []string) error {
 	if p != nil && len(p.CDN) > 0 {
 		reg["cdnAssets"] = p.CDN
 	}
+	// 平台外殼樣式：沒設定時不送，平台當成預設的 dark
+	if shell, ok := shellBody(p); ok {
+		reg["shell"] = shell
+	}
 	// 遊戲伺服器架構：平台依此決定審核要不要測遊戲伺服器的部署（none 不需要）
 	if p != nil {
 		reg["gameServerMode"] = p.gameServerMode()

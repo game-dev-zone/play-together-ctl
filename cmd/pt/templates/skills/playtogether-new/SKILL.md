@@ -30,6 +30,7 @@ description: 在空資料夾開一款新的玩聚（PlayTogether）遊戲：先�
 | 多人遊戲的伺服器放在哪裡 | **交給玩聚代管**：開發者不用自己找主機、不用付主機費，上傳時伺服器和畫面一起交給玩聚（目前只支援 Go、要平台開通） | 代管 `-server go -hosting playtogether`；自己部署 `-server go` 或 `-server node`，不加 `-hosting` |
 | 畫面用什麼做 | 網頁（HTML／JavaScript）；要用 Godot 編輯器時選 Godot | `-client web` 或 `-client godot` |
 | 手機直式還是橫式 | 直式 | `-orientation portrait`、`landscape`、`any` |
+| 畫面風格（明亮或深色、主色） | 依玩法建議；開發者沒想法時先用深色 | 做畫面時一起選平台外殼樣式（`playtogether.json` 的 `shell`，見第 4 步） |
 | 內容邊界 | `general`（普遍級）。有明顯暴力、恐怖等內容時由開發者決定 `moderate` 或 `strong`，你不能自己提高 | `-profile` |
 | 有沒有牌桌玩法（撲克、麻將、骰子等） | 沒有 | `-table-game`，有的話照實填（需要平台審核） |
 | 平台網址 | 開發者給過就用；沒有時問「要用哪個玩聚環境？請貼文件站的網址」 | `-platform`（結尾不加斜線） |
@@ -86,6 +87,7 @@ pt new . -y -platform <平台網址> -client web -game-server playtogether-manag
 
 - **伺服器決定遊戲狀態**：分數、勝負、輪到誰、計時都在 `server/`，畫面只送操作、照伺服器的狀態顯示。
 - 先做最小可玩的版本（一局能從開始玩到結束），不要一次做完所有功能。
+- **平台外殼樣式**：畫面配色定下來後，在 `playtogether.json` 加上 `shell`，讓平台的浮動按鈕和選單配合遊戲（`PLAYTOGETHER.md`「外殼樣式」）：明亮畫面用 `light`，深色畫面用 `dark`，不想讓按鈕搶畫面用 `minimal`；`accent` 用遊戲的主色，`pt check` 說對比不足就換深一點或亮一點的顏色。告訴開發者選了哪一種、為什麼，可以在 `pt dev` 控制面板按「用平台外殼開啟」看效果。
 - 做完執行 `make verify`（伺服器測試、`pt dev -smoke`、`pt verify server`、`pt check -local`），有錯就修到通過。
 - 請開發者自己在終端機執行 `pt dev` 試玩：它會打開玩家分頁與控制面板，可以模擬踢人、重新開始、斷線。你在對話裡執行會一直佔著。
 

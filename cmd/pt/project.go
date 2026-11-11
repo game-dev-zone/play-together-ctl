@@ -84,6 +84,8 @@ type project struct {
 	ContentRating *contentRating `json:"contentRating,omitempty"`
 	// 從 CDN 載入的程式與樣式（pt cdn add 加入）；pt upload 申報給平台
 	CDN []cdnAsset `json:"cdn,omitempty"`
+	// 平台外殼樣式（v0.29 起；shell.go）：浮動按鈕與選單的配色，跟著版本送審
+	Shell *shellConfig `json:"shell,omitempty"`
 
 	dir string // playtogether.json 所在的資料夾
 	raw []byte // playtogether.json 的原始內容（檢查重複鍵、拼錯的宣告鍵）
@@ -918,6 +920,7 @@ func cmdDev(args []string) error {
 		}
 		defer cleanup()
 		fp := newFakePlatform(pub)
+		fp.shell = devShell(p)
 		var srv *http.Server
 		platform, srv, err = startFakePlatform(fp, site0)
 		if err != nil {
@@ -1172,6 +1175,7 @@ func checkProject(p *project, webDir string) []finding {
 		add(levelWarn, "%s", msg)
 	}
 	checkOrientation(p, webDir, add)
+	checkShell(p, add)
 	checkAudioSources(p, webDir, add)
 	if !strings.HasPrefix(p.Platform, "http") || strings.Contains(p.Platform, "（") {
 		add(levelBuild, "playtogether.json 的 platform 還沒填：填玩聚網站的網址（平台 API 在同一個網址的 /v1 底下）")

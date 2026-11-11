@@ -1936,15 +1936,13 @@ function An(e) {
 	}
 }
 function jn(e) {
-	let t = e.transport ?? yn();
-	if (!t.embedded) {
-		let e = Tn(t.href);
-		return e ? En(t, e) : Promise.resolve(wn());
-	}
-	let n = e.platformOrigins.filter((e) => e !== "*");
-	if (n.length === 0) return Promise.reject(/* @__PURE__ */ Error("platformOrigins 未設定：請填入玩聚平台的完整來源"));
-	let r = e.timeoutMs ?? 5e3, i = e.helloIntervalMs ?? 250;
-	return new Promise((e, a) => {
+	let t = e.transport ?? yn(), n = Tn(t.href);
+	if (n) return En(t, n);
+	if (!t.embedded) return Promise.resolve(wn());
+	let r = e.platformOrigins.filter((e) => e !== "*");
+	if (r.length === 0) return Promise.reject(/* @__PURE__ */ Error("platformOrigins 未設定：請填入玩聚平台的完整來源"));
+	let i = e.timeoutMs ?? 5e3, a = e.helloIntervalMs ?? 250;
+	return new Promise((e, n) => {
 		let o = 0, s = null, c = "", l = "", u = null, d = (e, t, n) => (o += 1, {
 			pt: "playtogether",
 			v: 1,
@@ -1957,26 +1955,26 @@ function jn(e) {
 			payload: t
 		}), f = () => {
 			let e = d("sdk.hello", { sdkVersion: vn }, !1);
-			for (let r of n) t.post(e, r);
+			for (let n of r) t.post(e, n);
 		}, p = () => {
 			clearInterval(h), clearTimeout(ee);
-		}, m = t.listen((r) => {
-			if (r.source !== t.parent || (s ? r.origin !== s : !n.includes(r.origin))) return;
-			let i = mn(r.data);
+		}, m = t.listen((n) => {
+			if (n.source !== t.parent || (s ? n.origin !== s : !r.includes(n.origin))) return;
+			let i = mn(n.data);
 			if (!i.ok) return;
 			let a = i.value;
 			if (s) a.instance === c && a.nonce === l && u?.(a);
 			else {
 				if (a.type !== "sdk.init" || !a.instance || !a.nonce) return;
-				s = r.origin, c = a.instance, l = a.nonce, p();
-				let n = $("platform", a.payload, (e, n) => {
+				s = n.origin, c = a.instance, l = a.nonce, p();
+				let r = $("platform", a.payload, (e, n) => {
 					t.post(d(e, n, !0), s);
 				}, m);
-				u = n.dispatch, e(n.client);
+				u = r.dispatch, e(r.client);
 			}
-		}), h = setInterval(f, i), ee = setTimeout(() => {
-			p(), m(), a(new Sn());
-		}, r);
+		}), h = setInterval(f, a), ee = setTimeout(() => {
+			p(), m(), n(new Sn());
+		}, i);
 		f();
 	});
 }

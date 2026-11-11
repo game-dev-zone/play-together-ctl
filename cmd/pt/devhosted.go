@@ -87,6 +87,7 @@ func devHosted(p *project, addr string, players int, smoke, mock bool) error {
 		defer cleanup()
 		fp := newFakePlatform(pub)
 		fp.serverURL = serverURL
+		fp.shell = devShell(p)
 		var srv *http.Server
 		platform, srv, err = startFakePlatform(fp, site)
 		if err != nil {

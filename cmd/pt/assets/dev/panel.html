@@ -69,6 +69,7 @@
     <ul id="players" class="players"></ul>
     <div class="row">
       <button id="add">新增玩家（開新分頁）</button>
+      <button id="add-shell" title="和玩聚平台一樣把遊戲放進 iframe，疊上平台的浮動按鈕；配色照 playtogether.json 的 shell">用平台外殼開啟</button>
       <span class="muted">同一位玩家重新整理分頁，會拿新的啟動碼回到原座位。</span>
     </div>
   </section>
@@ -149,10 +150,17 @@
   }
 
   document.querySelectorAll('button[data-act]').forEach((b) => b.addEventListener('click', () => control(b.dataset.act)));
-  $('add').addEventListener('click', () => {
+  function nextCode() {
     let n = players.length + 1;
     while (players.some((p) => p.code === 'p' + n)) n++;
-    window.open(playerURL('p' + n), '_blank');
+    return 'p' + n;
+  }
+  $('add').addEventListener('click', () => {
+    window.open(playerURL(nextCode()), '_blank');
+    setTimeout(refresh, 800);
+  });
+  $('add-shell').addEventListener('click', () => {
+    window.open('/dev/shell?player=' + nextCode(), '_blank');
     setTimeout(refresh, 800);
   });
 

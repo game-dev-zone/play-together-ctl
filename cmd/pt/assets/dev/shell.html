@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>平台外殼預覽 · pt dev</title>
+<style>
+  /* 和玩聚平台遊戲外殼相同的按鈕與配色；位置、大小、圖示由平台固定，配色照 playtogether.json 的 shell */
+  html, body { margin: 0; height: 100%; background: #000; font: 15px/1.6 system-ui, -apple-system, "Noto Sans TC", sans-serif; }
+  .shell {
+    --fab-bg: rgba(15, 23, 34, 0.7); --fab-border: rgba(255, 255, 255, 0.25); --fab-fg: #fff; --ptt-bg: rgba(15, 23, 34, 0.8);
+    --panel-bg: rgba(15, 23, 34, 0.96); --panel-text: #f3f5fa; --panel-muted: #aab3c5; --panel-border: rgba(255, 255, 255, 0.28);
+    position: fixed; inset: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .shell.st-light {
+    --fab-bg: rgba(255, 255, 255, 0.86); --fab-border: rgba(15, 23, 34, 0.2); --fab-fg: #1b2333; --ptt-bg: rgba(255, 255, 255, 0.9);
+    --panel-bg: rgba(255, 255, 255, 0.97); --panel-text: #1b2333; --panel-muted: #566072; --panel-border: rgba(15, 23, 34, 0.2);
+  }
+  .shell.st-minimal { --fab-bg: rgba(15, 23, 34, 0.36); --fab-border: rgba(255, 255, 255, 0.16); --ptt-bg: rgba(15, 23, 34, 0.5); }
+  .shell.st-minimal .fab, .shell.st-minimal .ptt { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+  iframe { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+  .fab {
+    position: absolute; top: calc(10px + env(safe-area-inset-top)); width: 44px; height: 44px; border-radius: 50%;
+    border: 1px solid var(--fab-border); background: var(--fab-bg); color: var(--fab-fg); font-size: 1.2rem; cursor: pointer;
+    backdrop-filter: blur(6px);
+  }
+  .menu { left: calc(10px + env(safe-area-inset-left)); }
+  .mic { right: calc(10px + env(safe-area-inset-right)); }
+  .ptt {
+    position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom));
+    min-width: 112px; min-height: 56px; border-radius: 28px; border: 2px solid var(--fab-border); background: var(--ptt-bg);
+    color: var(--fab-fg); font: inherit; font-weight: 700;
+  }
+  .shell.has-accent .fab, .shell.has-accent .ptt { border: 2px solid var(--shell-accent); }
+  .shell.has-accent .sheet { border-top: 3px solid var(--shell-accent); }
+  .sheet {
+    position: absolute; left: 10px; top: calc(62px + env(safe-area-inset-top)); width: min(320px, calc(100% - 20px));
+    display: grid; gap: 8px; padding: 14px; border-radius: 14px; background: var(--panel-bg); color: var(--panel-text);
+    border: 1px solid var(--panel-border);
+  }
+  .sheet[hidden] { display: none; }
+  .sheet p { margin: 0; }
+  .sheet .muted { color: var(--panel-muted); font-size: 0.85rem; }
+  .sheet button {
+    min-height: 44px; border-radius: 10px; border: 1px solid var(--panel-border); background: transparent; color: var(--panel-text);
+    font: inherit; font-weight: 700;
+  }
+  .sheet button.primary { background: #d83a3a; border-color: #d83a3a; color: #fff; }
+  .note {
+    position: absolute; left: calc(10px + env(safe-area-inset-left)); bottom: calc(14px + env(safe-area-inset-bottom));
+    max-width: calc(100% - 160px); margin: 0; padding: 4px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.6); color: #fff;
+    font-size: 0.75rem; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="shell" class="shell">
+  <iframe id="game" title="遊戲" sandbox="allow-scripts allow-same-origin allow-pointer-lock"></iframe>
+  <button type="button" class="fab menu" id="menu" aria-label="房間選單" aria-expanded="false">≡</button>
+  <button type="button" class="fab mic" aria-label="加入語音">🎙</button>
+  <button type="button" class="ptt">按住說話</button>
+  <div class="sheet" id="sheet" role="dialog" aria-label="房間選單" hidden>
+    <p><strong>平台選單（本機預覽）</strong></p>
+    <p class="muted">只示範配色。正式平台的選單內容（邀請、檢舉、離開等）由玩聚決定，遊戲改不了。</p>
+    <button type="button" class="primary">邀請朋友</button>
+    <button type="button">複製邀請連結</button>
+    <button type="button">檢舉</button>
+    <button type="button">離開房間</button>
+  </div>
+  <p class="note" id="note"></p>
+</div>
+<script>
+  // 所有資料都用 textContent 放進頁面
+  const $ = (id) => document.getElementById(id);
+  const STYLES = ['dark', 'light', 'minimal'];
+  $('menu').addEventListener('click', () => {
+    const open = $('sheet').hidden;
+    $('sheet').hidden = !open;
+    $('menu').setAttribute('aria-expanded', String(open));
+  });
+  (async () => {
+    const player = new URLSearchParams(location.search).get('player') || 'p1';
+    if (!/^[\w-]{1,32}$/.test(player)) return;
+    const s = await (await fetch('/dev/state')).json();
+    const shell = s.shell || {};
+    const style = STYLES.includes(shell.style) ? shell.style : 'dark';
+    const accent = /^#[0-9a-f]{6}$/.test(shell.accent || '') ? shell.accent : '';
+    $('shell').className = 'shell st-' + style + (accent ? ' has-accent' : '');
+    if (accent) $('shell').style.setProperty('--shell-accent', accent);
+    $('note').textContent = `外殼樣式 ${style}${accent ? '・強調色 ' + accent : ''}・玩家 ${player}`;
+    const u = new URL(s.site);
+    u.searchParams.set('pt_dev', s.self);
+    u.searchParams.set('pt_player', player);
+    $('game').src = u.toString();
+  })();
+</script>
+</body>
+</html>
