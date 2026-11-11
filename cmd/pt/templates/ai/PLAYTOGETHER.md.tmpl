@@ -85,12 +85,13 @@
 
 遊戲不能拿到麥克風或聲音，但可以拿到**玩家的音高**（唱歌、哼歌、比音準、用聲音控制角色）：平台在玩家手機上分析，只把數字交給這位玩家自己的遊戲畫面。
 
-1. **遊戲伺服器授權**：[[if eq .Server "node"]]`platform.pitchPolicy({...})`（`main.mjs` 的 `platform`）[[else]]`pt.SendPitchPolicy(ctx, playtogether.PitchPolicy{...})`（`main.go` 的 `pt`）[[end]]，內容是 `roomId`、`gameInstanceId`（你自己取的這一局識別字）、`epoch`（兌換啟動碼拿到的局數）、遞增的 `sequence`、`allowedPlayerIds`（1–64 人，例如輪到唱歌的人）、`mode: "ptt"`、`audience: "self"`、生效與到期時間（最多 1 小時）。房主重新開始後 `epoch` 會變，要重新授權。[[if eq .GameServer "none"]]**這個專案宣告沒有遊戲伺服器，所以目前不能用音高玩法**；要用時先提出架構變更（架構原則 1）。[[else]]範本伺服器的遊戲函式在鎖裡、不能呼叫網路：在函式裡只記下要授權誰，鎖外再呼叫平台（[[if eq .Server "node"]]例如 `setTimeout(() => platform.pitchPolicy(…), 0)`[[else]]例如 `go func() { _ = pt.SendPitchPolicy(ctx, policy) }()`，`policy` 先在鎖裡組好[[end]]）。[[end]]
+1. **遊戲伺服器授權**：[[if eq .Server "node"]]`platform.pitchPolicy({...})`（`main.mjs` 的 `platform`）[[else]]`pt.SendPitchPolicy(ctx, playtogether.PitchPolicy{...})`（`main.go` 的 `pt`）[[end]]，內容是 `roomId`、`gameInstanceId`（你自己取的這一局識別字）、`epoch`（兌換啟動碼拿到的局數）、遞增的 `sequence`、`allowedPlayerIds`（1–64 人，例如輪到唱歌的人）、`mode`（`"ptt"` 按住說話時才分析；`"hands_free"` 免按住，見第 7 點）、`audience: "self"`、生效與到期時間（最多 1 小時）。房主重新開始後 `epoch` 會變，要重新授權。[[if eq .GameServer "none"]]**這個專案宣告沒有遊戲伺服器，所以目前不能用音高玩法**；要用時先提出架構變更（架構原則 1）。[[else]]範本伺服器的遊戲函式在鎖裡、不能呼叫網路：在函式裡只記下要授權誰，鎖外再呼叫平台（[[if eq .Server "node"]]例如 `setTimeout(() => platform.pitchPolicy(…), 0)`[[else]]例如 `go func() { _ = pt.SendPitchPolicy(ctx, policy) }()`，`policy` 先在鎖裡組好[[end]]）。[[end]]
 2. **畫面端請求**：[[if eq .Client "godot"]]`PlayTogether.pitch_start()`、`PlayTogether.pitch_stop()`；訊號 `pitch_started`、`pitch_stopped(reason)`、`pitch_changed(payload)`[[else]]`pt.pitch.start({ mode: 'ptt' })`、`pt.pitch.stop()`；`pt.pitch.on('state', s => …)`、`pt.pitch.on('pitch', f => …)`[[end]]。第一次會由平台跳出同意畫面，遊戲不能代按。
-3. **收到的數字**：每秒約 20 次，只在玩家有發言權**而且正在按住說話**時：`voiced`、`hz`、`note`（MIDI，69 = A4）、`cents`（−50～50）、`confidence`（0–1）。沒聲音時 `voiced` 是 false、其他是 null。
+3. **收到的數字**：每秒約 20 次，`ptt` 只在玩家有發言權**而且正在按住說話**時（`hands_free` 是授權期間一直送）：`voiced`、`hz`、`note`（MIDI，69 = A4）、`cents`（−50～50）、`confidence`（0–1）。沒聲音時 `voiced` 是 false、其他是 null。
 4. **停止原因**（`reason`）：`game`、`user`、`denied`（玩家不同意）、`not_authorized`（伺服器沒授權）、`mic_denied`、`unsupported`、`background`、`timeout`（單次最長 10 分鐘）、`busy`、`closed`。遊戲要能處理每一種，例如顯示「請按住說話唱歌」或改用別的玩法。
 5. **只能當娛樂分數**：音高來自玩家的瀏覽器，不可信，不能用於排名、獎勵、解鎖（架構原則 4）。要比賽時由遊戲伺服器決定規則，並接受「玩家可能作弊」。
 6. **本機測試**：`pt dev` 不用真的麥克風，`start` 之後會送一組假的音高（滑音、靜音、顫音輪流），[[if ne .GameServer "none"]]假平台也會檢查授權的格式與局數；[[end]]真的聲音要在玩聚的預覽房間用手機測。
+7. **免按住（用聲音操控角色）**：一直要出聲的玩法不要讓玩家按住說話。授權用 `mode: "hands_free"`，畫面用 [[if eq .Client "godot"]]`PlayTogether.pitch_start(true)`[[else]]`pt.pitch.start({ mode: 'hands_free' })`[[end]]；兩邊都要，授權是 `ptt` 時畫面要求免按住會收到 `not_authorized`。玩家不用加入語音，聲音也不會傳給其他人。平台有另一份同意畫面、畫面上方一直顯示分析中。iOS 要玩家點一下才能開始收音：在玩家按「開始」之類的按鈕時呼叫 `start` 最順，否則平台會在畫面中間請玩家點一下。只在一局進行中授權，局與局之間 `stop`。語音指令也可以用 `hands_free`（[[if eq .Client "godot"]]`speech_start(true)`[[else]]`pt.speech.start({ mode: 'hands_free' })`[[end]]），平台用停頓判斷一句結束，沒聽出指令的聲音不會送給遊戲。
 
 ## 用聲音玩：語音指令
 

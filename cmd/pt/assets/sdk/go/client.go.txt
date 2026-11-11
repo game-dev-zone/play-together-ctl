@@ -259,7 +259,8 @@ func (c *Client) SendVoicePolicy(ctx context.Context, p VoicePolicy) error {
 
 // PitchPolicy 是遊戲伺服器送給平台的音高授權（docs/voice-chat.md「三之一」），和發言規則分開。
 // Epoch 必須是房間目前的局數（兌換啟動碼回傳的 epoch；房主重新開始後要重新授權）。
-// 第一版 Mode 只有 "ptt"（只在玩家有發言權且正在說話時分析）、Audience 只有 "self"（只給唱歌者自己的畫面）。
+// Mode："ptt"（只在玩家有發言權且按住說話時分析）或 "hands_free"（授權期間持續分析，玩家不用加入語音、不用按住；
+// 聲音不傳給其他人，平台另外取得玩家同意）。Audience 只有 "self"（只給唱歌者自己的畫面）。
 // 有效期間最多 1 小時；名單 1–64 人。
 type PitchPolicy struct {
 	RoomID              string   `json:"roomId"`
@@ -284,8 +285,8 @@ func (p PitchPolicy) Validate() error {
 	if p.EffectiveAtServerMs <= 0 || p.ExpiresAtServerMs <= p.EffectiveAtServerMs {
 		return errors.New("expiresAtServerMs 必須晚於 effectiveAtServerMs")
 	}
-	if p.Mode != "ptt" {
-		return fmt.Errorf("未知的模式：%q（目前只有 ptt）", p.Mode)
+	if p.Mode != "ptt" && p.Mode != "hands_free" {
+		return fmt.Errorf("未知的模式：%q（只有 ptt、hands_free）", p.Mode)
 	}
 	if p.Audience != "self" {
 		return fmt.Errorf("未知的對象：%q（目前只有 self）", p.Audience)
@@ -318,7 +319,7 @@ func (c *Client) SendPitchPolicy(ctx context.Context, p PitchPolicy) error {
 
 // SpeechPolicy 是遊戲伺服器送給平台的語音指令授權（docs/speech-commands.md），和發言規則、音高授權分開。
 // 玩家用說的操作（例如「四個五」「投三號」）：平台在玩家手機上辨識，只把文字交給這位玩家自己的遊戲畫面。
-// Epoch 必須是房間目前的局數（房主重新開始後要重新授權）。第一版 Mode 只有 "ptt"、Audience 只有 "self"、
+// Epoch 必須是房間目前的局數（房主重新開始後要重新授權）。Mode 是 "ptt" 或 "hands_free"（和 PitchPolicy 相同）、Audience 只有 "self"、
 // Language 只有 "zh-TW"。有效期間最多 1 小時；名單 1–64 人。Vocabulary 選填（強烈建議提供，準確度差很多）。
 type SpeechPolicy struct {
 	RoomID              string            `json:"roomId"`

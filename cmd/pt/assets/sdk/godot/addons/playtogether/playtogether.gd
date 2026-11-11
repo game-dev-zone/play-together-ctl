@@ -149,10 +149,11 @@ func purchase(purchase_id: String) -> void:
 
 
 ## 音高玩法：請平台開始分析這位玩家的音高。遊戲伺服器要先送 pitch.policy 授權，玩家要在平台畫面同意。
+## hands_free 為 true：不用加入語音、不用按住說話，授權期間持續分析（遊戲伺服器的授權也要是 hands_free）。
 ## 模擬模式（不是網頁版）產生假資料：滑音 220→440 Hz、斷音、穩定 440 Hz 加抖音、低信心
-func pitch_start() -> void:
+func pitch_start(hands_free: bool = false) -> void:
 	if _bridge:
-		_bridge.pitchStart()
+		_bridge.pitchStart(hands_free)
 	elif _mock_speech:
 		pitch_stopped.emit.call_deferred("busy")
 	elif not _mock_pitch:
@@ -172,10 +173,11 @@ func pitch_stop() -> void:
 
 
 ## 語音指令：請平台開始辨識這位玩家說的話（例如「四個五」「投三號」）。遊戲伺服器要先送 speech.policy 授權，
-## 玩家要在平台畫面同意；遊戲拿不到聲音，只拿到文字。模擬模式沒有麥克風：用 speech_mock_result(文字) 測試
-func speech_start() -> void:
+## 玩家要在平台畫面同意；遊戲拿不到聲音，只拿到文字。hands_free 和 pitch_start 相同。
+## 模擬模式沒有麥克風：用 speech_mock_result(文字) 測試
+func speech_start(hands_free: bool = false) -> void:
 	if _bridge:
-		_bridge.speechStart()
+		_bridge.speechStart(hands_free)
 	elif _mock_pitch:
 		speech_stopped.emit.call_deferred("busy")  # 和平台相同：音高與語音指令同一時間只能用一種
 	elif not _mock_speech:

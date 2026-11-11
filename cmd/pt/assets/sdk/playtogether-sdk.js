@@ -1397,7 +1397,7 @@ var Y = (/* @__PURE__ */ z()).check(/* @__PURE__ */ I(1), /* @__PURE__ */ F(128)
 	"host_only",
 	"turn",
 	"allowlist"
-]), Jt = /* @__PURE__ */ W(["ptt"]), Yt = /* @__PURE__ */ W(["self"]), Xt = /* @__PURE__ */ W([
+]), Jt = /* @__PURE__ */ W(["ptt", "hands_free"]), Yt = /* @__PURE__ */ W(["self"]), Xt = /* @__PURE__ */ W([
 	"game",
 	"user",
 	"denied",
@@ -1408,7 +1408,7 @@ var Y = (/* @__PURE__ */ z()).check(/* @__PURE__ */ I(1), /* @__PURE__ */ F(128)
 	"timeout",
 	"busy",
 	"closed"
-]), Zt = /* @__PURE__ */ W(["ptt"]), Qt = /* @__PURE__ */ W(["self"]), $t = /* @__PURE__ */ W(["zh-TW"]), en = Xt, tn = 5e3, nn = /^[a-z][a-z0-9_]{0,15}$/, rn = (/* @__PURE__ */ z()).check(/* @__PURE__ */ I(1), /* @__PURE__ */ F(60), /* @__PURE__ */ L(/^[^\u0000-\u001f\u007f]+$/)), an = /* @__PURE__ */ Nt([/* @__PURE__ */ U({
+]), Zt = Jt, Qt = /* @__PURE__ */ W(["self"]), $t = /* @__PURE__ */ W(["zh-TW"]), en = Xt, tn = 5e3, nn = /^[a-z][a-z0-9_]{0,15}$/, rn = (/* @__PURE__ */ z()).check(/* @__PURE__ */ I(1), /* @__PURE__ */ F(60), /* @__PURE__ */ L(/^[^\u0000-\u001f\u007f]+$/)), an = /* @__PURE__ */ Nt([/* @__PURE__ */ U({
 	type: /* @__PURE__ */ G("integer"),
 	min: B().check(/* @__PURE__ */ N(0), /* @__PURE__ */ M(9999)),
 	max: B().check(/* @__PURE__ */ N(0), /* @__PURE__ */ M(9999))
@@ -1761,7 +1761,7 @@ function $(e, t, n, r, i) {
 			},
 			pitch: {
 				start: ({ mode: t = "ptt" } = {}) => {
-					if (t !== "ptt") return;
+					if (t !== "ptt" && t !== "hands_free") return;
 					if (e === "platform") return n("pitch.start", { mode: t });
 					if (l !== void 0) return;
 					if (f) return c.emit("state", {
@@ -1776,7 +1776,7 @@ function $(e, t, n, r, i) {
 			},
 			speech: {
 				start: ({ mode: t = "ptt" } = {}) => {
-					if (t !== "ptt") return;
+					if (t !== "ptt" && t !== "hands_free") return;
 					if (e === "platform") return n("speech.start", { mode: t });
 					if (f) return;
 					if (l !== void 0) return d.emit("state", {
