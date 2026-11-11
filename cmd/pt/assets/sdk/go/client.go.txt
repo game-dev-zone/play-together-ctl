@@ -28,14 +28,25 @@ const (
 
 // VoicePolicy 是遊戲伺服器送給平台的發言規則。
 type VoicePolicy struct {
-	RoomID              string    `json:"roomId"`
-	GameInstanceID      string    `json:"gameInstanceId"`
-	Sequence            int64     `json:"sequence"`
-	Mode                VoiceMode `json:"mode"`
-	AllowedSpeakerIDs   []string  `json:"allowedSpeakerIds"`
-	EffectiveAtServerMs int64     `json:"effectiveAtServerMs"`
-	ExpiresAtServerMs   int64     `json:"expiresAtServerMs"`
+	RoomID            string    `json:"roomId"`
+	GameInstanceID    string    `json:"gameInstanceId"`
+	Sequence          int64     `json:"sequence"`
+	Mode              VoiceMode `json:"mode"`
+	AllowedSpeakerIDs []string  `json:"allowedSpeakerIds"`
+	// Groups 是分組語音（選填，docs/voice-groups.md）：生效期間組員只在自己的組裡說話，其他人收不到；
+	// 組員仍聽得到主頻道。一個人最多在一組。狼人殺的夜晚：Mode allowlist、AllowedSpeakerIDs 空、Groups 放狼人
+	Groups              []VoiceGroup `json:"groups,omitempty"`
+	EffectiveAtServerMs int64        `json:"effectiveAtServerMs"`
+	ExpiresAtServerMs   int64        `json:"expiresAtServerMs"`
 }
+
+// VoiceGroup 是一個語音分組。ID 只能用小寫英文、數字、底線、連字號（英文開頭，最多 16 字）
+type VoiceGroup struct {
+	ID      string   `json:"id"`
+	Members []string `json:"members"`
+}
+
+var voiceGroupIDRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,15}$`)
 
 // Validate 和 packages/protocol 的 voicePolicySchema 規則相同，送出前先在本地檢查。
 func (p VoicePolicy) Validate() error {
@@ -65,7 +76,8 @@ func (p VoicePolicy) Validate() error {
 			return errors.New("turn 模式必須剛好一位發言者")
 		}
 	case VoiceAllowlist:
-		if n < 1 {
+		// 有分組時主頻道可以沒有人能說話（例如狼人殺的夜晚）
+		if n < 1 && len(p.Groups) == 0 {
 			return errors.New("allowlist 模式至少要一位發言者")
 		}
 	case VoiceOpen, VoiceHostOnly:
@@ -74,6 +86,25 @@ func (p VoicePolicy) Validate() error {
 		}
 	default:
 		return fmt.Errorf("未知的模式：%q", p.Mode)
+	}
+	if len(p.Groups) > 8 {
+		return errors.New("分組最多 8 組")
+	}
+	ids, members := map[string]bool{}, map[string]bool{}
+	for _, g := range p.Groups {
+		if !voiceGroupIDRe.MatchString(g.ID) || ids[g.ID] {
+			return errors.New("分組 id 只能用小寫英文、數字、底線、連字號（英文開頭，最多 16 字），而且不能重複")
+		}
+		ids[g.ID] = true
+		if len(g.Members) < 1 || len(g.Members) > 64 {
+			return errors.New("每組 1–64 人")
+		}
+		for _, m := range g.Members {
+			if m == "" || members[m] {
+				return errors.New("組員不得為空字串，一個人最多在一組")
+			}
+			members[m] = true
+		}
 	}
 	return nil
 }

@@ -572,7 +572,11 @@ func (f *fakePlatform) voicePolicy(w http.ResponseWriter, r *http.Request) {
 		f.write(w, 404, map[string]string{"error": "room_not_found"})
 		return
 	}
-	f.logLocked(ep, 200, fmt.Sprintf("%s（序號 %d）；本機不實際切換語音", p.Mode, p.Sequence), true)
+	groups := ""
+	if len(p.Groups) > 0 {
+		groups = fmt.Sprintf("、分組 %d 組", len(p.Groups))
+	}
+	f.logLocked(ep, 200, fmt.Sprintf("%s（序號 %d%s）；本機不實際切換語音", p.Mode, p.Sequence, groups), true)
 	f.write(w, 200, map[string]any{"ok": true})
 }
 

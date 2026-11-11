@@ -1469,7 +1469,8 @@ var ln = /* @__PURE__ */ U({
 	"voice.state": /* @__PURE__ */ U({
 		connected: /* @__PURE__ */ V(),
 		canSpeak: /* @__PURE__ */ V(),
-		mode: qt
+		mode: qt,
+		group: /* @__PURE__ */ K(/* @__PURE__ */ q((/* @__PURE__ */ z()).check(/* @__PURE__ */ L(/^[a-z][a-z0-9_-]{0,15}$/))))
 	}),
 	"voice.speaking": /* @__PURE__ */ U({
 		playerId: Y,
@@ -1566,15 +1567,23 @@ function mn(e) {
 		error: "bad_payload"
 	};
 }
+var hn = /* @__PURE__ */ U({
+	id: (/* @__PURE__ */ z()).check(/* @__PURE__ */ L(/^[a-z][a-z0-9_-]{0,15}$/)),
+	members: (/* @__PURE__ */ H(Y)).check(/* @__PURE__ */ I(1), /* @__PURE__ */ F(64))
+});
 (/* @__PURE__ */ U({
 	roomId: Y,
 	gameInstanceId: Y,
 	sequence: B().check(/* @__PURE__ */ N(0)),
 	mode: qt,
 	allowedSpeakerIds: /* @__PURE__ */ Vt((/* @__PURE__ */ H(Y)).check(/* @__PURE__ */ F(64)), []),
+	groups: /* @__PURE__ */ K((/* @__PURE__ */ H(hn)).check(/* @__PURE__ */ F(8))),
 	effectiveAtServerMs: B().check(/* @__PURE__ */ P()),
 	expiresAtServerMs: B().check(/* @__PURE__ */ P())
-})).check(/* @__PURE__ */ J((e) => e.expiresAtServerMs > e.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ J((e) => e.mode !== "turn" || e.allowedSpeakerIds.length === 1, "turn 模式必須剛好一位發言者"), /* @__PURE__ */ J((e) => e.mode !== "allowlist" || e.allowedSpeakerIds.length >= 1, "allowlist 模式至少要一位發言者"), /* @__PURE__ */ J((e) => e.mode !== "open" && e.mode !== "host_only" || e.allowedSpeakerIds.length === 0, "open / host_only 模式不帶發言者名單"), /* @__PURE__ */ J((e) => new Set(e.allowedSpeakerIds).size === e.allowedSpeakerIds.length, "發言者名單不得重複")), (/* @__PURE__ */ U({
+})).check(/* @__PURE__ */ J((e) => e.expiresAtServerMs > e.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ J((e) => e.mode !== "turn" || e.allowedSpeakerIds.length === 1, "turn 模式必須剛好一位發言者"), /* @__PURE__ */ J((e) => e.mode !== "allowlist" || e.allowedSpeakerIds.length >= 1 || (e.groups?.length ?? 0) > 0, "allowlist 模式至少要一位發言者"), /* @__PURE__ */ J((e) => e.mode !== "open" && e.mode !== "host_only" || e.allowedSpeakerIds.length === 0, "open / host_only 模式不帶發言者名單"), /* @__PURE__ */ J((e) => new Set(e.allowedSpeakerIds).size === e.allowedSpeakerIds.length, "發言者名單不得重複"), /* @__PURE__ */ J((e) => new Set((e.groups ?? []).map((e) => e.id)).size === (e.groups ?? []).length, "分組 id 不得重複"), /* @__PURE__ */ J((e) => {
+	let t = (e.groups ?? []).flatMap((e) => e.members);
+	return new Set(t).size === t.length;
+}, "一個人最多在一組")), (/* @__PURE__ */ U({
 	roomId: Y,
 	gameInstanceId: Y,
 	epoch: B().check(/* @__PURE__ */ N(0)),
@@ -1607,7 +1616,7 @@ function Z(e) {
 	}, Z(e);
 }
 // \0@oxc-project+runtime@0.156.0/helpers/esm/toPrimitive.js
-function hn(e, t) {
+function gn(e, t) {
 	if (Z(e) != "object" || !e) return e;
 	var n = e[Symbol.toPrimitive];
 	if (n !== void 0) {
@@ -1618,13 +1627,13 @@ function hn(e, t) {
 	return (t === "string" ? String : Number)(e);
 }
 // \0@oxc-project+runtime@0.156.0/helpers/esm/toPropertyKey.js
-function gn(e) {
-	var t = hn(e, "string");
+function _n(e) {
+	var t = gn(e, "string");
 	return Z(t) == "symbol" ? t : t + "";
 }
 // \0@oxc-project+runtime@0.156.0/helpers/esm/defineProperty.js
-function _n(e, t, n) {
-	return (t = gn(t)) in e ? Object.defineProperty(e, t, {
+function vn(e, t, n) {
+	return (t = _n(t)) in e ? Object.defineProperty(e, t, {
 		value: n,
 		enumerable: !0,
 		configurable: !0,
@@ -1632,8 +1641,8 @@ function _n(e, t, n) {
 	}) : e[t] = n, e;
 }
 // src/index.ts
-var vn = "0.1.0";
-function yn(e = window) {
+var yn = "0.1.0";
+function bn(e = window) {
 	return {
 		embedded: e.parent !== e,
 		parent: e.parent,
@@ -1650,9 +1659,9 @@ function yn(e = window) {
 		}
 	};
 }
-var bn = 15e4, Q = class {
+var xn = 15e4, Q = class {
 	constructor() {
-		_n(this, "map", /* @__PURE__ */ new Map());
+		vn(this, "map", /* @__PURE__ */ new Map());
 	}
 	on(e, t) {
 		let n = this.map.get(e);
@@ -1666,7 +1675,7 @@ var bn = 15e4, Q = class {
 		}
 	}
 };
-function xn(e, t, n) {
+function Sn(e, t, n) {
 	let r = n - t, i = r / 1e3 % 6, a = {
 		playerId: "mock-player",
 		sessionId: `mock-${t}`,
@@ -1693,12 +1702,12 @@ function xn(e, t, n) {
 		confidence: .92
 	};
 }
-var Sn = class extends Error {
+var Cn = class extends Error {
 	constructor() {
 		super("無法和玩聚平台完成握手（逾時）"), this.name = "HandshakeTimeoutError";
 	}
 };
-function Cn() {
+function wn() {
 	let e = /* @__PURE__ */ new Uint8Array(16);
 	return crypto.getRandomValues(e), Array.from(e, (e) => e.toString(16).padStart(2, "0")).join("");
 }
@@ -1760,7 +1769,7 @@ function $(e, t, n, r, i) {
 						reason: "busy"
 					});
 					let r = Date.now(), i = 0;
-					c.emit("state", { state: "started" }), l = setInterval(() => c.emit("pitch", xn(i++, r, Date.now())), 50);
+					c.emit("state", { state: "started" }), l = setInterval(() => c.emit("pitch", Sn(i++, r, Date.now())), 50);
 				},
 				stop: () => e === "platform" ? n("pitch.stop", {}) : u("game"),
 				on: (e, t) => c.on(e, t)
@@ -1794,7 +1803,7 @@ function $(e, t, n, r, i) {
 			points: { purchase: (t) => new Promise((r) => {
 				if (e === "mock" || !/^pur_[A-Za-z0-9_-]{22}$/.test(t)) return r({ status: "failed" });
 				h.get(t)?.("cancelled");
-				let i = setTimeout(() => a("failed"), bn), a = (e) => {
+				let i = setTimeout(() => a("failed"), xn), a = (e) => {
 					clearTimeout(i), h.delete(t), r({ status: e });
 				};
 				h.set(t, a), n("purchase.request", { purchaseId: t });
@@ -1824,10 +1833,10 @@ function $(e, t, n, r, i) {
 		}
 	};
 }
-function wn() {
+function Tn() {
 	return $("mock", {
 		protocolVersion: 1,
-		launchCode: `mock-${Cn()}`,
+		launchCode: `mock-${wn()}`,
 		player: {
 			name: "測試玩家",
 			locale: "zh-TW"
@@ -1835,7 +1844,7 @@ function wn() {
 		room: { id: "mock-room" }
 	}, () => {}, () => {}).client;
 }
-function Tn(e) {
+function En(e) {
 	try {
 		let t = new URL(e).searchParams, n = new URL(t.get("pt_dev")), r = t.get("pt_player") ?? "";
 		return n.protocol === "http:" && [
@@ -1850,7 +1859,7 @@ function Tn(e) {
 		return null;
 	}
 }
-async function En(e, t) {
+async function Dn(e, t) {
 	let n = {};
 	try {
 		let r = await e.fetch(`${t.origin}/dev/launch-code?player=${t.player}`);
@@ -1868,10 +1877,10 @@ async function En(e, t) {
 			locale: "zh-TW"
 		},
 		room: { id: a }
-	}, s = An(n.serverUrl);
-	return s && (o.server = { url: s }), $("mock", o, () => {}, () => {}, kn(e, t)).client;
+	}, s = jn(n.serverUrl);
+	return s && (o.server = { url: s }), $("mock", o, () => {}, () => {}, An(e, t)).client;
 }
-function Dn(e) {
+function On(e) {
 	let { text: t, phrase: n, slots: r } = e ?? {};
 	if (typeof t != "string" || t === "") return [];
 	let i = {
@@ -1885,7 +1894,7 @@ function Dn(e) {
 	}
 	return [i];
 }
-var On = [
+var kn = [
 	"game",
 	"user",
 	"denied",
@@ -1897,7 +1906,7 @@ var On = [
 	"busy",
 	"closed"
 ];
-function kn(e, t) {
+function An(e, t) {
 	return (n, r) => {
 		let i = !0, a = !1, o = async () => {
 			if (!a) {
@@ -1909,9 +1918,9 @@ function kn(e, t) {
 					if (s) return;
 					for (let e of Array.isArray(o.results) ? o.results : []) {
 						let t = e.alternatives;
-						Array.isArray(t) && n(t.flatMap((e) => Dn(e)));
+						Array.isArray(t) && n(t.flatMap((e) => On(e)));
 					}
-					typeof o.stop == "string" && On.includes(o.stop) && r(o.stop);
+					typeof o.stop == "string" && kn.includes(o.stop) && r(o.stop);
 				} catch {} finally {
 					a = !1;
 				}
@@ -1922,7 +1931,7 @@ function kn(e, t) {
 		};
 	};
 }
-function An(e) {
+function jn(e) {
 	if (typeof e != "string") return null;
 	try {
 		let t = new URL(e);
@@ -1935,10 +1944,10 @@ function An(e) {
 		return null;
 	}
 }
-function jn(e) {
-	let t = e.transport ?? yn(), n = Tn(t.href);
-	if (n) return En(t, n);
-	if (!t.embedded) return Promise.resolve(wn());
+function Mn(e) {
+	let t = e.transport ?? bn(), n = En(t.href);
+	if (n) return Dn(t, n);
+	if (!t.embedded) return Promise.resolve(Tn());
 	let r = e.platformOrigins.filter((e) => e !== "*");
 	if (r.length === 0) return Promise.reject(/* @__PURE__ */ Error("platformOrigins 未設定：請填入玩聚平台的完整來源"));
 	let i = e.timeoutMs ?? 5e3, a = e.helloIntervalMs ?? 250;
@@ -1954,7 +1963,7 @@ function jn(e) {
 			} : {},
 			payload: t
 		}), f = () => {
-			let e = d("sdk.hello", { sdkVersion: vn }, !1);
+			let e = d("sdk.hello", { sdkVersion: yn }, !1);
 			for (let n of r) t.post(e, n);
 		}, p = () => {
 			clearInterval(h), clearTimeout(ee);
@@ -1973,10 +1982,10 @@ function jn(e) {
 				u = r.dispatch, e(r.client);
 			}
 		}), h = setInterval(f, a), ee = setTimeout(() => {
-			p(), m(), n(new Sn());
+			p(), m(), n(new Cn());
 		}, i);
 		f();
 	});
 }
-var Mn = { init: jn };
-export { Sn as HandshakeTimeoutError, Mn as PlayTogether, vn as SDK_VERSION, yn as browserTransport, Tn as devPlatform, jn as init, xn as mockPitchFrame };
+var Nn = { init: Mn };
+export { Cn as HandshakeTimeoutError, Nn as PlayTogether, yn as SDK_VERSION, bn as browserTransport, En as devPlatform, Mn as init, Sn as mockPitchFrame };
