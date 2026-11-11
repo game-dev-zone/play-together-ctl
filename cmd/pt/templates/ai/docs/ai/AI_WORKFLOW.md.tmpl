@@ -132,7 +132,8 @@ Codex 不執行 Claude Code Game Studios 的流程。Codex 可以：讀 Studios 
 
 | 情況 | 你的做法 |
 | --- | --- |
-| **平台硬性規則**（`PLAYTOGETHER.md`） | **不實作**。說明原因並提出替代設計（例如每局重置、不能購買、不能兌換的籌碼） |
+| **平台硬性規則**（`PLAYTOGETHER.md`） | **不實作**。說明原因並提出替代設計 |
+| **現實經濟價值**（`PLAYTOGETHER.md`「由玩聚平台與律師決定」：真實金錢下注、點數下注、提領、兌換、轉讓、付費隨機獎勵） | 預設不做，優先提出替代設計（例如每局重置、不能購買、不能兌換的籌碼）。開發者明確要求時提出 `GAMEPLAY_POLICY_CHANGE_REQUEST`，同意後照實改 `economy` 宣告（變成 REVIEW_REQUIRED），並告知：要玩聚平台與律師決定、決定前正式環境不能上架。技術上遊戲不能自己接付款或改點數：只用平台已開放的接口，還沒開放的不實作、不模擬 |
 | **需要平台審核**（`pt check` 的 REVIEW_REQUIRED） | 可以開發；明確提醒開發者需要玩聚平台審核；不宣稱已批准、不說「可以上架」 |
 | **要加入超出內容邊界的內容** | **不自動提高 profile**：提出 `CONTENT_PROFILE_CHANGE_REQUEST`，開發者同意後由開發者修改 `contentProfile`（或明確授權你修改），執行 `pt content sync` 重新產生 `CONTENT_PROFILE.md`，再實作 |
 | **既有內容已經超出內容邊界** | 降低內容以符合邊界，或提出 `CONTENT_PROFILE_CHANGE_REQUEST`；不得靜默放寬 |

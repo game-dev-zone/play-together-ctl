@@ -178,7 +178,7 @@ pt check：PASS／REVIEW_REQUIRED／ERROR
 - `pt check` 只檢查設定檔，不判斷遊戲實際內容，不推論法律分級，也不做關鍵字偵測；`pt check -json` 輸出結果給 CI 與 AI 工具。
 - 需要審核與硬性規則的清單內建在 `pt`（政策資料），玩聚平台政策改變時隨新版 `pt` 更新；`playtogether.json` 的 `policyVersion` 記錄專案同步的版本。
 - 宣告經開發者確認修改後，執行 `pt content sync` 重新產生 `docs/content/` 的兩份文件並更新 `policyVersion`（宣告本身有錯誤時不產生）。
-- v0.14 的 `contentRating` 仍可讀取：依 v0.14 的規則驗證，一般只有遷移提醒，但明確的真錢下注、付費抽獎仍是硬性規則，不合法的舊值是宣告錯誤；建議用 `pt new -profile …` 建暫存專案，把 `platformAudience`、`contentProfile`、`sensitiveContent`、`gameplay`、`economy` 與 `docs/content/` 複製過去。
+- v0.14 的 `contentRating` 仍可讀取：依 v0.14 的規則驗證，一般只有遷移提醒，明確的真錢下注、付費抽獎是需要審核（由玩聚平台與律師決定），不合法的舊值是宣告錯誤；建議用 `pt new -profile …` 建暫存專案，把 `platformAudience`、`contentProfile`、`sensitiveContent`、`gameplay`、`economy` 與 `docs/content/` 複製過去。
 - `art/STYLE.md` 只管視覺風格，產生素材前同時讀 `PLAYTOGETHER.md`、`CONTENT_PROFILE.md` 與 `GAMEPLAY_ECONOMY.md`。
 
 | 選項 | 可用值 | 說明 |

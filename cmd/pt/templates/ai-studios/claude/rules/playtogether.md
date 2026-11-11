@@ -18,6 +18,6 @@ paths:
 - 不要用 `JavaScriptBridge.eval`；`HTTPRequest` 用 `config.gd` 的完整網址。
 - `export_presets.cfg`：`variant/thread_support=false`、行動裝置 VRAM 壓縮關閉、Head Include 載入 `playtogether-sdk-godot.iife.js`，不要改。
 - 中文用 `fonts/` 的字型。
-- 不要加入任何分析、追蹤、廣告 SDK；遵守 `PLAYTOGETHER.md` 的玩聚平台硬性規則（現實經濟價值的玩法：真實金錢下注、點數下注、提領、兌換、可轉讓現實價值、付費隨機獎勵由玩聚平台與律師決定，照實宣告；遊戲不能自己接付款或改點數，平台開放前不實作）。牌、骰子、籌碼、Bet／Call／Raise 本身不違規（Table Game ≠ Real-Money Gambling）。
+- 不要加入任何分析、追蹤、廣告 SDK；遵守 `PLAYTOGETHER.md` 的玩聚平台硬性規則（不實作）。現實經濟價值的玩法（真實金錢下注、點數下注、提領、兌換、可轉讓現實價值、付費隨機獎勵）不是硬性規則，由玩聚平台與律師決定：預設不做，開發者要求才照實宣告；遊戲不能自己接付款或改點數，平台開放前不實作。牌、骰子、籌碼、Bet／Call／Raise 本身不違規（Table Game ≠ Real-Money Gambling）。
 - 內容不超過 `docs/content/CONTENT_PROFILE.md` 的內容邊界（上限，不是要求）；超過時提出 `CONTENT_PROFILE_CHANGE_REQUEST`，不自行提高。玩法與經濟宣告在 `docs/content/GAMEPLAY_ECONOMY.md`。能否上架由玩聚平台審核決定。
 - 改完跑 `pt check`，再用 `pt dev` 實際玩一次。

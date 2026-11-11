@@ -27,10 +27,10 @@ type contentRating struct {
 }
 
 type gamblingRating struct {
-	RealMoney        bool   `json:"realMoney"`        // 玩聚平台硬性規則：一律 false
-	Wagering         bool   `json:"wagering"`         // 玩聚平台硬性規則：一律 false
-	PaidRandomReward bool   `json:"paidRandomReward"` // 付費抽獎、轉蛋：玩聚平台硬性規則，一律 false
-	Simulated        string `json:"simulated"`        // 模擬賭博：玩聚平台硬性規則，只能是 none
+	RealMoney        bool   `json:"realMoney"`        // 審核準則 1.3：由玩聚平台與律師決定（需要審核）
+	Wagering         bool   `json:"wagering"`         // 審核準則 1.3：由玩聚平台與律師決定（需要審核）
+	PaidRandomReward bool   `json:"paidRandomReward"` // 付費抽獎、轉蛋：由玩聚平台與律師決定（需要審核）
+	Simulated        string `json:"simulated"`        // 模擬賭博：none 以外需要玩聚平台審核（v0.15 改用 gameplay.tableGame 宣告）
 	ChanceMechanics  string `json:"chanceMechanics"`  // 骰子、桌遊牌具、隨機事件、隨機掉落：none、allowed
 }
 
@@ -204,10 +204,10 @@ func contentRatingDoc(name string, r contentRating) string {
 	}
 	w("## 賭博與付費\n\n")
 	w("| 項目 | 設定 |\n| --- | --- |\n")
-	w("| 真實金錢下注（`realMoney`） | `false`（玩聚平台硬性規則） |\n")
-	w("| 下注、押注（`wagering`） | `false`（玩聚平台硬性規則） |\n")
-	w("| 付費抽獎、轉蛋（`paidRandomReward`） | `false`（玩聚平台硬性規則） |\n")
-	w("| 模擬賭博：模擬賭場、下注畫面、籌碼（`simulated`） | `none`（玩聚平台硬性規則） |\n")
+	w("| 真實金錢下注（`realMoney`） | `false`（由玩聚平台與律師決定；寫 true 是需要審核） |\n")
+	w("| 下注、押注（`wagering`） | `false`（由玩聚平台與律師決定；寫 true 是需要審核） |\n")
+	w("| 付費抽獎、轉蛋（`paidRandomReward`） | `false`（由玩聚平台與律師決定；寫 true 是需要審核） |\n")
+	w("| 模擬賭博：模擬賭場、下注畫面、籌碼（`simulated`） | `none`（其他值需要玩聚平台審核） |\n")
 	w("| 一般隨機機制：骰子、桌遊牌具、隨機事件、隨機掉落（`chanceMechanics`） | `%s` |\n\n", r.Gambling.ChanceMechanics)
 	w("文案不要出現賭博、博弈字眼。牌具只作為遊戲本身的玩法，不搭配籌碼、金錢。\n\n")
 	w("## 未成年角色\n\n")
