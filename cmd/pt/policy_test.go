@@ -178,6 +178,10 @@ func TestCheckPolicyMatrix(t *testing.T) {
 		{"transferableRealWorldValue", func(pl *policy) { pl.Economy.TransferableRealWorldValue = true }, []string{levelHard}},
 		{"paidRandomReward", func(pl *policy) { pl.Economy.PaidRandomReward = true }, []string{levelHard}},
 		{"realMoney 但不是下注", func(pl *policy) { pl.Economy.RealMoney = true }, []string{levelReview}},
+		// 經平台專用接口使用點數：由玩聚平台與律師決定（需要審核，不是硬性規則）
+		{"platformPointsStake", func(pl *policy) { v := true; pl.Economy.PlatformPointsStake = &v }, []string{levelReview}},
+		{"platformPointsRandom", func(pl *policy) { v := true; pl.Economy.PlatformPointsRandom = &v }, []string{levelReview}},
+		{"platformPointsStake false", func(pl *policy) { v := false; pl.Economy.PlatformPointsStake = &v }, nil},
 		// 內容
 		{"custom＋露骨性內容", func(pl *policy) { pl.Content.Profile = "custom"; pl.Content.SexualContent = "explicit" }, []string{levelHard}},
 		{"custom＋大量血腥", func(pl *policy) { pl.Content.Profile = "custom"; pl.Content.Blood = "strong" }, []string{levelHard}},
@@ -286,11 +290,17 @@ func TestCheckPolicyStrict(t *testing.T) {
 		"型別錯誤":         mutate("economy", func(m map[string]any) { m["realMoney"] = "no" }),
 		"敏感題材缺欄位":      mutate("sensitiveContent", func(m map[string]any) { delete(m, "hateAdvocacy") }),
 		"tableGame 拼錯": mutate("gameplay", func(m map[string]any) { m["tableGame"].(map[string]any)["virtualWager"] = "none" }),
+		"選填欄位是 null":   mutate("economy", func(m map[string]any) { m["platformPointsStake"] = nil }),
+		"選填欄位拼錯":       mutate("economy", func(m map[string]any) { m["platformPointStake"] = true }),
 	}
 	for name, p := range cases {
 		if l := runPolicy(p); len(l[levelSchema]) == 0 {
 			t.Errorf("%s 要是宣告錯誤：%v", name, l)
 		}
+	}
+	// 選填欄位：寫了 true 是需要審核，不是宣告錯誤
+	if l := runPolicy(mutate("economy", func(m map[string]any) { m["platformPointsStake"] = true })); len(l[levelSchema]) != 0 || len(l[levelReview]) == 0 {
+		t.Errorf("platformPointsStake 是選填、需要審核：%v", l)
 	}
 	p := *good
 	p.Economy = nil

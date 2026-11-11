@@ -85,7 +85,14 @@ type economyPolicy struct {
 	RedeemableValue            bool `json:"redeemableValue"`
 	TransferableRealWorldValue bool `json:"transferableRealWorldValue"`
 	PaidRandomReward           bool `json:"paidRandomReward"`
+	// 經玩聚平台專用接口使用點數（選填；沒寫視為 false）：平台保管與分配的點數比賽或下注、平台執行的點數隨機結果。
+	// 由玩聚平台與律師決定（REVIEW_REQUIRED）；遊戲自己扣點、抽獎、分配仍是 purchasableStake／paidRandomReward（硬性規則）
+	PlatformPointsStake  *bool `json:"platformPointsStake,omitempty"`
+	PlatformPointsRandom *bool `json:"platformPointsRandom,omitempty"`
 }
+
+// economyOptional：economy 裡可以不寫的欄位
+var economyOptional = []string{"platformPointsStake", "platformPointsRandom"}
 
 type policy struct {
 	Audience  platformAudience
@@ -249,8 +256,10 @@ func (pl *policy) fields() map[string][]string {
 		"economy.realMoney":                   b(e.RealMoney), "economy.realMoneyWagering": b(e.RealMoneyWagering),
 		"economy.purchasableStake": b(e.PurchasableStake), "economy.withdrawableValue": b(e.WithdrawableValue),
 		"economy.redeemableValue": b(e.RedeemableValue), "economy.transferableRealWorldValue": b(e.TransferableRealWorldValue),
-		"economy.paidRandomReward": b(e.PaidRandomReward),
-		"gameServer.ai":            pl.AI,
+		"economy.paidRandomReward":     b(e.PaidRandomReward),
+		"economy.platformPointsStake":  b(e.PlatformPointsStake != nil && *e.PlatformPointsStake),
+		"economy.platformPointsRandom": b(e.PlatformPointsRandom != nil && *e.PlatformPointsRandom),
+		"gameServer.ai":                pl.AI,
 	}
 }
 
@@ -296,6 +305,11 @@ func reviewReasons(pl policy) (hard, review []string) {
 
 // strictDecode：raw 必須是 JSON 物件、有全部的 keys、沒有未知的鍵、型別正確（json.Unmarshal 會忽略未知鍵，也分不出缺欄位與 false）。
 func strictDecode(raw json.RawMessage, name string, keys []string, dst any, add addFunc) bool {
+	return strictDecodeOptional(raw, name, keys, nil, dst, add)
+}
+
+// strictDecodeOptional 和 strictDecode 相同，另外允許 optional 這些欄位（可以不寫，寫了不能是 null）。
+func strictDecodeOptional(raw json.RawMessage, name string, keys, optional []string, dst any, add addFunc) bool {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &m); err != nil || m == nil {
 		add(levelSchema, "playtogether.json 的 %s 要是 JSON 物件", name)
@@ -307,14 +321,14 @@ func strictDecode(raw json.RawMessage, name string, keys []string, dst any, add 
 		ok = false
 	}
 	for k, v := range m {
-		if strings.TrimSpace(string(v)) == "null" && slices.Contains(keys, k) {
+		if strings.TrimSpace(string(v)) == "null" && (slices.Contains(keys, k) || slices.Contains(optional, k)) {
 			add(levelSchema, "playtogether.json 的 %s.%s 不能是 null：要寫明確的值", name, k)
 			ok = false
 		}
 	}
 	extra := []string{}
 	for k := range m {
-		if !slices.Contains(keys, k) {
+		if !slices.Contains(keys, k) && !slices.Contains(optional, k) {
 			extra = append(extra, k)
 		}
 	}
@@ -478,6 +492,10 @@ func readPolicy(p *project, add addFunc) (pl policy, legacy, ok bool) {
 	for _, b := range blocks {
 		if b.raw == nil {
 			add(levelSchema, "playtogether.json 缺少 %s：v0.15 的宣告要完整（用 pt new 以相同設定建暫存專案，對照複製）", b.name)
+			continue
+		}
+		if b.name == "economy" {
+			strictDecodeOptional(b.raw, b.name, jsonKeys(b.dst), economyOptional, b.dst, add)
 			continue
 		}
 		strictDecode(b.raw, b.name, jsonKeys(b.dst), b.dst, add)
@@ -828,13 +846,16 @@ func gameplayEconomyDoc(name string, pl policy) string {
 	w("## 經濟（現實價值）\n\n")
 	w("| 項目 | 宣告 | pt 的結果 |\n| --- | --- | --- |\n")
 	w("| 真實金錢下注（`realMoneyWagering`） | %s | 平台硬性規則 |\n", boolMark(e.RealMoneyWagering))
-	w("| 可購買的下注本金或籌碼，含用平台點數換得（`purchasableStake`） | %s | 平台硬性規則 |\n", boolMark(e.PurchasableStake))
+	w("| 遊戲自己的可購買下注本金或籌碼，含用平台點數換得、遊戲自己扣點加點或分配點數（`purchasableStake`） | %s | 平台硬性規則 |\n", boolMark(e.PurchasableStake))
 	w("| 可提領（`withdrawableValue`） | %s | 平台硬性規則 |\n", boolMark(e.WithdrawableValue))
 	w("| 可兌換現金、商品或現實財物（`redeemableValue`） | %s | 平台硬性規則 |\n", boolMark(e.RedeemableValue))
 	w("| 玩家之間可轉讓具現實價值的資產（`transferableRealWorldValue`） | %s | 平台硬性規則 |\n", boolMark(e.TransferableRealWorldValue))
-	w("| 付費隨機獎勵：付費抽獎、點數抽獎、付費轉蛋（`paidRandomReward`） | %s | 平台硬性規則 |\n", boolMark(e.PaidRandomReward))
+	w("| 遊戲自己的付費隨機獎勵：付費抽獎、點數抽獎、付費轉蛋（`paidRandomReward`） | %s | 平台硬性規則 |\n", boolMark(e.PaidRandomReward))
+	w("| 經玩聚平台專用接口用點數比賽或下注，點數由平台保管與分配（`platformPointsStake`） | %s | 由玩聚平台與律師決定（需要審核） |\n", boolMark(e.PlatformPointsStake != nil && *e.PlatformPointsStake))
+	w("| 經玩聚平台專用接口用點數取得隨機結果，由平台執行（`platformPointsRandom`） | %s | 由玩聚平台與律師決定（需要審核） |\n", boolMark(e.PlatformPointsRandom != nil && *e.PlatformPointsRandom))
 	w("| 商業模式涉及真實金錢，但不是下注（`realMoney`） | %s | 需要平台審核 |\n\n", boolMark(e.RealMoney))
 	w("- 不得宣稱或暗示可以用真實金錢獲利、兌換現金、提領或取得現實財物；不得導流到外部博彩服務。\n")
+	w("- 玩聚點數只能經平台的專用接口使用（遊戲拿不到餘額、不能自己扣點加點）。`platformPointsStake`／`platformPointsRandom` 的 `REVIEW_REQUIRED` 只代表可以送審，**不代表平台或律師已同意**：決定前正式環境不核准、不發佈。\n")
 	w("- `realMoney` 需要審核只是商業模式的判斷；**技術上遊戲仍然不能自己接付款**（iframe 沒有付款能力，不得加入金流 SDK）。\n")
 	w("- 看廣告取得籌碼是需要審核的玩法；**技術上遊戲仍然不能自己加入廣告 SDK**。\n\n")
 	hard, review := reviewReasons(pl)

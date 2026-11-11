@@ -169,10 +169,10 @@ pt check：PASS／REVIEW_REQUIRED／ERROR
 
 | 等級 | 內容 | `pt upload` |
 | --- | --- | --- |
-| `ERROR_HARD_RULE` | 平台硬性規則：真實金錢下注、可購買下注本金、提領、兌換、可轉讓現實價值、付費隨機獎勵、鼓吹仇恨、平台不收的內容；私鑰、廣告／追蹤 SDK、WebRTC、付款、麥克風、未申報的 CDN 等平台與安全架構規則 | 擋下，**`-skip-check` 不能略過** |
+| `ERROR_HARD_RULE` | 平台硬性規則：真實金錢下注、提領、兌換、可轉讓現實價值、遊戲自己的點數下注與付費隨機獎勵、鼓吹仇恨、平台不收的內容；私鑰、廣告／追蹤 SDK、WebRTC、付款、麥克風、未申報的 CDN 等平台與安全架構規則 | 擋下，**`-skip-check` 不能略過** |
 | `ERROR_SCHEMA` | 宣告錯誤或自相矛盾：缺欄位、拼錯的鍵、preset 被手改、牌桌欄位矛盾、`docs/content/` 的開發契約文件缺少或和宣告不一致、音效沒記錄來源 | 擋下，**`-skip-check` 不能略過** |
 | `ERROR_BUILD` | 建置或本機設定：還沒匯出、沒有載入 SDK、`serverUrl`／`platform` 沒填或不一致 | 擋下，`-skip-check` 可以略過 |
-| `REVIEW_REQUIRED` | 需要玩聚平台人工審核：撲克、麻將、吃角子老虎、輪盤、類百家樂、虛擬下注、下注用的籌碼（`wageringTokens`）、賭場風格、跨局或每日贈送的下注籌碼、商業模式涉及真實金錢、敏感題材；一般桌遊的計分 token（`scoreTokens`）不需要審核 | 可以送審，**不代表已批准** |
+| `REVIEW_REQUIRED` | 需要玩聚平台人工審核：撲克、麻將、吃角子老虎、輪盤、類百家樂、虛擬下注、下注用的籌碼（`wageringTokens`）、賭場風格、跨局或每日贈送的下注籌碼、商業模式涉及真實金錢、敏感題材；經玩聚平台專用接口的點數比賽、下注、隨機結果（`platformPointsStake`／`platformPointsRandom`，由平台與律師決定）；一般桌遊的計分 token（`scoreTokens`）不需要審核 | 可以送審，**不代表已批准** |
 | `WARNING` | 舊格式、`policyVersion` 和這個 `pt` 的平台政策版本不同、建議事項 | 繼續 |
 
 - `pt check` 只檢查設定檔，不判斷遊戲實際內容，不推論法律分級，也不做關鍵字偵測；`pt check -json` 輸出結果給 CI 與 AI 工具。
