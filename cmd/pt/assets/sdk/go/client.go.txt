@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -44,7 +45,13 @@ type VoicePolicy struct {
 type VoiceGroup struct {
 	ID      string   `json:"id"`
 	Members []string `json:"members"`
+	// Listeners 是旁聽名單（選填，只聽不說，例如死亡玩家的上帝視角）：不能和這一組的組員重疊，可以是別組的組員；
+	// 一個人最多旁聽 VoiceMaxListenGroups 組。拿掉旁聽者時平台會換新的組頻道，組員會重新連線（約 1 秒）
+	Listeners []string `json:"listeners,omitempty"`
 }
+
+// VoiceMaxListenGroups 是一個人最多旁聽幾組（手機上每一組多一條語音連線）
+const VoiceMaxListenGroups = 3
 
 var voiceGroupIDRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,15}$`)
 
@@ -104,6 +111,22 @@ func (p VoicePolicy) Validate() error {
 				return errors.New("組員不得為空字串，一個人最多在一組")
 			}
 			members[m] = true
+		}
+	}
+	listens := map[string]int{}
+	for _, g := range p.Groups {
+		if len(g.Listeners) > 64 {
+			return errors.New("每組旁聽最多 64 人")
+		}
+		seen := map[string]bool{}
+		for _, l := range g.Listeners {
+			if l == "" || seen[l] || slices.Contains(g.Members, l) {
+				return errors.New("旁聽名單不得為空字串、不得重複，也不能和同一組的組員重疊")
+			}
+			seen[l] = true
+			if listens[l]++; listens[l] > VoiceMaxListenGroups {
+				return fmt.Errorf("一個人最多旁聽 %d 組", VoiceMaxListenGroups)
+			}
 		}
 	}
 	return nil

@@ -1470,7 +1470,8 @@ var ln = /* @__PURE__ */ W({
 		connected: /* @__PURE__ */ H(),
 		canSpeak: /* @__PURE__ */ H(),
 		mode: qt,
-		group: /* @__PURE__ */ q(/* @__PURE__ */ J((/* @__PURE__ */ B()).check(/* @__PURE__ */ R(/^[a-z][a-z0-9_-]{0,15}$/))))
+		group: /* @__PURE__ */ q(/* @__PURE__ */ J((/* @__PURE__ */ B()).check(/* @__PURE__ */ R(/^[a-z][a-z0-9_-]{0,15}$/)))),
+		listening: /* @__PURE__ */ q((/* @__PURE__ */ U((/* @__PURE__ */ B()).check(/* @__PURE__ */ R(/^[a-z][a-z0-9_-]{0,15}$/)))).check(/* @__PURE__ */ I(3)))
 	}),
 	"voice.speaking": /* @__PURE__ */ W({
 		playerId: X,
@@ -1577,7 +1578,8 @@ function mn(e) {
 }
 var hn = /* @__PURE__ */ W({
 	id: (/* @__PURE__ */ B()).check(/* @__PURE__ */ R(/^[a-z][a-z0-9_-]{0,15}$/)),
-	members: (/* @__PURE__ */ U(X)).check(/* @__PURE__ */ L(1), /* @__PURE__ */ I(64))
+	members: (/* @__PURE__ */ U(X)).check(/* @__PURE__ */ L(1), /* @__PURE__ */ I(64)),
+	listeners: /* @__PURE__ */ q((/* @__PURE__ */ U(X)).check(/* @__PURE__ */ I(64)))
 });
 (/* @__PURE__ */ W({
 	roomId: X,
@@ -1591,7 +1593,14 @@ var hn = /* @__PURE__ */ W({
 })).check(/* @__PURE__ */ Y((e) => e.expiresAtServerMs > e.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ Y((e) => e.mode !== "turn" || e.allowedSpeakerIds.length === 1, "turn 模式必須剛好一位發言者"), /* @__PURE__ */ Y((e) => e.mode !== "allowlist" || e.allowedSpeakerIds.length >= 1 || (e.groups?.length ?? 0) > 0, "allowlist 模式至少要一位發言者"), /* @__PURE__ */ Y((e) => e.mode !== "open" && e.mode !== "host_only" || e.allowedSpeakerIds.length === 0, "open / host_only 模式不帶發言者名單"), /* @__PURE__ */ Y((e) => new Set(e.allowedSpeakerIds).size === e.allowedSpeakerIds.length, "發言者名單不得重複"), /* @__PURE__ */ Y((e) => new Set((e.groups ?? []).map((e) => e.id)).size === (e.groups ?? []).length, "分組 id 不得重複"), /* @__PURE__ */ Y((e) => {
 	let t = (e.groups ?? []).flatMap((e) => e.members);
 	return new Set(t).size === t.length;
-}, "一個人最多在一組")), (/* @__PURE__ */ W({
+}, "一個人最多在一組"), /* @__PURE__ */ Y((e) => (e.groups ?? []).every((e) => {
+	let t = e.listeners ?? [];
+	return new Set(t).size === t.length && !t.some((t) => e.members.includes(t));
+}), "旁聽名單不得重複，也不能和同一組的組員重疊"), /* @__PURE__ */ Y((e) => {
+	let t = /* @__PURE__ */ new Map();
+	for (let n of e.groups ?? []) for (let e of n.listeners ?? []) t.set(e, (t.get(e) ?? 0) + 1);
+	return [...t.values()].every((e) => e <= 3);
+}, "一個人最多旁聽 3 組")), (/* @__PURE__ */ W({
 	roomId: X,
 	gameInstanceId: X,
 	epoch: V().check(/* @__PURE__ */ P(0)),

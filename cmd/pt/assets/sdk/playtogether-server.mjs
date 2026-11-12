@@ -1847,7 +1847,7 @@ var speechVocabularySchema = (/* @__PURE__ */ object({
 }, `句型用到的欄位要有定義，展開後最多 ${SPEECH_MAX_PHRASES} 句`));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(32)), range(0, 1), int().check(/* @__PURE__ */ _gte(0), /* @__PURE__ */ _lte(1e3)), range(0, 86400);
 range(0, 1e4), range(0, 1e4), range(0, 1e4), range(0, 1e4);
-(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0xe8d4a51000), range(0, 0x5af3107a4000), range(20, 5e3), range(0, 127), range(-50, 50), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0x5af3107a4000), (/* @__PURE__ */ array(/* @__PURE__ */ object({
+(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)), (/* @__PURE__ */ array((/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)))).check(/* @__PURE__ */ _maxLength(8)), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0xe8d4a51000), range(0, 0x5af3107a4000), range(20, 5e3), range(0, 127), range(-50, 50), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0x5af3107a4000), (/* @__PURE__ */ array(/* @__PURE__ */ object({
 	text: (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(100)),
 	confidence: /* @__PURE__ */ nullable(range(0, 1)),
 	phrase: /* @__PURE__ */ optional(speechPhrase),
@@ -1863,7 +1863,9 @@ range(0, 1e4), range(0, 1e4), range(0, 1e4), range(0, 1e4);
 /** 分組語音的一組（docs/voice-groups.md）：生效期間組員只在組裡說話，其他人收不到 */
 var voiceGroupSchema = /* @__PURE__ */ object({
 	id: (/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)),
-	members: (/* @__PURE__ */ array(id)).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(64))
+	members: (/* @__PURE__ */ array(id)).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(64)),
+	/** 選填：旁聽（只聽不說，例如死亡玩家的上帝視角）。不能和這一組的組員重疊，可以是別組的組員 */
+	listeners: /* @__PURE__ */ optional((/* @__PURE__ */ array(id)).check(/* @__PURE__ */ _maxLength(64)))
 });
 var voicePolicySchema = (/* @__PURE__ */ object({
 	roomId: id,
@@ -1878,7 +1880,14 @@ var voicePolicySchema = (/* @__PURE__ */ object({
 })).check(/* @__PURE__ */ refine((p) => p.expiresAtServerMs > p.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ refine((p) => p.mode !== "turn" || p.allowedSpeakerIds.length === 1, "turn 模式必須剛好一位發言者"), /* @__PURE__ */ refine((p) => p.mode !== "allowlist" || p.allowedSpeakerIds.length >= 1 || (p.groups?.length ?? 0) > 0, "allowlist 模式至少要一位發言者"), /* @__PURE__ */ refine((p) => p.mode !== "open" && p.mode !== "host_only" || p.allowedSpeakerIds.length === 0, "open / host_only 模式不帶發言者名單"), /* @__PURE__ */ refine((p) => new Set(p.allowedSpeakerIds).size === p.allowedSpeakerIds.length, "發言者名單不得重複"), /* @__PURE__ */ refine((p) => new Set((p.groups ?? []).map((g) => g.id)).size === (p.groups ?? []).length, "分組 id 不得重複"), /* @__PURE__ */ refine((p) => {
 	const all = (p.groups ?? []).flatMap((g) => g.members);
 	return new Set(all).size === all.length;
-}, "一個人最多在一組"));
+}, "一個人最多在一組"), /* @__PURE__ */ refine((p) => (p.groups ?? []).every((g) => {
+	const l = g.listeners ?? [];
+	return new Set(l).size === l.length && !l.some((x) => g.members.includes(x));
+}), "旁聽名單不得重複，也不能和同一組的組員重疊"), /* @__PURE__ */ refine((p) => {
+	const count = /* @__PURE__ */ new Map();
+	for (const g of p.groups ?? []) for (const x of g.listeners ?? []) count.set(x, (count.get(x) ?? 0) + 1);
+	return [...count.values()].every((n) => n <= 3);
+}, `一個人最多旁聽 3 組`));
 /**
 * 音高授權（docs/voice-chat.md「三之一」）。由遊戲伺服器簽章送給平台，和發言規則分開。
 * epoch 必須是房間目前的局數；有效期間最多 1 小時；名單 1–64 人
