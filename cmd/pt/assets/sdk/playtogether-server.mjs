@@ -2985,7 +2985,8 @@ function createServerClient(options) {
 				epoch: b.epoch,
 				tableId: b.tableId,
 				sessionId: b.sessionId,
-				amount: b.amount
+				amount: b.amount,
+				...b.house ? { house: true } : {}
 			}));
 		},
 		async tableCashOut(sessionId, amount) {

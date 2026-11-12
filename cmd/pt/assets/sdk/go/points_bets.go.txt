@@ -5,6 +5,8 @@ package playtogether
 //	即開型（老虎機）       SettleBet：一次送下注額與派彩
 //	有等待時間的局          StakeBet 先扣 → PayoffBet 派彩，或 CancelBet 取消（扣款請求逾時沒收到回應時）
 //	坐桌型（撲克、麻將）    TableBuyIn 入座轉入 → TableCashOut 離座轉出（同一張桌的轉出總和不超過轉入總和）
+//	機台型（捕魚機）        TableBuyIn{House: true} 轉入（rollin）→ TableCashOut 轉出（rollout）：玩家對遊戲、照倍率派彩，
+//	                        轉出可以多於轉入（一次最多淨贏 1,000，算進每日派彩上限）
 //
 // 只限宣告了 economy.platformPointsStake 的版本；玩家要在玩聚「我的點數」開啟；下注與入座要帶房間目前的局數（Epoch，
 // 從兌換啟動碼或 GetPointsBalance 取得）；單筆與每日有上限；同一個 BetID／SessionID 重送回傳原結果（Replayed）。
@@ -55,6 +57,7 @@ type BetResult struct {
 }
 
 // TableBuyIn 是一次入座。SessionID 在這款遊戲裡唯一；TableID 是牌桌（守恆以遊戲＋房間＋TableID 計算）。
+// House 為 true 是機台型（rollin／rollout，例如捕魚機）：不受守恆限制，同一張桌不能和玩家之間的牌桌混用（table_mode_mismatch）。
 type TableBuyIn struct {
 	RoomID    string
 	PlayerID  string
@@ -62,6 +65,7 @@ type TableBuyIn struct {
 	TableID   string
 	SessionID string
 	Amount    int64
+	House     bool
 }
 
 // TableResult 是入座的狀態與異動前後的餘額。Status：seated、left。
@@ -75,6 +79,7 @@ type TableResult struct {
 	Balance       int64  `json:"balance"`
 	Replayed      bool   `json:"replayed"`
 	TestPoints    bool   `json:"testPoints"`
+	House         bool   `json:"house"` // 機台型
 }
 
 // GetPointsBalance 取得房間裡一位玩家的點數狀態。
@@ -188,6 +193,9 @@ func (c *Client) TableBuyIn(ctx context.Context, in TableBuyIn) (*TableResult, e
 		return nil, c.poolsDisabled()
 	}
 	body := map[string]any{"roomId": in.RoomID, "playerId": in.PlayerID, "epoch": in.Epoch, "tableId": in.TableID, "sessionId": in.SessionID, "amount": in.Amount}
+	if in.House {
+		body["house"] = true
+	}
 	var out TableResult
 	if err := c.post(ctx, "/v1/game/points/table/buyin", body, "", &out); err != nil {
 		return nil, err
@@ -195,7 +203,8 @@ func (c *Client) TableBuyIn(ctx context.Context, in TableBuyIn) (*TableResult, e
 	return &out, nil
 }
 
-// TableCashOut 離座轉出桌上剩下的點數（可以是 0）。同一張桌的轉出總和超過轉入總和回 table_overdraw。
+// TableCashOut 離座轉出桌上剩下的點數（可以是 0）。同一張桌的轉出總和超過轉入總和回 table_overdraw；
+// 機台型：轉出超過轉入＋1,000 回 bad_amount，淨贏超過這款遊戲今天的派彩上限回 game_payout_limit。
 func (c *Client) TableCashOut(ctx context.Context, sessionID string, amount int64) (*TableResult, error) {
 	if sessionID == "" || amount < 0 {
 		return nil, errors.New("sessionId 必填，amount 不能是負數")
