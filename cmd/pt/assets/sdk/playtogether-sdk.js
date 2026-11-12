@@ -1769,6 +1769,7 @@ function Tn(e, t, n, r, i) {
 				fullscreen: () => n("ui.fullscreen", {}),
 				orientation: (e) => n("ui.orientation", { orientation: e }),
 				pttButton: ({ visible: e }) => n("ui.pttButton", { visible: e }),
+				soundToggle: ({ visible: e }) => n("ui.soundToggle", { visible: e }),
 				on: (e, t) => o.on(e, t)
 			},
 			voice: {

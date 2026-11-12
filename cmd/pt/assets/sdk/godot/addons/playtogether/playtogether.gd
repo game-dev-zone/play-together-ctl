@@ -130,6 +130,12 @@ func set_ptt_button_visible(visible: bool) -> void:
 		_bridge.pttButton(visible)
 
 
+## 隱藏或顯示平台選單的「遊戲聲音」開關（遊戲自己有聲音設定時隱藏；隱藏時平台送一次 mute_changed(false)，之後不再送）
+func set_sound_toggle_visible(visible: bool) -> void:
+	if _bridge:
+		_bridge.soundToggle(visible)
+
+
 ## 遊戲自己的按住說話按鈕：按下傳 true、放開傳 false
 func push_to_talk(start: bool) -> void:
 	if _bridge:

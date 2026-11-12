@@ -216,6 +216,7 @@ codex exec --skip-git-repo-check -s workspace-write -i art/generated/hero.png "�
 
 - 預設音量要低，**不要蓋過玩聚語音**；遊戲裡要有關掉背景音樂的按鈕（直播主常放自己的音樂）。
 - 平台選單有「遊戲聲音」開關，SDK 會通知遊戲[[if eq .Client "godot"]]（`PlayTogether.mute_changed`；範本已靜音 Master 匯流排，背景音樂放在 Master 或它的子匯流排就會一起靜音）[[else]]（`pt.on('mute', ...)`；範本已經接到 `sfx.setMuted`，背景音樂也要一起靜音）[[end]]。
+- 遊戲自己有完整的聲音設定（例如設定畫面裡的音效、音樂開關）時，可以收起平台的開關[[if eq .Client "godot"]]（`PlayTogether.set_sound_toggle_visible(false)`）[[else]]（`pt.ui.soundToggle({ visible: false })`）[[end]]：平台會解除靜音一次，之後聲音完全由遊戲決定。收起後遊戲畫面一定要有隨時找得到的聲音開關（審核準則 2.4）；沒有把握時保留平台的開關。
 - 循環播放的短曲，轉成 OGG 或 MP3、控制檔案大小。
 
 瀏覽器規定玩家要先在**遊戲裡**點一下才能發聲（平台外殼上的點擊不算）：[[if eq .Client "godot"]]Godot 會在第一次點擊時自動恢復[[else]]在按鈕的點擊事件裡先呼叫 `sfx.unlock()`，不要等網路請求回來才呼叫[[end]]。
