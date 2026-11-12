@@ -82,6 +82,9 @@ type fakePlatform struct {
 	speech     map[string]*fakeSpeech // 玩家代號 → 語音指令的狀態（fakespeech.go）
 	// serverURL：代管專案在本機的遊戲伺服器網址；發啟動碼時一起給畫面（SDK 放進 launch.serverUrl），和正式平台一樣
 	serverURL string
+	// 點數下注（fakepoints.go）：pointsStake 是專案有沒有宣告 economy.platformPointsStake；points 用到時才建立
+	pointsStake bool
+	points      *fakePoints
 }
 
 type fakeRoom struct {
@@ -299,6 +302,13 @@ func (f *fakePlatform) handler(panel http.Handler) http.Handler {
 	mux.HandleFunc("GET /dev/speech", f.devSpeech)
 	mux.HandleFunc("OPTIONS /dev/speech", f.devSpeech)
 	mux.HandleFunc("GET /v1/game/status", f.gameStatus)
+	mux.HandleFunc("GET /v1/game/points/balance", f.pointsHandler("點數餘額", f.pointsBalance))
+	mux.HandleFunc("POST /v1/game/points/settle", f.pointsHandler("點數一次結算", func(_ *http.Request, b []byte) (map[string]any, string, error) { return f.placeBet(b, "settle") }))
+	mux.HandleFunc("POST /v1/game/points/stake", f.pointsHandler("點數先扣", func(_ *http.Request, b []byte) (map[string]any, string, error) { return f.placeBet(b, "staged") }))
+	mux.HandleFunc("POST /v1/game/points/payoff", f.pointsHandler("點數派彩", f.pointsPayoff))
+	mux.HandleFunc("POST /v1/game/points/cancel", f.pointsHandler("點數取消", f.pointsCancel))
+	mux.HandleFunc("POST /v1/game/points/table/buyin", f.pointsHandler("牌桌轉入", f.pointsBuyIn))
+	mux.HandleFunc("POST /v1/game/points/table/cashout", f.pointsHandler("牌桌轉出", f.pointsCashOut))
 	mux.HandleFunc("GET /dev/launch-code", f.launchCode)
 	mux.HandleFunc("OPTIONS /dev/launch-code", f.launchCode)
 	if panel != nil {
@@ -709,11 +719,12 @@ type fakeState struct {
 		// 語音指令："listening"（畫面正在聽）、"allowed"（已授權、畫面還沒開始聽）或空字串
 		Speech string `json:"speech"`
 	} `json:"players"`
-	Down        bool       `json:"down"`
-	Disabled    bool       `json:"disabled"`
-	SkewSeconds int        `json:"skewSeconds"`
-	PollSeconds float64    `json:"pollSeconds"` // 最近幾次查成員的平均間隔；0 表示還沒有
-	Calls       []fakeCall `json:"calls"`
+	Down        bool            `json:"down"`
+	Disabled    bool            `json:"disabled"`
+	SkewSeconds int             `json:"skewSeconds"`
+	PollSeconds float64         `json:"pollSeconds"` // 最近幾次查成員的平均間隔；0 表示還沒有
+	Calls       []fakeCall      `json:"calls"`
+	Points      fakePointsState `json:"points"` // 點數下注（測試點數，fakepoints.go）
 }
 
 func (f *fakePlatform) state(after int) fakeState {
@@ -744,6 +755,7 @@ func (f *fakePlatform) state(after int) fakeState {
 	if ps := f.polls[f.room.ID]; len(ps) >= 2 {
 		s.PollSeconds = ps[len(ps)-1].Sub(ps[0]).Seconds() / float64(len(ps)-1)
 	}
+	s.Points = f.pointsStateLocked()
 	for _, c := range f.calls {
 		if c.Seq > after {
 			s.Calls = append(s.Calls, c)

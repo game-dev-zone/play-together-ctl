@@ -927,6 +927,7 @@ func cmdDev(args []string) error {
 		fp := newFakePlatform(pub)
 		fp.shell = devShell(p)
 		fp.speechFrom = speechSource(p)
+		fp.pointsStake = devPointsStake(p)
 		var srv *http.Server
 		platform, srv, err = startFakePlatform(fp, site0)
 		if err != nil {

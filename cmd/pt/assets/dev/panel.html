@@ -75,6 +75,33 @@
   </section>
 
   <section style="margin-bottom:12px">
+    <h2>點數（測試）</h2>
+    <p id="pts-lead" class="muted" style="margin:0 0 8px"></p>
+    <div class="row" style="margin-bottom:8px">
+      <span class="muted">平台核准：</span>
+      <button data-approval="approved" title="遊戲的點數功能已核准：可以正常使用">核准</button>
+      <button data-approval="pending" title="還沒核准：查餘額、結算、先扣、轉入回 403 points_not_approved">未核准</button>
+      <button data-approval="suspended" title="團隊或遊戲被停權：新的操作回 403 points_suspended，已經成立的注單與入座仍然可以派彩、取消、轉出">停權</button>
+    </div>
+    <table>
+      <thead><tr><th>玩家</th><th>測試點數</th><th>今天已下注／入座</th><th>點數玩法</th><th></th></tr></thead>
+      <tbody id="pts-players"></tbody>
+    </table>
+    <h3 style="font-size:.9rem; margin:12px 0 4px">還沒結束的注單與入座</h3>
+    <p class="muted" style="margin:0 0 4px">遊戲伺服器一定要派彩、取消或轉出，玩家的點數才會回來。</p>
+    <table>
+      <tbody id="pts-open"></tbody>
+    </table>
+    <h3 style="font-size:.9rem; margin:12px 0 4px">最近的點數紀錄</h3>
+    <div class="log-wrap" style="max-height:260px">
+      <table>
+        <thead><tr><th>時間</th><th>玩家</th><th>項目</th><th>注單／入座</th><th>點數</th><th>餘額</th></tr></thead>
+        <tbody id="pts-log"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section style="margin-bottom:12px">
     <h2>語音指令</h2>
     <p class="muted" style="margin:0 0 8px">在這裡輸入一句話，當成那位玩家說的辨識結果。遊戲伺服器要先用 speech.policy 授權，遊戲畫面要先呼叫 speech.start。<br>要用麥克風實際說說看：按「用平台外殼開啟」，在預覽頁點「語音指令（本機）」，用和玩聚平台相同的辨識引擎（第一次從 playtogether.json 的 platform 下載約 18 MB）。</p>
     <div class="row">
@@ -164,6 +191,63 @@
     setTimeout(refresh, 800);
   });
 
+  // 點數（測試）
+  document.querySelectorAll('button[data-approval]').forEach((b) => b.addEventListener('click', () => control('points-approval', '', b.dataset.approval)));
+  const APPROVAL_LABEL = { approved: '核准', pending: '未核准', suspended: '停權' };
+  function renderPoints(pt) {
+    const L = pt.limits;
+    $('pts-lead').textContent = pt.declared
+      ? `遊戲伺服器的點數下注 API（只在 pt dev 的記憶體裡，結束就清掉；每位玩家一開始 1,000 點）。上限：單筆下注 ${L.stake}、派彩 ${L.payout}、入座 ${L.buyIn}、機台一次淨贏 ${L.houseWin}；每天下注與入座 ${L.dailyStake}、每天派彩 ${L.dailyPayout}。目前平台核准：${APPROVAL_LABEL[pt.approval]}。`
+      : 'playtogether.json 沒有宣告 economy.platformPointsStake: true，點數 API 一律回 403 declaration_required（改了要重新啟動 pt dev）。';
+    document.querySelectorAll('button[data-approval]').forEach((b) => b.classList.toggle('on', b.dataset.approval === pt.approval && pt.approval !== 'approved'));
+    const tbody = $('pts-players');
+    tbody.replaceChildren();
+    if (!pt.players.length) {
+      const tr = el('tr');
+      const td = el('td', '還沒有玩家。', 'muted');
+      td.colSpan = 5;
+      tr.append(td);
+      tbody.append(tr);
+    }
+    for (const p of pt.players) {
+      const tr = el('tr');
+      const grant = el('button', '＋500');
+      grant.title = '發測試點數';
+      grant.addEventListener('click', () => control('points-grant', p.code));
+      const toggle = el('button', p.enabled ? '關閉點數玩法' : '開啟點數玩法', p.enabled ? 'danger' : '');
+      toggle.title = '模擬玩家在「我的點數」關閉或開啟點數玩法（關閉時下注與入座回 points_not_enabled）';
+      toggle.addEventListener('click', () => control('points-toggle', p.code));
+      const act = el('td');
+      act.append(grant, ' ', toggle);
+      const en = el('td');
+      en.append(p.enabled ? el('span', '已開啟', 'tag ok') : el('span', '沒有開啟', 'tag bad'));
+      tr.append(el('td', p.name), el('td', String(p.balance), 'st'), el('td', `${p.stakeToday} / ${L.dailyStake}`, 'st'), en, act);
+      tbody.append(tr);
+    }
+    const open = $('pts-open');
+    open.replaceChildren();
+    if (!pt.open.length) {
+      const tr = el('tr');
+      const td = el('td', '沒有', 'muted');
+      tr.append(td);
+      open.append(tr);
+    }
+    for (const o of pt.open) {
+      const tr = el('tr');
+      tr.append(el('td', new Date(o.at).toLocaleTimeString('zh-TW', { hour12: false }), 'st'), el('td', o.player), el('td', o.kind), el('td', o.ref), el('td', String(o.amount), 'st'));
+      open.append(tr);
+    }
+    const log = $('pts-log');
+    log.replaceChildren();
+    for (const t of pt.txs) {
+      const tr = el('tr');
+      tr.append(el('td', new Date(t.at).toLocaleTimeString('zh-TW', { hour12: false }), 'st'), el('td', t.player), el('td', t.kind), el('td', t.ref),
+        el('td', (t.amount > 0 ? '+' : '') + t.amount, 'st'), el('td', String(t.balance), 'st'));
+      tr.style.color = t.amount < 0 ? 'var(--danger)' : 'var(--ok)';
+      log.append(tr);
+    }
+  }
+
   function render(s) {
     players = s.players || [];
     $('room').textContent = `房號 ${s.room.id}・第 ${s.room.epoch} 局・${s.room.open ? '開放中' : '已關閉'}`;
@@ -203,6 +287,8 @@
       sel.dataset.sig = sig;
     }
 
+    if (s.points) renderPoints(s.points);
+
     const health = $('health');
     health.replaceChildren();
     const poll = el('p');
@@ -218,10 +304,10 @@
     }
     rows.splice(300);
     const failed = rows.filter((c) => c.hint).length;
-    const sig = el('p');
-    sig.style.margin = '0';
-    sig.append(failed ? el('span', `簽章或格式錯誤 ${failed} 次（看下面紀錄）`, 'tag bad') : el('span', '簽章：目前沒有錯誤', 'tag ok'));
-    health.append(sig);
+    const sigLine = el('p');
+    sigLine.style.margin = '0';
+    sigLine.append(failed ? el('span', `簽章或格式錯誤 ${failed} 次（看下面紀錄）`, 'tag bad') : el('span', '簽章：目前沒有錯誤', 'tag ok'));
+    health.append(sigLine);
 
     const body = $('log');
     body.replaceChildren();

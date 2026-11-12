@@ -117,7 +117,18 @@
 
 真實金錢下注、可購買的下注本金或籌碼（含用平台點數換得）、提領、兌換現金或商品、玩家之間轉讓具現實價值的資產、付費隨機獎勵（付費抽獎、點數抽獎、付費轉蛋）、經玩聚平台專用接口的點數比賽或下注（`economy.platformPointsStake`）與點數隨機結果（`economy.platformPointsRandom`），以及宣稱可以獲利、兌現或導流到外部博彩服務，**都由玩聚平台與律師決定**。宣告了就是 `REVIEW_REQUIRED`：可以送審，**不代表平台或律師已同意**，決定前正式環境不核准、不發佈。
 
-技術限制不變，AI 不要嘗試繞過：遊戲不能自己接付款（iframe 沒有付款能力，不得加入金流 SDK）；玩聚點數只能經平台的專用接口使用，遊戲拿不到餘額、不能自己扣點加點；平台還沒開放的接口不要實作或模擬。宣告要照實際玩法填寫，不能為了通過檢查改成 false。
+技術限制不變，AI 不要嘗試繞過：遊戲不能自己接付款（iframe 沒有付款能力，不得加入金流 SDK）；玩聚點數只能經平台的專用接口使用（查餘額、下注與派彩、牌桌轉入轉出，見下面「玩聚點數下注」），遊戲不能自己保存或修改玩家的點數；平台還沒開放的接口不要實作或模擬。宣告要照實際玩法填寫，不能為了通過檢查改成 false。
+
+## 玩聚點數下注（只限宣告了 `economy.platformPointsStake: true` 的專案）
+
+**沒有宣告就不要用，也不要自己加宣告**（宣告照實際玩法由開發者決定；沒有宣告時平台一律回 403 `declaration_required`）。宣告了的專案，點數一律由遊戲伺服器經平台的點數下注接口扣與派，畫面端只送操作：
+
+1. **依玩法選流程**：即開型（老虎機）用 [[if eq .Server "node"]]`platform.settleBet`[[else]]`pt.SettleBet`[[end]] 一次送下注額與派彩；有等待時間的局用 [[if eq .Server "node"]]`platform.stakeBet` → `platform.payoffBet`（沒中送 0）或 `platform.cancelBet`[[else]]`pt.StakeBet` → `pt.PayoffBet`（沒中送 0）或 `pt.CancelBet`[[end]]；玩家之間的牌桌（撲克、麻將）用 [[if eq .Server "node"]]`platform.tableBuyIn` → `platform.tableCashOut`[[else]]`pt.TableBuyIn` → `pt.TableCashOut`[[end]]（同一張桌的轉出總和不能超過轉入）；玩家對遊戲的機台（捕魚機）一樣轉入、轉出，但入座帶 [[if eq .Server "node"]]`house: true`[[else]]`House: true`[[end]]（轉出可以多於轉入，有上限）。玩家的點數用 [[if eq .Server "node"]]`platform.getPointsBalance`[[else]]`pt.GetPointsBalance`[[end]] 查。[[if eq .GameServer "none"]]**這個專案宣告沒有遊戲伺服器，所以不能用**；要用時先提出架構變更（架構原則 1）。[[end]]
+2. **平台核准**：點數功能要先在玩聚的開發者頁申請、由平台核准才能用；沒核准回 403 `points_not_approved`，停權回 403 `points_suspended`（已經成立的注單與入座仍然可以結束）。這兩個錯誤不要重試，讓玩家知道目前不能用點數。
+3. **一定要結算**：每張先扣的注單都要派彩或取消，每次入座都要轉出（可以是 0），包括玩家離線、房間結束、遊戲伺服器重新啟動，玩家的點數才會回來。扣款請求逾時沒收到回應時，用同一個 betId 取消。
+4. **識別碼冪等**：`betId`、`sessionId` 在這款遊戲裡唯一，由遊戲伺服器產生並保存；同一個識別碼重送相同內容回傳原結果（`replayed`），不會重複扣點，內容不同回 409 `idempotency_conflict`。下注與入座要帶房間目前的局數（`epoch`）。
+5. **目前只有測試點數**（回應的 `testPoints`）；正式環境是否、什麼時候開放由玩聚平台決定，介面上不要宣稱可以兌現或獲利。
+6. **本機測試**：`pt dev` 的假平台有相同的接口、上限與錯誤代碼；控制面板的「點數（測試）」可以看每位玩家的點數、發點數、切換玩家的點數玩法、模擬平台核准（核准／未核准／停權），並列出還沒結束的注單與入座。
 
 ## 玩聚平台硬性規則（`pt` 會擋下，`-skip-check` 不能略過）
 

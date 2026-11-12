@@ -113,6 +113,8 @@ func (d *devPanel) control(action, player, text string) error {
 			return f.say(player, text)
 		}
 		return f.stopSpeech(player, text)
+	case "points-grant", "points-toggle", "points-approval": // 點數（測試）：發點數、切換玩家的點數玩法、平台核准的模擬
+		return f.pointsControl(action, player, text)
 	case "restart":
 		f.restart()
 	case "close":
@@ -255,6 +257,7 @@ func devPlatformOnly(p *project, site, addr string, players int, serverURL strin
 	fp.serverURL = serverURL
 	fp.shell = devShell(p)
 	fp.speechFrom = speechSource(p)
+	fp.pointsStake = devPointsStake(p)
 	platform, srv, err := startFakePlatform(fp, site)
 	if err != nil {
 		return fmt.Errorf("啟動本機假平台失敗：%w", err)
