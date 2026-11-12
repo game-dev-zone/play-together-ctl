@@ -32,9 +32,12 @@ signal purchase_result(purchase_id: String, status: String)
 signal pool_result(pool_id: String, status: String)
 ## 音高玩法（pitch_start 之後）：平台開始分析
 signal pitch_started
-## 音高分析停止：reason 是 game、user、denied、not_authorized、mic_denied、unsupported、background、timeout、busy、closed
+## 音高分析停止：reason 是 game、user、denied、not_authorized、mic_denied、unsupported、background、timeout、busy、closed。
+## timeout：連續 1 小時玩家沒確認繼續、或免按住 2 分鐘沒聲音；在玩家按按鈕時再呼叫 pitch_start
 signal pitch_stopped(reason: String)
-## 音高（每秒 15–20 次，只在玩家正在說話時）：voiced、hz、note（MIDI，69 = A4）、cents、confidence、seq、t。
+## 遊戲伺服器的音高授權剩 remaining_ms 毫秒（60 秒以內）還沒續約；用伺服器 SDK 的 AllowPitch／allowPitch 會自動續約
+signal pitch_expiring(remaining_ms: int)
+## 音高（每秒約 40 次，只在玩家正在說話時）：voiced、hz、note（MIDI，69 = A4）、cents、confidence、seq、t。
 ## 沒有聲音時 voiced 是 false，hz、note、cents 是 null。只能當娛樂分數，不能用於任何玩家權益
 signal pitch_changed(payload: Dictionary)
 ## 語音指令（speech_start 之後）：平台開始聽
@@ -320,6 +323,8 @@ func _on_event(args: Array) -> void:
 				pitch_started.emit()
 			else:
 				pitch_stopped.emit(str(payload.get("reason", "")))
+		"pitch_expiring":
+			pitch_expiring.emit(int(payload.get("remainingMs", 0)))
 		"pitch":
 			pitch_changed.emit(payload)
 		"speech_state":

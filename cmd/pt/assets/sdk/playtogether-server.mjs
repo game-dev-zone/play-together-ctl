@@ -1847,7 +1847,7 @@ var speechVocabularySchema = (/* @__PURE__ */ object({
 }, `句型用到的欄位要有定義，展開後最多 ${SPEECH_MAX_PHRASES} 句`));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(32)), range(0, 1), int().check(/* @__PURE__ */ _gte(0), /* @__PURE__ */ _lte(1e3)), range(0, 86400);
 range(0, 1e4), range(0, 1e4), range(0, 1e4), range(0, 1e4);
-(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)), (/* @__PURE__ */ array((/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)))).check(/* @__PURE__ */ _maxLength(3)), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0xe8d4a51000), range(0, 0x5af3107a4000), range(20, 5e3), range(0, 127), range(-50, 50), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0x5af3107a4000), (/* @__PURE__ */ array(/* @__PURE__ */ object({
+(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)), (/* @__PURE__ */ array((/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)))).check(/* @__PURE__ */ _maxLength(3)), range(0, 1), range(0, 0x5af3107a4000), range(0, 36e5), int().check(/* @__PURE__ */ _gte(0)), range(0, 0xe8d4a51000), range(0, 0x5af3107a4000), range(20, 5e3), range(0, 127), range(-50, 50), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0x5af3107a4000), (/* @__PURE__ */ array(/* @__PURE__ */ object({
 	text: (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(100)),
 	confidence: /* @__PURE__ */ nullable(range(0, 1)),
 	phrase: /* @__PURE__ */ optional(speechPhrase),
@@ -1934,6 +1934,13 @@ var launchExchangeResponseSchema = /* @__PURE__ */ object({
 	entitlements: /* @__PURE__ */ optional((/* @__PURE__ */ array((/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(64)))).check(/* @__PURE__ */ _maxLength(500)))
 });
 // src/gameserver.ts
+/** Platform 沒有 pitchPolicy、speechPolicy 時，room.allowPitch／allowSpeech 丟出這個錯誤（和 Go 的 ErrNoMicPlatform 相同） */
+var NoMicPlatformError = class extends Error {
+	constructor() {
+		super("gameserver: Platform 沒有 pitchPolicy、speechPolicy");
+		this.name = "NoMicPlatformError";
+	}
+};
 /** onAction 丟出這個錯誤時，玩家收到 400 {"error": code} */
 var ActionError = class extends Error {
 	code;
@@ -2047,6 +2054,37 @@ function createLimiter(rate, burst) {
 		return true;
 	};
 }
+var MIC_LEASE_MS = 9e5;
+var MIC_RENEW_BEFORE_MS = 3e5;
+var MIC_RETRY_MIN_MS = 5e3;
+var MIC_RETRY_MAX_MS = 6e4;
+var MIC_SEND_TIMEOUT_MS = 1e4;
+var MIC_INSTANCE = "pt-gameserver";
+/** 測試用（和 Go 版相同的常數） */
+var micTiming = {
+	leaseMs: MIC_LEASE_MS,
+	renewBeforeMs: MIC_RENEW_BEFORE_MS,
+	retryMinMs: MIC_RETRY_MIN_MS,
+	retryMaxMs: MIC_RETRY_MAX_MS
+};
+var newMicState = () => ({
+	want: false,
+	players: [],
+	mode: "ptt",
+	language: "",
+	version: 0,
+	sentVersion: 0,
+	sentPlayers: [],
+	expiresAt: 0,
+	seq: 0,
+	sending: false,
+	retryAt: 0,
+	retryWait: 0
+});
+function validMic(playerIds, mode) {
+	if (mode !== "ptt" && mode !== "hands_free") throw new Error(`gameserver: 未知的模式 ${JSON.stringify(mode)}（只有 ptt、hands_free）`);
+	if (!Array.isArray(playerIds) || playerIds.length < 1 || playerIds.length > 64) throw new Error("gameserver: 名單要 1–64 人");
+}
 var TOO_LARGE = Symbol("too_large");
 function createGameServer(opts) {
 	const log = opts.log ?? ((...a) => console.warn(...a));
@@ -2105,15 +2143,151 @@ function createGameServer(opts) {
 		queue.push(r);
 		pump();
 	}
+	const micPlatform = pt.pitchPolicy && pt.speechPolicy ? {
+		pitch: pt.pitchPolicy.bind(pt),
+		speech: pt.speechPolicy.bind(pt)
+	} : null;
+	let micTimer;
+	let micWakePending = false;
+	function setMic(m, players, mode, language, vocab) {
+		m.want = true;
+		m.players = [...players];
+		m.mode = mode;
+		m.language = language;
+		m.vocab = vocab;
+		m.version += 1;
+		m.retryAt = 0;
+		m.retryWait = 0;
+		wakeMic();
+	}
+	function stopMic(m) {
+		if (!m.want) return;
+		m.want = false;
+		m.version += 1;
+		m.retryAt = 0;
+		m.retryWait = 0;
+		wakeMic();
+	}
+	function wakeMic() {
+		if (!micTimer || micWakePending) return;
+		micWakePending = true;
+		setImmediate(() => {
+			micWakePending = false;
+			if (micTimer) runMic();
+		});
+	}
+	function micDue() {
+		const t = now();
+		const jobs = [];
+		for (const room of rooms.values()) for (const kind of ["pitch", "speech"]) {
+			const m = room.mic[kind];
+			if (m.sending || t < m.retryAt) continue;
+			const changed = m.version !== m.sentVersion;
+			const renew = m.want && !changed && t > m.expiresAt - MIC_RENEW_BEFORE_MS;
+			const stopNeeded = !m.want && changed && m.sentPlayers.length > 0;
+			if (!(m.want && changed) && !renew && !stopNeeded) {
+				if (!m.want && changed) m.sentVersion = m.version;
+				continue;
+			}
+			m.seq = Math.max(m.seq + 1, t);
+			const stop = !m.want;
+			const players = stop ? m.sentPlayers : m.players;
+			const expires = stop ? t + 1 : t + MIC_LEASE_MS;
+			const base = {
+				roomId: room.id,
+				gameInstanceId: MIC_INSTANCE,
+				epoch: room.epoch,
+				sequence: m.seq,
+				allowedPlayerIds: players,
+				mode: m.mode,
+				audience: "self",
+				effectiveAtServerMs: t,
+				expiresAtServerMs: expires
+			};
+			const job = {
+				room,
+				state: m,
+				kind,
+				version: m.version,
+				stop,
+				players,
+				expires
+			};
+			if (kind === "pitch") job.pitch = base;
+			else job.speech = {
+				...base,
+				language: m.language || "zh-TW",
+				...m.vocab ? { vocabulary: m.vocab } : {}
+			};
+			m.sending = true;
+			jobs.push(job);
+		}
+		return jobs;
+	}
+	async function micSend(j) {
+		let err = null;
+		let timer;
+		try {
+			const p = j.kind === "pitch" ? micPlatform.pitch(j.pitch) : micPlatform.speech(j.speech);
+			await Promise.race([p, new Promise((_, no) => timer = setTimeout(() => no(/* @__PURE__ */ new Error("timeout")), MIC_SEND_TIMEOUT_MS))]);
+		} catch (e) {
+			err = e ?? /* @__PURE__ */ new Error("unknown");
+		} finally {
+			clearTimeout(timer);
+		}
+		const m = j.state;
+		m.sending = false;
+		if (rooms.get(j.room.id) !== j.room) return;
+		if (err instanceof PlatformApiError && (err.code === "stale_epoch" || err.code === "room_not_found")) {
+			m.want = false;
+			m.sentVersion = m.version;
+			m.sentPlayers = [];
+			m.expiresAt = 0;
+			return;
+		}
+		if (err) {
+			m.retryWait = Math.min(Math.max(m.retryWait * 2, MIC_RETRY_MIN_MS), MIC_RETRY_MAX_MS);
+			m.retryAt = now() + m.retryWait;
+			log(`gameserver: 房間 ${j.room.id} 的${j.kind === "pitch" ? "音高" : "語音指令"}授權送出失敗（${err.message}），${m.retryWait / 1e3}s 後重試`);
+			return;
+		}
+		m.retryAt = 0;
+		m.retryWait = 0;
+		if (j.version === m.version) m.sentVersion = j.version;
+		if (j.stop) {
+			m.sentPlayers = [];
+			m.expiresAt = 0;
+		} else {
+			m.sentPlayers = j.players;
+			m.expiresAt = j.expires;
+		}
+		if (j.version !== m.version) wakeMic();
+	}
+	function runMic() {
+		for (const j of micDue()) micSend(j);
+	}
+	async function flushMic() {
+		if (!micPlatform) return 0;
+		const jobs = micDue();
+		await Promise.all(jobs.map(micSend));
+		return jobs.length;
+	}
 	function makeRoom(id, epoch) {
 		let roundId = "";
 		let rounds = 0;
+		const needMic = () => {
+			if (!micPlatform) throw new NoMicPlatformError();
+		};
 		const room = {
 			id,
 			epoch,
 			seatMap: /* @__PURE__ */ new Map(),
 			game: void 0,
 			emptyAt: 0,
+			mic: {
+				pitch: newMicState(),
+				speech: newMicState()
+			},
 			now,
 			seats() {
 				const t = now();
@@ -2146,7 +2320,19 @@ function createGameServer(opts) {
 					result
 				});
 				roundId = "";
-			}
+			},
+			allowPitch(playerIds, mode) {
+				needMic();
+				validMic(playerIds, mode);
+				setMic(room.mic.pitch, playerIds, mode, "", void 0);
+			},
+			stopPitch: () => stopMic(room.mic.pitch),
+			allowSpeech(playerIds, mode, language, vocabulary) {
+				needMic();
+				validMic(playerIds, mode);
+				setMic(room.mic.speech, playerIds, mode, language || "zh-TW", vocabulary);
+			},
+			stopSpeech: () => stopMic(room.mic.speech)
 		};
 		return room;
 	}
@@ -2475,6 +2661,10 @@ function createGameServer(opts) {
 				timers.push(setInterval(run, statusSync));
 			}
 			timers.push(setInterval(sweep, 1e3));
+			if (micPlatform) {
+				micTimer = setInterval(runMic, 1e3);
+				timers.push(micTimer);
+			}
 			timers.push(setInterval(tick, tickMs));
 			timers.push(setInterval(async () => {
 				if (syncing) return;
@@ -2488,6 +2678,7 @@ function createGameServer(opts) {
 		},
 		async close(timeoutMs = 5e3) {
 			for (const t of timers) clearInterval(t);
+			micTimer = void 0;
 			if (sending || queue.length > 0) {
 				let timer;
 				await Promise.race([new Promise((ok) => idleWaiters.push(ok)), new Promise((ok) => timer = setTimeout(ok, timeoutMs))]);
@@ -2518,6 +2709,7 @@ function createGameServer(opts) {
 			tick,
 			checkStatus,
 			stopServing,
+			flushMic,
 			rooms
 		}
 	};
@@ -2941,4 +3133,4 @@ function asTable(json) {
 	if (!t || typeof t.sessionId !== "string" || typeof t.balance !== "number") throw new PlatformApiError(502, "bad_response");
 	return t;
 }
-export { ActionError, HEADER, MAX_CLOCK_SKEW_MS, MOCK_CODE_PREFIX, PlatformApiError, SIGNATURE_SCHEME, aiBaseURL, aiToken, canonicalString, createGameServer, createServerClient, platformFromEnv, retryDelaysMs, signRequest, verifyRequest };
+export { ActionError, HEADER, MAX_CLOCK_SKEW_MS, MOCK_CODE_PREFIX, NoMicPlatformError, PlatformApiError, SIGNATURE_SCHEME, aiBaseURL, aiToken, canonicalString, createGameServer, createServerClient, micTiming, platformFromEnv, retryDelaysMs, signRequest, verifyRequest };

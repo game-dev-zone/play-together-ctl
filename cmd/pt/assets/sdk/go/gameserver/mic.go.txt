@@ -1,0 +1,258 @@
+package gameserver
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	playtogether "github.com/Yanghsuanming/play-together/sdk-go"
+)
+
+// 音高玩法與語音指令的授權（pitch.policy、speech.policy）由套件代為送出並自動續約：
+// 遊戲只要在一局開始時呼叫 Room.AllowPitch／AllowSpeech、結束時 StopPitch／StopSpeech，
+// 不用自己算到期時間、序號、局數。房間結束（關房、重新開始、閒置清除）時自動停止續約。
+
+// MicPlatform 是選用介面：Platform 也實作它時（*playtogether.Client 有）才能用 AllowPitch、AllowSpeech。
+type MicPlatform interface {
+	SendPitchPolicy(ctx context.Context, p playtogether.PitchPolicy) error
+	SendSpeechPolicy(ctx context.Context, p playtogether.SpeechPolicy) error
+}
+
+const (
+	micLease       = 15 * time.Minute // 每次授權的長度（平台上限 1 小時）
+	micRenewBefore = 5 * time.Minute  // 剩下這麼多時間時續約（平台到期前 60 秒會先通知遊戲畫面）
+	micRetryMin    = 5 * time.Second
+	micRetryMax    = time.Minute
+	micInstance    = "pt-gameserver" // 平台記錄用的遊戲實例名稱
+)
+
+// ErrNoMicPlatform：Config.Platform 沒有實作 MicPlatform（測試用的假平台要加上 SendPitchPolicy、SendSpeechPolicy）。
+var ErrNoMicPlatform = errors.New("gameserver: Platform 沒有實作 MicPlatform")
+
+// micState 是一個房間一種授權（音高或語音指令）的狀態，只在伺服器鎖裡讀寫。
+type micState struct {
+	// 遊戲要的
+	want     bool
+	players  []string
+	mode     string
+	language string
+	vocab    *playtogether.SpeechVocabulary
+	version  int // 遊戲每次呼叫 Allow／Stop 加一
+	// 平台目前有的
+	sentVersion int
+	sentPlayers []string // 最後一次授權的名單（停止時用）
+	expiresAt   time.Time
+	seq         int64
+	// 送出中（避免重疊）與失敗重試
+	sending   bool
+	retryAt   time.Time
+	retryWait time.Duration
+}
+
+func validMic(playerIDs []string, mode string) error {
+	if mode != "ptt" && mode != "hands_free" {
+		return fmt.Errorf("gameserver: 未知的模式 %q（只有 ptt、hands_free）", mode)
+	}
+	if len(playerIDs) < 1 || len(playerIDs) > 64 {
+		return errors.New("gameserver: 名單要 1–64 人")
+	}
+	return nil
+}
+
+// AllowPitch 授權這些玩家使用音高玩法（mode "ptt" 或 "hands_free"），並在一局進行中自動續約；
+// 同一個房間再呼叫一次就換成新的名單。一局結束時呼叫 StopPitch。在背景送出，失敗會自動重試（記在紀錄）。
+func (r *Room) AllowPitch(playerIDs []string, mode string) error {
+	if _, ok := r.s.cfg.Platform.(MicPlatform); !ok {
+		return ErrNoMicPlatform
+	}
+	if err := validMic(playerIDs, mode); err != nil {
+		return err
+	}
+	r.setMic(&r.pitch, true, playerIDs, mode, "", nil)
+	return nil
+}
+
+// StopPitch 停止音高授權（平台會停止分析並通知遊戲畫面 stopped）。沒有授權時不做事，重複呼叫是安全的。
+func (r *Room) StopPitch() { r.stopMic(&r.pitch) }
+
+// AllowSpeech 授權這些玩家使用語音指令，並自動續約。language 目前只有 "zh-TW"（空字串視為 zh-TW）；
+// vocab 是詞彙表（強烈建議提供）。同一個房間再呼叫一次就換成新的名單或詞彙表。一局結束時呼叫 StopSpeech。
+func (r *Room) AllowSpeech(playerIDs []string, mode, language string, vocab *playtogether.SpeechVocabulary) error {
+	if _, ok := r.s.cfg.Platform.(MicPlatform); !ok {
+		return ErrNoMicPlatform
+	}
+	if err := validMic(playerIDs, mode); err != nil {
+		return err
+	}
+	if language == "" {
+		language = "zh-TW"
+	}
+	r.setMic(&r.speech, true, playerIDs, mode, language, vocab)
+	return nil
+}
+
+// StopSpeech 停止語音指令授權。沒有授權時不做事。
+func (r *Room) StopSpeech() { r.stopMic(&r.speech) }
+
+func (r *Room) setMic(m *micState, want bool, players []string, mode, language string, vocab *playtogether.SpeechVocabulary) {
+	m.want = want
+	m.players = append([]string(nil), players...)
+	m.mode, m.language, m.vocab = mode, language, vocab
+	m.version++
+	m.retryAt, m.retryWait = time.Time{}, 0
+	r.s.wakeMic()
+}
+
+func (r *Room) stopMic(m *micState) {
+	if !m.want {
+		return
+	}
+	m.want = false
+	m.version++
+	m.retryAt, m.retryWait = time.Time{}, 0
+	r.s.wakeMic()
+}
+
+func (s *Server) wakeMic() {
+	select {
+	case s.micWake <- struct{}{}:
+	default:
+	}
+}
+
+// micJob 是要在鎖外送出的一則授權。
+type micJob struct {
+	room    *Room
+	state   *micState
+	kind    string // pitch、speech
+	version int
+	stop    bool
+	pitch   playtogether.PitchPolicy
+	speech  playtogether.SpeechPolicy
+	players []string
+	expires time.Time
+}
+
+// micDue 在鎖裡找出要送的授權：遊戲改了名單、停止、或快到期要續約、或上次失敗到了重試時間。
+func (s *Server) micDue() []micJob {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	var jobs []micJob
+	for _, r := range s.rooms {
+		for _, k := range []struct {
+			kind string
+			m    *micState
+		}{{"pitch", &r.pitch}, {"speech", &r.speech}} {
+			m := k.m
+			if m.sending || now.Before(m.retryAt) {
+				continue
+			}
+			changed := m.version != m.sentVersion
+			renew := m.want && !changed && now.After(m.expiresAt.Add(-micRenewBefore))
+			stopNeeded := !m.want && changed && len(m.sentPlayers) > 0
+			if !(m.want && changed) && !renew && !stopNeeded {
+				if !m.want && changed {
+					m.sentVersion = m.version // 沒送過授權就停止：不用通知平台
+				}
+				continue
+			}
+			// 序號用毫秒時間：遊戲伺服器重新啟動後也一定比上次大
+			m.seq = max(m.seq+1, now.UnixMilli())
+			job := micJob{room: r, state: m, kind: k.kind, version: m.version, stop: !m.want}
+			eff := now.UnixMilli()
+			exp := now.Add(micLease)
+			players := m.players
+			if job.stop {
+				players, exp = m.sentPlayers, now.Add(time.Millisecond) // 立刻到期＝撤回
+			}
+			job.players, job.expires = players, exp
+			if k.kind == "pitch" {
+				job.pitch = playtogether.PitchPolicy{RoomID: r.id, GameInstanceID: micInstance, Epoch: r.epoch, Sequence: m.seq,
+					AllowedPlayerIDs: players, Mode: modeOr(m.mode), Audience: "self", EffectiveAtServerMs: eff, ExpiresAtServerMs: exp.UnixMilli()}
+			} else {
+				job.speech = playtogether.SpeechPolicy{RoomID: r.id, GameInstanceID: micInstance, Epoch: r.epoch, Sequence: m.seq,
+					AllowedPlayerIDs: players, Mode: modeOr(m.mode), Audience: "self", Language: langOr(m.language), Vocabulary: m.vocab,
+					EffectiveAtServerMs: eff, ExpiresAtServerMs: exp.UnixMilli()}
+			}
+			m.sending = true
+			jobs = append(jobs, job)
+		}
+	}
+	return jobs
+}
+
+func modeOr(m string) string {
+	if m == "" {
+		return "ptt"
+	}
+	return m
+}
+
+func langOr(l string) string {
+	if l == "" {
+		return "zh-TW"
+	}
+	return l
+}
+
+// micSend 在鎖外送出，再回到鎖裡記錄結果。
+func (s *Server) micSend(ctx context.Context, mp MicPlatform, j micJob) {
+	c, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	var err error
+	if j.kind == "pitch" {
+		err = mp.SendPitchPolicy(c, j.pitch)
+	} else {
+		err = mp.SendSpeechPolicy(c, j.speech)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := j.state
+	m.sending = false
+	if s.rooms[j.room.id] != j.room {
+		return // 房間已經結束或換成新的一局
+	}
+	var api *playtogether.APIError
+	if err != nil && errors.As(err, &api) && (api.Code == "stale_epoch" || api.Code == "room_not_found") {
+		// 房主重新開始或房間已關閉：套件查房間時會結束這個 Room，不用再送
+		m.want, m.sentVersion, m.sentPlayers, m.expiresAt = false, m.version, nil, time.Time{}
+		return
+	}
+	if err != nil {
+		m.retryWait = min(max(m.retryWait*2, micRetryMin), micRetryMax)
+		m.retryAt = s.now().Add(m.retryWait)
+		s.cfg.Logf("gameserver: 房間 %s 的%s授權送出失敗（%v），%s 後重試", j.room.id, map[string]string{"pitch": "音高", "speech": "語音指令"}[j.kind], err, m.retryWait)
+		return
+	}
+	m.retryAt, m.retryWait = time.Time{}, 0
+	if j.version == m.version {
+		m.sentVersion = j.version
+	}
+	if j.stop {
+		m.sentPlayers, m.expiresAt = nil, time.Time{}
+	} else {
+		m.sentPlayers, m.expiresAt = j.players, j.expires
+	}
+	if j.version != m.version {
+		s.wakeMic() // 送出期間遊戲又改了：馬上再送
+	}
+}
+
+// micLoop 每秒（或遊戲呼叫 Allow／Stop 時立刻）檢查要送的授權。只在 Platform 實作 MicPlatform 時啟動。
+func (s *Server) micLoop(ctx context.Context, mp MicPlatform) {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		for _, j := range s.micDue() {
+			go s.micSend(ctx, mp, j)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		case <-s.micWake:
+		}
+	}
+}

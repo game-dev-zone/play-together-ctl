@@ -143,6 +143,8 @@ type Room struct {
 	round   string   // 進行中那一局的 ID
 	players []string // 進行中那一局的玩家
 	rounds  int
+	pitch   micState // 音高授權（mic.go）
+	speech  micState // 語音指令授權
 }
 
 // ID 是玩聚的房間 ID。
@@ -214,6 +216,7 @@ type Server struct {
 	syncing          atomic.Bool // 上一次查房間還沒結束時不重疊
 	// 停止服務（遊戲被停用或金鑰被撤銷）：stopReason 不是空字串時拒絕加入、所有房間已結束；查到恢復後清掉
 	stopReason string
+	micWake    chan struct{} // 遊戲呼叫 AllowPitch／StopPitch 等時叫醒 micLoop
 }
 
 type tokenRef struct{ roomID, playerID string }
@@ -244,7 +247,7 @@ func New(cfg Config) *Server {
 	if cfg.MaxBody <= 0 {
 		cfg.MaxBody = 1024
 	}
-	s := &Server{cfg: cfg, rooms: map[string]*Room{}, tokens: map[string]tokenRef{}}
+	s := &Server{cfg: cfg, rooms: map[string]*Room{}, tokens: map[string]tokenRef{}, micWake: make(chan struct{}, 1)}
 	s.reports = newReportQueue(cfg.Platform, cfg.Logf)
 	go s.reports.run()
 	s.limits = newLimiters(cfg.Limits)
@@ -501,6 +504,9 @@ func (s *Server) syncRooms(ctx context.Context) {
 func (s *Server) Run(ctx context.Context) {
 	if sp, ok := s.cfg.Platform.(StatusPlatform); ok {
 		go s.statusLoop(ctx, sp)
+	}
+	if mp, ok := s.cfg.Platform.(MicPlatform); ok {
+		go s.micLoop(ctx, mp)
 	}
 	sweep := time.NewTicker(time.Second)
 	sync := time.NewTicker(s.cfg.RoomSync)

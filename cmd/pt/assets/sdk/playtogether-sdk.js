@@ -1497,6 +1497,10 @@ var ln = /* @__PURE__ */ W({
 		state: /* @__PURE__ */ G(["started", "stopped"]),
 		reason: /* @__PURE__ */ q(Xt)
 	}),
+	"pitch.expiring": /* @__PURE__ */ W({
+		expiresAtServerMs: Z(0, 0x5af3107a4000),
+		remainingMs: Z(0, 36e5)
+	}),
 	"voice.pitch": /* @__PURE__ */ W({
 		playerId: X,
 		sessionId: X,
@@ -1857,6 +1861,7 @@ function Tn(e, t, n, r, i) {
 				case "purchase.result": return h.get(e.payload.purchaseId)?.(e.payload.status);
 				case "pool.result": return g.get(e.payload.poolId)?.(e.payload.status);
 				case "pitch.state": return c.emit("state", e.payload);
+				case "pitch.expiring": return c.emit("expiring", e.payload);
 				case "voice.pitch": return c.emit("pitch", e.payload);
 				case "speech.state": return d.emit("state", e.payload);
 				case "voice.speech": return d.emit("result", e.payload);
