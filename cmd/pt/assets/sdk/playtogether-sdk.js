@@ -1778,16 +1778,19 @@ function Tn(e, t, n, r, i) {
 				on: (e, t) => s.on(e, t)
 			},
 			pitch: {
-				start: ({ mode: t = "ptt" } = {}) => {
+				start: ({ mode: t = "ptt", smoothing: r } = {}) => {
 					if (t !== "ptt" && t !== "hands_free") return;
-					if (e === "platform") return n("pitch.start", { mode: t });
+					if (e === "platform") return n("pitch.start", typeof r == "boolean" ? {
+						mode: t,
+						smoothing: r
+					} : { mode: t });
 					if (l !== void 0) return;
 					if (f) return c.emit("state", {
 						state: "stopped",
 						reason: "busy"
 					});
-					let r = Date.now(), i = 0;
-					c.emit("state", { state: "started" }), l = setInterval(() => c.emit("pitch", Sn(i++, r, Date.now())), 50);
+					let i = Date.now(), a = 0;
+					c.emit("state", { state: "started" }), l = setInterval(() => c.emit("pitch", Sn(a++, i, Date.now())), 25);
 				},
 				stop: () => e === "platform" ? n("pitch.stop", {}) : u("game"),
 				on: (e, t) => c.on(e, t)

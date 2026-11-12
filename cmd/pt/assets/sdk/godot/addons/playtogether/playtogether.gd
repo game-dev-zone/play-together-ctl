@@ -169,9 +169,10 @@ func join_pool(pool_id: String) -> void:
 ## 音高玩法：請平台開始分析這位玩家的音高。遊戲伺服器要先送 pitch.policy 授權，玩家要在平台畫面同意。
 ## hands_free 為 true：不用加入語音、不用按住說話，授權期間持續分析（遊戲伺服器的授權也要是 hands_free）。
 ## 模擬模式（不是網頁版）產生假資料：滑音 220→440 Hz、斷音、穩定 440 Hz 加抖音、低信心
-func pitch_start(hands_free: bool = false) -> void:
+## smoothing 為 false：送每一次的原始結果（不去掉偶發的倍頻、半頻），音高變化時快約 25 毫秒
+func pitch_start(hands_free: bool = false, smoothing: bool = true) -> void:
 	if _bridge:
-		_bridge.pitchStart(hands_free)
+		_bridge.pitchStart(hands_free, smoothing)
 	elif _mock_speech:
 		pitch_stopped.emit.call_deferred("busy")
 	elif not _mock_pitch:
@@ -239,7 +240,7 @@ func _process(delta: float) -> void:
 	_mock_pitch_t += delta
 	if _mock_pitch_t < _mock_pitch_next:
 		return
-	_mock_pitch_next = _mock_pitch_t + 0.05
+	_mock_pitch_next = _mock_pitch_t + 0.025
 	var phase := fmod(_mock_pitch_t, 6.0)
 	var frame := {"playerId": "mock-player", "sessionId": "mock", "seq": _mock_pitch_seq, "t": _mock_pitch_t * 1000.0,
 		"voiced": false, "hz": null, "note": null, "cents": null, "confidence": 0.1}

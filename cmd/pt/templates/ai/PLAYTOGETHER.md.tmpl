@@ -93,6 +93,7 @@
 5. **只能當娛樂分數**：音高來自玩家的瀏覽器，不可信，不能用於排名、獎勵、解鎖（架構原則 4）。要比賽時由遊戲伺服器決定規則，並接受「玩家可能作弊」。
 6. **本機測試**：`pt dev` 不用真的麥克風，`start` 之後會送一組假的音高（滑音、靜音、顫音輪流），[[if ne .GameServer "none"]]假平台也會檢查授權的格式與局數；[[end]]真的聲音要在玩聚的預覽房間用手機測。
 7. **免按住（用聲音操控角色）**：一直要出聲的玩法不要讓玩家按住說話。授權用 `mode: "hands_free"`，畫面用 [[if eq .Client "godot"]]`PlayTogether.pitch_start(true)`[[else]]`pt.pitch.start({ mode: 'hands_free' })`[[end]]；兩邊都要，授權是 `ptt` 時畫面要求免按住會收到 `not_authorized`。玩家不用加入語音，聲音也不會傳給其他人。平台有另一份同意畫面、畫面上方一直顯示分析中。iOS 要玩家點一下才能開始收音：在玩家按「開始」之類的按鈕時呼叫 `start` 最順，否則平台會在畫面中間請玩家點一下。只在一局進行中授權，局與局之間 `stop`。語音指令也可以用 `hands_free`（[[if eq .Client "godot"]]`speech_start(true)`[[else]]`pt.speech.start({ mode: 'hands_free' })`[[end]]），平台用停頓判斷一句結束，沒聽出指令的聲音不會送給遊戲。
+8. **延遲與轉送**：`pitch` 事件每秒約 40 次，平台在同一台手機裡交給遊戲（不到 1 毫秒），不要自己改成 WebSocket。自己畫面的即時反應（音準指針、角色跳躍）直接用收到的數字；要更即時可以用 [[if eq .Client "godot"]]`PlayTogether.pitch_start(hands_free, false)`[[else]]`pt.pitch.start({ mode, smoothing: false })`[[end]] 關掉平滑（偶爾會跳到高或低八度，要自己過濾）。**送給遊戲伺服器或其他玩家時要降頻**：每秒 10–15 次、只送音符或偏差的變化，或幾筆合成一包；不要每一筆都轉送（多人房會比語音還佔網路）。分數在遊戲伺服器按回合計算。
 
 ## 用聲音玩：語音指令
 
