@@ -487,10 +487,15 @@ func newWizard(name string, client, server, orientation, gameServer, hosting, pr
 		fmt.Println()
 	}
 	if !set["client"] {
+		// 玩聚建議用 Godot：有編輯器、場景與動畫工具，畫面在各手機上一致，AI 開發的 skill 也最完整（工作室模式只限 Godot）
+		godotNote := "用 Godot 編輯器開發，匯出網頁版；需要 Godot 4.3 以上與網頁匯出範本"
+		if _, gerr := findGodot(); gerr != nil {
+			godotNote += "（這台電腦還沒找到 Godot：請先到 https://godotengine.org 下載安裝）"
+		}
 		if *client, err = choose("遊戲畫面要用什麼做？", []option{
-			{"web", "網頁（HTML／JavaScript）", "直接用瀏覽器開發，適合 2D、介面為主的派對遊戲"},
-			{"godot", "Godot 4", "用 Godot 編輯器開發，匯出網頁版；需要 Godot 4.3 以上"},
-		}, "web"); err != nil {
+			{"godot", "Godot 4（建議）", godotNote},
+			{"web", "網頁（HTML／JavaScript）", "直接用瀏覽器開發，不用安裝引擎；適合介面為主、要很快載入的小遊戲"},
+		}, "godot"); err != nil {
 			return "", err
 		}
 	}

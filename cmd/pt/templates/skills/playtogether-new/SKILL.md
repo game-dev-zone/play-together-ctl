@@ -28,7 +28,7 @@ description: 在空資料夾開一款新的玩聚（PlayTogether）遊戲：先�
 | 玩法一句話：幾個人、怎麼贏、一局多久 | 玩聚以直播主開房、觀眾用手機加入為主：**手機直接點就能玩、一局 3–5 分鐘**最適合 | （寫進專案說明） |
 | 單人還是多人 | 多人 | 多人 `-game-server playtogether-managed`；單人 `-game-server none` |
 | 多人遊戲的伺服器放在哪裡 | **交給玩聚代管**：開發者不用自己找主機、不用付主機費，上傳時伺服器和畫面一起交給玩聚（目前只支援 Go、要平台開通） | 代管 `-server go -hosting playtogether`；自己部署 `-server go` 或 `-server node`，不加 `-hosting` |
-| 畫面用什麼做 | 網頁（HTML／JavaScript）；要用 Godot 編輯器時選 Godot | `-client web` 或 `-client godot` |
+| 畫面用什麼做 | **Godot 4**（玩聚建議）：有編輯器、場景與動畫工具，畫面在各手機上一致，AI 的 Godot skill 最完整。先確認這台電腦有 Godot 4.3 以上（`godot --version`，或 macOS 的 `/Applications/Godot.app`）；沒有時請開發者到 https://godotengine.org 安裝並在編輯器裡安裝網頁匯出範本，不想安裝或只做介面為主、要很快載入的小遊戲時才用網頁 | `-client godot` 或 `-client web` |
 | 手機直式還是橫式 | 直式 | `-orientation portrait`、`landscape`、`any` |
 | 畫面風格（明亮或深色、主色） | 依玩法建議；開發者沒想法時先用深色 | 做畫面時一起選平台外殼樣式（`playtogether.json` 的 `shell`，見第 4 步） |
 | 內容邊界 | `general`（普遍級）。有明顯暴力、恐怖等內容時由開發者決定 `moderate` 或 `strong`，你不能自己提高 | `-profile` |
@@ -61,7 +61,7 @@ description: 在空資料夾開一款新的玩聚（PlayTogether）遊戲：先�
 在目前的資料夾建立，**不要**另外建子資料夾：
 
 ```
-pt new . -y -platform <平台網址> -client web -game-server playtogether-managed -server go -hosting playtogether -orientation portrait -profile general -table-game none
+pt new . -y -platform <平台網址> -client godot -game-server playtogether-managed -server go -hosting playtogether -orientation portrait -profile general -table-game none
 ```
 
 - 專案名稱預設用資料夾名稱。不符合格式（小寫英文、數字、連字號，英文開頭）時加 `-name <名稱>`。

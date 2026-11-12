@@ -60,9 +60,9 @@ func TestNewWizard(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	// 順序：名稱 → 畫面 → 多人？→ 伺服器種類 → 伺服器語言 → 伺服器放哪裡（Go 才問）→ 方向 → 內容邊界 → AI 模式 → 確認
+	// 順序：名稱 → 畫面（1＝Godot，預設；2＝網頁）→ 多人？→ 伺服器種類 → 伺服器語言 → 伺服器放哪裡（Go 才問）→ 方向 → 內容邊界 → AI 模式 → 確認
 	// 名稱不合格會重問；AI 模式亂打會重問，預設標準（加入完整的遊戲開發 skill，不加 Studios）；伺服器預設玩聚代管
-	typeIn(t, "My Game", "wiz-godot", "2", "", "", "", "", "2", "", "9", "", "")
+	typeIn(t, "My Game", "wiz-godot", "", "", "", "", "", "2", "", "9", "", "")
 	must(t, cmdNew(nil))
 	p := readProject(t, filepath.Join(dir, "wiz-godot"))
 	if p.Client != "godot" || p.Server != "go" || p.AI != "" || p.Godot != "game" || p.Orientation != "landscape" || p.Skills != "full" ||
@@ -88,38 +88,38 @@ func TestNewWizard(t *testing.T) {
 	}
 
 	// 工作室（只限 Godot）：加入 Studios 與完整 skill
-	typeIn(t, "wiz-studio", "2", "", "", "", "", "", "", "2", "")
+	typeIn(t, "wiz-studio", "1", "", "", "", "", "", "", "2", "")
 	must(t, cmdNew(nil))
 	if p := readProject(t, filepath.Join(dir, "wiz-studio")); p.AI != "studios" || p.Skills != "full" || p.AIMode != "studio" || p.Godot != "." {
 		t.Fatalf("選工作室模式：%+v", p)
 	}
 	// 自訂：問 skill 範圍與是否加入 Studios
-	typeIn(t, "wiz-custom", "2", "", "", "", "", "", "", "4", "2", "y", "")
+	typeIn(t, "wiz-custom", "1", "", "", "", "", "", "", "4", "2", "y", "")
 	must(t, cmdNew(nil))
 	if p := readProject(t, filepath.Join(dir, "wiz-custom")); p.AI != "studios" || p.Skills != "core" || p.AIMode != "custom" {
 		t.Fatalf("選自訂：%+v", p)
 	}
 	// 網頁專案沒有工作室選項：輸入 studio 會重問；選單是 標準、輕量、自訂
-	typeIn(t, "wiz-webstd", "", "", "", "", "", "", "", "studio", "1", "")
+	typeIn(t, "wiz-webstd", "2", "", "", "", "", "", "", "studio", "1", "")
 	must(t, cmdNew(nil))
 	if p := readProject(t, filepath.Join(dir, "wiz-webstd")); p.Client != "web" || p.AI != "" || p.AIMode != "standard" {
 		t.Fatalf("網頁專案不能選工作室：%+v", p)
 	}
 	// 多人＋自己的遊戲伺服器（伺服器放哪裡選「自己部署」）
-	typeIn(t, "wiz-ext", "", "", "2", "", "2", "", "", "2", "")
+	typeIn(t, "wiz-ext", "2", "", "2", "", "2", "", "", "2", "")
 	must(t, cmdNew(nil))
 	if p := readProject(t, filepath.Join(dir, "wiz-ext")); p.gameServerMode() != "external" || !p.multiplayerEnabled() || p.AIMode != "lightweight" || p.GameServer.Hosting != "" {
 		t.Fatalf("選自己的遊戲伺服器：%+v", p)
 	}
 
 	// 單人遊戲：不需要遊戲伺服器；最後選不建立就不留下資料夾
-	typeIn(t, "wiz-web", "", "2", "2", "3", "", "2", "n")
+	typeIn(t, "wiz-web", "2", "2", "2", "3", "", "2", "n")
 	must(t, cmdNew(nil))
 	if _, err := os.Stat(filepath.Join(dir, "wiz-web")); err == nil {
 		t.Fatal("選擇不建立時不能留下資料夾")
 	}
 	// 內容邊界選 Custom：暴力選 moderate、血腥選 mild，其他按 Enter（從 general 的值開始）
-	typeIn(t, "wiz-solo", "", "2", "", "", "4", "3", "2", "", "", "", "", "", "2", "")
+	typeIn(t, "wiz-solo", "2", "2", "", "", "4", "3", "2", "", "", "", "", "", "2", "")
 	must(t, cmdNew(nil))
 	p = readProject(t, filepath.Join(dir, "wiz-solo"))
 	if p.gameServerMode() != "none" || p.multiplayerEnabled() {

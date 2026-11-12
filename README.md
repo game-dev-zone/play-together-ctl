@@ -44,7 +44,7 @@ claude                           # Claude Code
 ### 自己來
 
 ```sh
-pt new                           # 逐步選擇名稱、畫面（網頁或 Godot）、多人與遊戲伺服器、方向、AI 開發模式
+pt new                           # 逐步選擇名稱、畫面（建議 Godot，也可以用網頁）、多人與遊戲伺服器、方向、AI 開發模式
 cd my-party-game
 pt dev                           # 本機開發：啟動遊戲伺服器與本機假平台，開啟玩家分頁（多人專案 2 個、單人專案 1 個）與控制面板
 make verify                      # 啟動驗證：伺服器測試、在模擬模式實際啟動一次、pt verify server、檢查要上傳的檔案
