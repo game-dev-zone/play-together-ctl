@@ -136,12 +136,14 @@ func usage() {
        單機遊戲想改成多人     → pt init 之後 pt add server（專案裡的 skill：playtogether-multiplayer）
   3. 多人遊戲需要遊戲伺服器。建議交給「玩聚代管」（-hosting playtogether，Go）：開發者不用自己找主機、不用付主機費，
      上傳時伺服器和畫面一起交給玩聚；本機用 pt dev 測試（本機假平台，不用金鑰、不用連網）
-  4. 平台規則（伺服器決定遊戲狀態、成人平台、內容邊界、不涉及現實經濟價值）寫在專案的 CLAUDE.md、PLAYTOGETHER.md
-  5. 只有開發者本人能做：pt login 時在瀏覽器確認、提高內容邊界或改玩法的決定、手機實測；私鑰（keys/）不要貼進對話
+  4. 畫面建議用 Godot 4（-client godot）：先確認電腦有 Godot 4.3 以上（godot --version），沒有時請開發者安裝；
+     開發者不想安裝、或只做介面為主要很快載入的小遊戲時才用網頁（-client web）
+  5. 平台規則（伺服器決定遊戲狀態、成人平台、內容邊界、不涉及現實經濟價值）寫在專案的 CLAUDE.md、PLAYTOGETHER.md
+  6. 只有開發者本人能做：pt login 時在瀏覽器確認、提高內容邊界或改玩法的決定、手機實測；私鑰（keys/）不要貼進對話
 
   pt new [名稱|.]                               建立新專案（畫面＋遊戲伺服器，已接好 SDK）；在終端機會逐步詢問
          [-name 名稱]                           pt new . 在目前的空資料夾建立，名稱預設用資料夾名稱
-         [-client web|godot] [-server go|node]  直接指定，不再詢問
+         [-client godot|web] [-server go|node]  直接指定，不再詢問（畫面建議 godot）
          [-orientation portrait|landscape|any]  畫面方向：直式（預設）、橫式、兩者都支援
          [-game-server playtogether-managed|external|none]
                                                 遊戲伺服器架構：玩聚範本伺服器（預設）、自己的遊戲伺服器、不需要
