@@ -1,4 +1,4 @@
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/util.js
+// ../../node_modules/zod/v4/core/util.js
 function e(e) {
 	let t = Object.values(e).filter((e) => typeof e == "number");
 	return Object.entries(e).filter(([e, n]) => t.indexOf(+e) === -1).map(([e, t]) => t);
@@ -235,7 +235,7 @@ function pe(e, t, n, r) {
 		}
 	});
 }
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/core.js
+// ../../node_modules/zod/v4/core/core.js
 var me, he = {
 	value: void 0,
 	enumerable: !1
@@ -311,7 +311,7 @@ var E = globalThis.__zod_globalConfig;
 function D(e) {
 	return e && Object.assign(E, e), E;
 }
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/errors.js
+// ../../node_modules/zod/v4/core/errors.js
 function ve() {
 	let e = this._zod;
 	return e.message ?? (e.message = JSON.stringify(e.def, t, 2)), e.message;
@@ -1092,7 +1092,7 @@ function pt(e, t, n, r) {
 		r._zod.def.params && (e.params = r._zod.def.params), t.issues.push(oe(e));
 	}
 }
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/api.js
+// ../../node_modules/zod/v4/core/api.js
 function mt(e) {
 	return e.checks && (e.checks = [...e.checks]), e;
 }
@@ -1197,7 +1197,7 @@ function xt(e, t, n) {
 		...m(n)
 	});
 }
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/mini/schemas.js
+// ../../node_modules/zod/v4/mini/schemas.js
 var z = /*@__PURE__*/ w("ZodMiniType", (e, t) => {
 	if (!e._zod) throw Error("Uninitialized schema in ZodMiniType.");
 	j.init(e, t), e.def = t, e.type = t.type;
@@ -1499,6 +1499,10 @@ var ln = /* @__PURE__ */ W({
 		reason: /* @__PURE__ */ q(Xt)
 	}),
 	"pitch.expiring": /* @__PURE__ */ W({
+		expiresAtServerMs: Z(0, 0x5af3107a4000),
+		remainingMs: Z(0, 36e5)
+	}),
+	"speech.expiring": /* @__PURE__ */ W({
 		expiresAtServerMs: Z(0, 0x5af3107a4000),
 		remainingMs: Z(0, 36e5)
 	}),
@@ -1866,6 +1870,7 @@ function Tn(e, t, n, r, i) {
 				case "pitch.expiring": return c.emit("expiring", e.payload);
 				case "voice.pitch": return c.emit("pitch", e.payload);
 				case "speech.state": return d.emit("state", e.payload);
+				case "speech.expiring": return d.emit("expiring", e.payload);
 				case "voice.speech": return d.emit("result", e.payload);
 				default: return;
 			}

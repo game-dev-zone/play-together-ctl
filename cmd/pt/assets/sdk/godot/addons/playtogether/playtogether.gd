@@ -42,9 +42,11 @@ signal pitch_expiring(remaining_ms: int)
 signal pitch_changed(payload: Dictionary)
 ## 語音指令（speech_start 之後）：平台開始聽
 signal speech_started
-## 語音指令停止：reason 和 pitch_stopped 相同
+## 語音指令停止：reason 和 pitch_stopped 相同（timeout：連續 1 小時沒確認、免按住 2 分鐘沒聲音）
 signal speech_stopped(reason: String)
-## 語音指令的辨識結果：玩家每說完一句（放開按住說話）送一次。payload.alternatives 是候選（依可能性排序，沒聽到時是空的），
+## 遊戲伺服器的語音指令授權剩 remaining_ms 毫秒（60 秒以內）還沒續約；用 AllowSpeech／allowSpeech 會自動續約
+signal speech_expiring(remaining_ms: int)
+## 語音指令的辨識結果：玩家每說完一句（停頓約 0.5 秒；set_push_to_talk_mode(true) 時是放開）送一次。payload.alternatives 是候選（依可能性排序，沒聽到時是空的），
 ## 每個候選有 text（辨識出的文字）、confidence（0–1 或 null）；符合詞彙表時另有 phrase（符合的句型，例如 "{n} 個 {m}"）
 ## 與 slots（欄位的值，例如 {"n": 4, "m": 5}）。
 ## 只能當成和按按鈕一樣的操作：合法性由遊戲伺服器判定，不能用於任何玩家權益
@@ -339,5 +341,7 @@ func _on_event(args: Array) -> void:
 				speech_started.emit()
 			else:
 				speech_stopped.emit(str(payload.get("reason", "")))
+		"speech_expiring":
+			speech_expiring.emit(int(payload.get("remainingMs", 0)))
 		"speech":
 			speech_result.emit(payload)

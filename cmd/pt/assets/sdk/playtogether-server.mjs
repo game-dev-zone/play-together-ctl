@@ -1,7 +1,7 @@
 import { createHash, createPrivateKey, randomBytes, sign, verify } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/util.js
+// ../../node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
 	const numericValues = Object.values(entries).filter((v) => typeof v === "number");
 	return Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
@@ -313,7 +313,7 @@ function installLazyProp(inst, key, make, enumerable) {
 		}
 	});
 }
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/core.js
+// ../../node_modules/zod/v4/core/core.js
 var _a;
 var _zodDesc = {
 	value: void 0,
@@ -413,7 +413,7 @@ function config(newConfig) {
 	if (newConfig) Object.assign(globalConfig, newConfig);
 	return globalConfig;
 }
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/errors.js
+// ../../node_modules/zod/v4/core/errors.js
 function _getMessage() {
 	const internals = this._zod;
 	internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -465,7 +465,7 @@ var initializer = (inst, def) => {
 	}
 };
 var $ZodRealError = /* @__PURE__ */ $constructor("$ZodError", initializer, void 0, { Parent: Error });
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/parse.js
+// ../../node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => {
 	const fn = (schema, value, _ctx, _params) => {
 		const ctx = _ctx ? {
@@ -559,11 +559,11 @@ var _safeParseAsync = (_Err) => async (schema, value, _ctx) => {
 	};
 };
 var safeParseAsync = /* @__PURE__*/ _safeParseAsync($ZodRealError);
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/regexes.js
+// ../../node_modules/zod/v4/core/regexes.js
 var anyString = /^[\s\S]{0,}$/;
 var number$1 = /^-?\d+(?:\.\d+)?$/;
 var boolean$1 = /^(?:true|false)$/i;
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/checks.js
+// ../../node_modules/zod/v4/core/checks.js
 var $ZodCheck = /*@__PURE__*/ $constructor("$ZodCheck", (inst, def) => {
 	var _a;
 	inst._zod ?? (inst._zod = {});
@@ -750,13 +750,13 @@ var $ZodCheckRegex = /*@__PURE__*/ $constructor("$ZodCheckRegex", (inst, def) =>
 		});
 	};
 });
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/versions.js
+// ../../node_modules/zod/v4/core/versions.js
 var version = {
 	major: 4,
 	minor: 6,
 	patch: 7
 };
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/schemas.js
+// ../../node_modules/zod/v4/core/schemas.js
 var $ZodType = /*@__PURE__*/ $constructor("$ZodType", (inst, def) => {
 	var _a;
 	inst ?? (inst = {});
@@ -1458,7 +1458,7 @@ function handleRefineResult(result, payload, input, inst) {
 		payload.issues.push(issue(_iss));
 	}
 }
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/core/api.js
+// ../../node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
 	if (def.checks) def.checks = [...def.checks];
 	return def;
@@ -1560,7 +1560,7 @@ function _refine(Class, fn, _params) {
 		...normalizeParams(_params)
 	});
 }
-// ../../../../../../../../../Users/yanghsuanming/Sites/play-together/node_modules/zod/v4/mini/schemas.js
+// ../../node_modules/zod/v4/mini/schemas.js
 var ZodMiniType = /*@__PURE__*/ $constructor("ZodMiniType", (inst, def) => {
 	if (!inst._zod) throw new Error("Uninitialized schema in ZodMiniType.");
 	$ZodType.init(inst, def);
@@ -1847,7 +1847,7 @@ var speechVocabularySchema = (/* @__PURE__ */ object({
 }, `句型用到的欄位要有定義，展開後最多 ${SPEECH_MAX_PHRASES} 句`));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(32)), range(0, 1), int().check(/* @__PURE__ */ _gte(0), /* @__PURE__ */ _lte(1e3)), range(0, 86400);
 range(0, 1e4), range(0, 1e4), range(0, 1e4), range(0, 1e4);
-(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)), (/* @__PURE__ */ array((/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)))).check(/* @__PURE__ */ _maxLength(3)), range(0, 1), range(0, 0x5af3107a4000), range(0, 36e5), int().check(/* @__PURE__ */ _gte(0)), range(0, 0xe8d4a51000), range(0, 0x5af3107a4000), range(20, 5e3), range(0, 127), range(-50, 50), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0x5af3107a4000), (/* @__PURE__ */ array(/* @__PURE__ */ object({
+(/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _maxLength(16)), (/* @__PURE__ */ array(playerSummarySchema)).check(/* @__PURE__ */ _maxLength(64)), (/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)), (/* @__PURE__ */ array((/* @__PURE__ */ string()).check(/* @__PURE__ */ _regex(/^[a-z][a-z0-9_-]{0,15}$/)))).check(/* @__PURE__ */ _maxLength(3)), range(0, 1), range(0, 0x5af3107a4000), range(0, 36e5), range(0, 0x5af3107a4000), range(0, 36e5), int().check(/* @__PURE__ */ _gte(0)), range(0, 0xe8d4a51000), range(0, 0x5af3107a4000), range(20, 5e3), range(0, 127), range(-50, 50), range(0, 1), int().check(/* @__PURE__ */ _gte(0)), range(0, 0x5af3107a4000), (/* @__PURE__ */ array(/* @__PURE__ */ object({
 	text: (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(1), /* @__PURE__ */ _maxLength(100)),
 	confidence: /* @__PURE__ */ nullable(range(0, 1)),
 	phrase: /* @__PURE__ */ optional(speechPhrase),
