@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-11",
+  "version": "2026-11-18",
   "note": "玩聚平台政策資料：哪些宣告是平台硬性規則（hard）、哪些需要平台人工審核（review）。由平台產品／審核政策負責人決定，pt 維護者同步；只寫條件與原因，不寫分級、不寫准駁。政策變更影響分類時要立即發新版 pt。",
   "rules": [
     {"id": "real-money-wagering", "field": "economy.realMoneyWagering", "values": ["true"], "level": "review", "legal": true, "category": "經濟", "reason": "真實金錢下注（含用有現實價值的資產下注）：由玩聚平台與律師決定是否接受；REVIEW_REQUIRED 只代表可以送審，決定前正式環境不核准、不發佈"},
@@ -27,6 +27,7 @@
     {"id": "political-repression", "field": "sensitiveContent.politicalRepression", "values": ["true"], "level": "review", "category": "內容", "reason": "威權統治、白色恐怖、政治監禁等政治題材"},
     {"id": "discrimination-depiction", "field": "sensitiveContent.discriminationDepiction", "values": ["true"], "level": "review", "category": "內容", "reason": "劇情或批判性敘事中呈現的歧視"},
     {"id": "hate-speech-depiction", "field": "sensitiveContent.hateSpeechDepiction", "values": ["true"], "level": "review", "category": "內容", "reason": "角色台詞或史料中的仇恨、歧視言論"},
-    {"id": "ai-generated-content", "field": "gameServer.ai", "values": ["anthropic", "openai", "gemini"], "level": "review", "category": "內容", "reason": "使用 AI 生成內容（審核準則 3.9：輸出符合內容邊界、讓玩家知道是 AI、不送可識別玩家的資料、限制呼叫次數）"}
+    {"id": "ai-generated-content", "field": "gameServer.ai", "values": ["anthropic", "openai", "gemini"], "level": "review", "category": "內容", "reason": "使用 AI 生成內容（審核準則 3.9：輸出符合內容邊界、讓玩家知道是 AI、不送可識別玩家的資料、限制呼叫次數）"},
+    {"id": "voice-transcript", "field": "voice.transcript", "values": ["self", "room"], "level": "review", "category": "語音", "reason": "使用語音轉文字（審核準則 3.11：玩家進房前要同意、不同意不能加入；逐字稿只用在這一局、不保存、room 只給依規則看得到的人）"}
   ]
 }

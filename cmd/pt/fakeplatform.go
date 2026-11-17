@@ -85,6 +85,8 @@ type fakePlatform struct {
 	// 點數下注（fakepoints.go）：pointsStake 是專案有沒有宣告 economy.platformPointsStake；points 用到時才建立
 	pointsStake bool
 	points      *fakePoints
+	// transcript 是專案申報的語音轉文字範圍（playtogether.json 的 voice.transcript；transcript.go）
+	transcript string
 }
 
 type fakeRoom struct {

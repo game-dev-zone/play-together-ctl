@@ -1408,7 +1408,7 @@ var X = (/* @__PURE__ */ B()).check(/* @__PURE__ */ L(1), /* @__PURE__ */ I(128)
 	"timeout",
 	"busy",
 	"closed"
-]), Zt = Jt, Qt = /* @__PURE__ */ G(["self"]), $t = /* @__PURE__ */ G(["zh-TW"]), en = Xt, tn = 5e3, nn = /^[a-z][a-z0-9_]{0,15}$/, rn = (/* @__PURE__ */ B()).check(/* @__PURE__ */ L(1), /* @__PURE__ */ I(60), /* @__PURE__ */ R(/^[^\u0000-\u001f\u007f]+$/)), an = /* @__PURE__ */ Mt([/* @__PURE__ */ W({
+]), Zt = Jt, Qt = /* @__PURE__ */ G(["self", "room"]), $t = /* @__PURE__ */ G(["zh-TW"]), en = Xt, tn = 5e3, nn = /^[a-z][a-z0-9_]{0,15}$/, rn = (/* @__PURE__ */ B()).check(/* @__PURE__ */ L(1), /* @__PURE__ */ I(60), /* @__PURE__ */ R(/^[^\u0000-\u001f\u007f]+$/)), an = /* @__PURE__ */ Mt([/* @__PURE__ */ W({
 	type: /* @__PURE__ */ K("integer"),
 	min: V().check(/* @__PURE__ */ P(0), /* @__PURE__ */ N(9999)),
 	max: V().check(/* @__PURE__ */ P(0), /* @__PURE__ */ N(9999))
@@ -1631,7 +1631,7 @@ var hn = /* @__PURE__ */ W({
 	vocabulary: /* @__PURE__ */ q(cn),
 	effectiveAtServerMs: V().check(/* @__PURE__ */ F()),
 	expiresAtServerMs: V().check(/* @__PURE__ */ F())
-})).check(/* @__PURE__ */ Y((e) => e.expiresAtServerMs > e.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ Y((e) => new Set(e.allowedPlayerIds).size === e.allowedPlayerIds.length, "名單不得重複")), (/* @__PURE__ */ B()).check(/* @__PURE__ */ L(16), /* @__PURE__ */ I(256)), V().check(/* @__PURE__ */ P(0)), (/* @__PURE__ */ U((/* @__PURE__ */ B()).check(/* @__PURE__ */ I(64)))).check(/* @__PURE__ */ I(500));
+})).check(/* @__PURE__ */ Y((e) => e.expiresAtServerMs > e.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ Y((e) => new Set(e.allowedPlayerIds).size === e.allowedPlayerIds.length, "名單不得重複"), /* @__PURE__ */ Y((e) => e.audience !== "room" || e.vocabulary === void 0, "audience room 只限語音轉文字（不能帶詞彙表）")), (/* @__PURE__ */ B()).check(/* @__PURE__ */ L(16), /* @__PURE__ */ I(256)), V().check(/* @__PURE__ */ P(0)), (/* @__PURE__ */ U((/* @__PURE__ */ B()).check(/* @__PURE__ */ I(64)))).check(/* @__PURE__ */ I(500));
 // \0@oxc-project+runtime@0.156.0/helpers/esm/typeof.js
 function Q(e) {
 	"@babel/helpers - typeof";

@@ -38,7 +38,8 @@ type micState struct {
 	mode     string
 	language string
 	vocab    *playtogether.SpeechVocabulary
-	version  int // 遊戲每次呼叫 Allow／Stop 加一
+	audience string // 語音指令是 self；語音轉文字照版本宣告（self 或 room）
+	version  int    // 遊戲每次呼叫 Allow／Stop 加一
 	// 平台目前有的
 	sentVersion int
 	sentPlayers []string // 最後一次授權的名單（停止時用）
@@ -69,7 +70,7 @@ func (r *Room) AllowPitch(playerIDs []string, mode string) error {
 	if err := validMic(playerIDs, mode); err != nil {
 		return err
 	}
-	r.setMic(&r.pitch, true, playerIDs, mode, "", nil)
+	r.setMic(&r.pitch, true, playerIDs, mode, "", nil, "self")
 	return nil
 }
 
@@ -88,17 +89,38 @@ func (r *Room) AllowSpeech(playerIDs []string, mode, language string, vocab *pla
 	if language == "" {
 		language = "zh-TW"
 	}
-	r.setMic(&r.speech, true, playerIDs, mode, language, vocab)
+	r.setMic(&r.speech, true, playerIDs, mode, language, vocab, "self")
 	return nil
 }
+
+// AllowTranscript 授權這些玩家使用語音轉文字（逐字稿，例如狼人殺的發言筆記；docs/ASR_INTEGRATION_AUDIT.md），並自動續約。
+// audience 要和版本宣告 voice.transcript 相同："self"（逐字稿只給說話者自己的畫面）或 "room"（遊戲可以分享給同房間的玩家），
+// 不同時平台拒絕（audience_mismatch，記在紀錄並重試）。和語音指令共用同一個授權：呼叫後取代 AllowSpeech，反之亦然。
+// 一局結束或換人時呼叫 StopTranscript（或用新名單再呼叫一次）。
+func (r *Room) AllowTranscript(playerIDs []string, mode, audience string) error {
+	if _, ok := r.s.cfg.Platform.(MicPlatform); !ok {
+		return ErrNoMicPlatform
+	}
+	if err := validMic(playerIDs, mode); err != nil {
+		return err
+	}
+	if audience != "self" && audience != "room" {
+		return fmt.Errorf("未知的對象：%q（只有 self、room）", audience)
+	}
+	r.setMic(&r.speech, true, playerIDs, mode, "zh-TW", nil, audience)
+	return nil
+}
+
+// StopTranscript 停止語音轉文字授權（和 StopSpeech 相同）。沒有授權時不做事。
+func (r *Room) StopTranscript() { r.stopMic(&r.speech) }
 
 // StopSpeech 停止語音指令授權。沒有授權時不做事。
 func (r *Room) StopSpeech() { r.stopMic(&r.speech) }
 
-func (r *Room) setMic(m *micState, want bool, players []string, mode, language string, vocab *playtogether.SpeechVocabulary) {
+func (r *Room) setMic(m *micState, want bool, players []string, mode, language string, vocab *playtogether.SpeechVocabulary, audience string) {
 	m.want = want
 	m.players = append([]string(nil), players...)
-	m.mode, m.language, m.vocab = mode, language, vocab
+	m.mode, m.language, m.vocab, m.audience = mode, language, vocab, audience
 	m.version++
 	m.retryAt, m.retryWait = time.Time{}, 0
 	r.s.wakeMic()
@@ -173,7 +195,7 @@ func (s *Server) micDue() []micJob {
 					AllowedPlayerIDs: players, Mode: modeOr(m.mode), Audience: "self", EffectiveAtServerMs: eff, ExpiresAtServerMs: exp.UnixMilli()}
 			} else {
 				job.speech = playtogether.SpeechPolicy{RoomID: r.id, GameInstanceID: micInstance, Epoch: r.epoch, Sequence: m.seq,
-					AllowedPlayerIDs: players, Mode: modeOr(m.mode), Audience: "self", Language: langOr(m.language), Vocabulary: m.vocab,
+					AllowedPlayerIDs: players, Mode: modeOr(m.mode), Audience: audienceOr(m.audience), Language: langOr(m.language), Vocabulary: m.vocab,
 					EffectiveAtServerMs: eff, ExpiresAtServerMs: exp.UnixMilli()}
 			}
 			m.sending = true
@@ -188,6 +210,13 @@ func modeOr(m string) string {
 		return "ptt"
 	}
 	return m
+}
+
+func audienceOr(a string) string {
+	if a == "" {
+		return "self"
+	}
+	return a
 }
 
 func langOr(l string) string {

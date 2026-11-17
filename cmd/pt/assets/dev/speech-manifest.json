@@ -1,5 +1,5 @@
 {
-  "engine": "cc09edc680de7a5b",
+  "engine": "f1122c5dd287d0a2",
   "files": [
     {
       "path": "speech/LICENSE-sherpa-onnx.txt",
@@ -13,8 +13,8 @@
     },
     {
       "path": "speech/SOURCE.md",
-      "size": 8768,
-      "sha256": "df7e50a9dab3c429a52effe6c970d9e7e953ba181af654b6f5a940f69d1b0b80"
+      "size": 9072,
+      "sha256": "ff36fb1cc0a8fe28df5074cc6c194f790f68ceccb90f7783adb30d50371f1e88"
     },
     {
       "path": "speech/kws-zh-decoder.int8.onnx",

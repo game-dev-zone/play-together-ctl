@@ -339,7 +339,7 @@ func (c *Client) SendPitchPolicy(ctx context.Context, p PitchPolicy) error {
 
 // SpeechPolicy 是遊戲伺服器送給平台的語音指令授權（docs/speech-commands.md），和發言規則、音高授權分開。
 // 玩家用說的操作（例如「四個五」「投三號」）：平台在玩家手機上辨識，只把文字交給這位玩家自己的遊戲畫面。
-// Epoch 必須是房間目前的局數（房主重新開始後要重新授權）。Mode 是 "ptt" 或 "hands_free"（和 PitchPolicy 相同）、Audience 只有 "self"、
+// Epoch 必須是房間目前的局數（房主重新開始後要重新授權）。Mode 是 "ptt" 或 "hands_free"（和 PitchPolicy 相同）、Audience 是 "self" 或 "room"（room 只限語音轉文字，不帶詞彙表；要和版本宣告 voice.transcript 相同）、
 // Language 只有 "zh-TW"。有效期間最多 1 小時；名單 1–64 人。Vocabulary 選填（強烈建議提供，準確度差很多）。
 type SpeechPolicy struct {
 	RoomID              string            `json:"roomId"`
@@ -457,11 +457,22 @@ func (v SpeechVocabulary) Size() (int, error) {
 
 // Validate 和 packages/protocol 的 speechPolicySchema 規則相同。
 func (p SpeechPolicy) Validate() error {
+	// 名單、模式、時間的規則和音高相同；對象另外檢查（語音轉文字可以是 room）
 	base := PitchPolicy{RoomID: p.RoomID, GameInstanceID: p.GameInstanceID, Epoch: p.Epoch, Sequence: p.Sequence,
-		AllowedPlayerIDs: p.AllowedPlayerIDs, Mode: p.Mode, Audience: p.Audience,
+		AllowedPlayerIDs: p.AllowedPlayerIDs, Mode: p.Mode, Audience: "self",
 		EffectiveAtServerMs: p.EffectiveAtServerMs, ExpiresAtServerMs: p.ExpiresAtServerMs}
 	if err := base.Validate(); err != nil {
 		return err
+	}
+	switch p.Audience {
+	case "self":
+	case "room":
+		// 分享給房間只限語音轉文字（沒有詞彙表）；範圍要和版本宣告 voice.transcript 相同（平台檢查）
+		if p.Vocabulary != nil {
+			return errors.New("audience room 只限語音轉文字（不能帶詞彙表）")
+		}
+	default:
+		return fmt.Errorf("未知的對象：%q（只有 self、room）", p.Audience)
 	}
 	if p.Language != "zh-TW" {
 		return fmt.Errorf("未知的語言：%q（目前只有 zh-TW）", p.Language)

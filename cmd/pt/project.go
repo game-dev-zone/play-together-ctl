@@ -72,6 +72,8 @@ type project struct {
 	// 多人與遊戲伺服器架構（v0.13 起；舊專案沒有時視為多人＋playtogether-managed）。AI 改連線前一定要先確認
 	Multiplayer *multiplayerConfig `json:"multiplayer,omitempty"`
 	GameServer  *gameServerConfig  `json:"gameServer,omitempty"`
+	// 語音轉文字的範圍（transcript.go）：self 或 room；有申報時玩家進房前要在平台同意，需要平台審核
+	Voice *voiceConfig `json:"voice,omitempty"`
 	// 建立或最近一次 pt content sync 時的平台政策版本（policy/rules.json 的 version）
 	PolicyVersion string `json:"policyVersion,omitempty"`
 	// 政策宣告（v0.15 起；policy.go）：讀成原始 JSON，pt check 再嚴格解析（才能抓到缺欄位、未知鍵、型別錯誤）
@@ -1193,6 +1195,7 @@ func checkProject(p *project, webDir string) []finding {
 	checkPolicy(p, add)
 	checkStore(p, add)
 	checkAI(p, add)
+	checkTranscript(p, add)
 	if checkGameServer(p, add) {
 		if p.ServerURL == "" && p.hostedServer() {
 			// 玩聚代管：每個房間的伺服器網址由 SDK 握手提供（launch.serverUrl），不用填；但前端要真的用它

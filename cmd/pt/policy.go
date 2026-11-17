@@ -95,12 +95,13 @@ type economyPolicy struct {
 var economyOptional = []string{"platformPointsStake", "platformPointsRandom"}
 
 type policy struct {
-	Audience  platformAudience
-	Content   contentProfile
-	Sensitive sensitiveContent
-	Gameplay  gameplayPolicy
-	Economy   economyPolicy
-	AI        []string // gameServer.ai（選填）：遊戲伺服器使用的 AI 服務
+	Audience   platformAudience
+	Content    contentProfile
+	Sensitive  sensitiveContent
+	Gameplay   gameplayPolicy
+	Economy    economyPolicy
+	AI         []string // gameServer.ai（選填）：遊戲伺服器使用的 AI 服務
+	Transcript string   // voice.transcript（選填）：語音轉文字的範圍
 }
 
 var (
@@ -260,7 +261,16 @@ func (pl *policy) fields() map[string][]string {
 		"economy.platformPointsStake":  b(e.PlatformPointsStake != nil && *e.PlatformPointsStake),
 		"economy.platformPointsRandom": b(e.PlatformPointsRandom != nil && *e.PlatformPointsRandom),
 		"gameServer.ai":                pl.AI,
+		"voice.transcript":             transcriptField(pl.Transcript),
 	}
+}
+
+// transcriptField：沒有申報時不產生值（規則只比對 self、room）
+func transcriptField(scope string) []string {
+	if scope == "" {
+		return nil
+	}
+	return []string{scope}
 }
 
 // matchRules 回傳宣告符合的規則（依規則資料的順序）。
@@ -515,6 +525,7 @@ func readPolicy(p *project, add addFunc) (pl policy, legacy, ok bool) {
 		}
 	}
 	pl.AI = p.aiProviders()
+	pl.Transcript = p.transcriptScope()
 	return pl, false, true
 }
 

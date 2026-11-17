@@ -83,7 +83,7 @@ func TestFakeSpeech(t *testing.T) {
 	must(t, c.SendSpeechPolicy(ctx, policy))
 	must(t, c.SendSpeechPolicy(ctx, policy)) // 同序號同內容是重送
 	changed := policy
-	changed.Vocabulary = nil
+	changed.Vocabulary = &playtogether.SpeechVocabulary{Phrases: []string{"開"}, Strict: true}
 	if err := c.SendSpeechPolicy(ctx, changed); apiCode(err) != "stale_sequence" {
 		t.Fatalf("同序號不同內容：%v", err)
 	}
@@ -141,9 +141,21 @@ func TestFakeSpeech(t *testing.T) {
 		t.Fatalf("模擬停止：%v", out)
 	}
 
-	// 沒有詞彙表：原文照送，沒有 phrase
+	// 沒有詞彙表＝語音轉文字：和正式平台一樣，要申報 voice.transcript、範圍相同
 	free := policy
 	free.Sequence, free.Vocabulary = 4, nil
+	if err := c.SendSpeechPolicy(ctx, free); apiCode(err) != "transcript_not_declared" {
+		t.Fatalf("沒有申報 voice.transcript：%v", err)
+	}
+	fp.mu.Lock()
+	fp.transcript = "self"
+	fp.mu.Unlock()
+	roomScope := free
+	roomScope.Audience = "room"
+	if err := c.SendSpeechPolicy(ctx, roomScope); apiCode(err) != "audience_mismatch" {
+		t.Fatalf("申報 self 時授權 room：%v", err)
+	}
+	// 原文照送，沒有 phrase
 	must(t, c.SendSpeechPolicy(ctx, free))
 	poll("p1", true, local)
 	must(t, fp.say("p1", "隨便說"))

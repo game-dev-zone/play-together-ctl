@@ -310,6 +310,10 @@ func declarationBody(p *project) (json.RawMessage, bool) {
 	if ai := p.aiProviders(); len(ai) > 0 {
 		body["gameServer"] = map[string][]string{"ai": ai}
 	}
+	// 選填的 voice 區塊：有申報語音轉文字才送（平台據此在進房前要求同意，需要審核）
+	if scope := p.transcriptScope(); scope == "self" || scope == "room" {
+		body["voice"] = map[string]string{"transcript": scope}
+	}
 	raw, _ := json.Marshal(body)
 	return raw, true
 }

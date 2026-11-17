@@ -84,6 +84,17 @@ func (f *fakePlatform) speechPolicy(w http.ResponseWriter, r *http.Request) {
 		fail(409, "stale_epoch", fmt.Sprintf("房間目前是第 %d 局；房主重新開始後要用新的局數重新授權", room.Epoch))
 		return
 	}
+	// 語音轉文字（沒有詞彙表）：和正式平台一樣，要申報 voice.transcript、範圍相同
+	if p.Vocabulary == nil {
+		if f.transcript == "" {
+			fail(403, "transcript_not_declared", "沒有詞彙表就是語音轉文字：playtogether.json 要加上 voice.transcript（self 或 room）；只要辨識固定指令時請帶詞彙表")
+			return
+		}
+		if p.Audience != f.transcript {
+			fail(400, "audience_mismatch", fmt.Sprintf("playtogether.json 的 voice.transcript 是 %s，授權的 audience 要相同", f.transcript))
+			return
+		}
+	}
 	canon, _ := json.Marshal(p)
 	if room.Speech != nil && p.Sequence <= room.Speech.Sequence {
 		if p.Sequence == room.Speech.Sequence && string(canon) == room.SpeechBody {

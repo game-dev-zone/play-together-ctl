@@ -258,6 +258,7 @@ func devPlatformOnly(p *project, site, addr string, players int, serverURL strin
 	fp.shell = devShell(p)
 	fp.speechFrom = speechSource(p)
 	fp.pointsStake = devPointsStake(p)
+	fp.transcript = p.transcriptScope()
 	platform, srv, err := startFakePlatform(fp, site)
 	if err != nil {
 		return fmt.Errorf("啟動本機假平台失敗：%w", err)

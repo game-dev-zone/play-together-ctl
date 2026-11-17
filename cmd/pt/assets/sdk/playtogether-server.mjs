@@ -1792,8 +1792,11 @@ var pitchModeSchema = /* @__PURE__ */ _enum(["ptt", "hands_free"]);
 var pitchAudienceSchema = /* @__PURE__ */ _enum(["self"]);
 /** 語音指令的模式：和音高相同（ptt、hands_free） */
 var speechModeSchema = pitchModeSchema;
-/** 辨識結果給誰看：self＝只送給說話者自己的遊戲畫面（第一版只有這個） */
-var speechAudienceSchema = /* @__PURE__ */ _enum(["self"]);
+/**
+* 辨識結果給誰看：self＝只送給說話者自己的遊戲畫面；room＝遊戲可以把逐字稿分享給同房間的玩家（只限語音轉文字，也就是沒有詞彙表的授權；
+* 版本宣告 voice.transcript 要相同，docs/ASR_INTEGRATION_AUDIT.md 第 0 節第 7 點）
+*/
+var speechAudienceSchema = /* @__PURE__ */ _enum(["self", "room"]);
 /** 語音指令支援的語言（BCP 47）。第一版只有台灣華語 */
 var speechLanguageSchema = /* @__PURE__ */ _enum(["zh-TW"]);
 /** 詞彙表展開後最多幾句 */
@@ -1919,7 +1922,7 @@ var speechPolicySchema = (/* @__PURE__ */ object({
 	vocabulary: /* @__PURE__ */ optional(speechVocabularySchema),
 	effectiveAtServerMs: int().check(/* @__PURE__ */ _positive()),
 	expiresAtServerMs: int().check(/* @__PURE__ */ _positive())
-})).check(/* @__PURE__ */ refine((p) => p.expiresAtServerMs > p.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ refine((p) => new Set(p.allowedPlayerIds).size === p.allowedPlayerIds.length, "名單不得重複"));
+})).check(/* @__PURE__ */ refine((p) => p.expiresAtServerMs > p.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ refine((p) => new Set(p.allowedPlayerIds).size === p.allowedPlayerIds.length, "名單不得重複"), /* @__PURE__ */ refine((p) => p.audience !== "room" || p.vocabulary === void 0, "audience room 只限語音轉文字（不能帶詞彙表）"));
 (/* @__PURE__ */ string()).check(/* @__PURE__ */ _minLength(16), /* @__PURE__ */ _maxLength(256));
 var launchExchangeResponseSchema = /* @__PURE__ */ object({
 	gameId: id,
@@ -2072,6 +2075,7 @@ var newMicState = () => ({
 	players: [],
 	mode: "ptt",
 	language: "",
+	audience: "self",
 	version: 0,
 	sentVersion: 0,
 	sentPlayers: [],
@@ -2149,12 +2153,13 @@ function createGameServer(opts) {
 	} : null;
 	let micTimer;
 	let micWakePending = false;
-	function setMic(m, players, mode, language, vocab) {
+	function setMic(m, players, mode, language, vocab, audience = "self") {
 		m.want = true;
 		m.players = [...players];
 		m.mode = mode;
 		m.language = language;
 		m.vocab = vocab;
+		m.audience = audience;
 		m.version += 1;
 		m.retryAt = 0;
 		m.retryWait = 0;
@@ -2216,6 +2221,7 @@ function createGameServer(opts) {
 			if (kind === "pitch") job.pitch = base;
 			else job.speech = {
 				...base,
+				audience: m.audience,
 				language: m.language || "zh-TW",
 				...m.vocab ? { vocabulary: m.vocab } : {}
 			};
@@ -2332,7 +2338,14 @@ function createGameServer(opts) {
 				validMic(playerIds, mode);
 				setMic(room.mic.speech, playerIds, mode, language || "zh-TW", vocabulary);
 			},
-			stopSpeech: () => stopMic(room.mic.speech)
+			stopSpeech: () => stopMic(room.mic.speech),
+			allowTranscript(playerIds, mode, audience) {
+				needMic();
+				validMic(playerIds, mode);
+				if (audience !== "self" && audience !== "room") throw new Error(`未知的對象：${String(audience)}（只有 self、room）`);
+				setMic(room.mic.speech, playerIds, mode, "zh-TW", void 0, audience);
+			},
+			stopTranscript: () => stopMic(room.mic.speech)
 		};
 		return room;
 	}
