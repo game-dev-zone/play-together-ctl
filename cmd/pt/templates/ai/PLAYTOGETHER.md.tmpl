@@ -75,10 +75,11 @@
 
 玩聚語音由平台外殼連線，遊戲伺服器只決定「誰能說話、誰聽得到誰」（`voice.policy`[[if eq .GameServer "none"]]；沒有遊戲伺服器的專案不能送發言規則[[end]]）。
 
-- **預設開麥**：玩家進房就加入語音，有發言權就送出聲音，不用按住；沒有發言權時平台自動停止。玩家可以用平台右上角的按鈕關掉自己的麥克風（[[if eq .Client "godot"]]`voice_state_changed` 的 `micOn`[[else]]`pt.voice.on('state')` 的 `micOn`[[end]] 是 false）。平台沒有按住說話按鈕。
+- **預設開麥**：玩家進房就加入語音，有發言權就送出聲音，不用按住；沒有發言權時平台自動停止。玩家可以用平台右上角的按鈕關掉自己的麥克風（[[if eq .Client "godot"]]`voice_state_changed` 的 `micOn`[[else]]`pt.voice.on('state')` 的 `micOn`[[end]] 是 false）。平台沒有按住說話按鈕。音高或語音指令進行中，這顆按鈕會顯示 🎵／🗣，玩家關掉麥克風就停止聽（遊戲不會收到 `stopped`，只是收不到結果）。
 - **要按住說話的玩法**：畫面宣告 [[if eq .Client "godot"]]`PlayTogether.set_push_to_talk_mode(true)`，用遊戲自己的按鈕呼叫 `PlayTogether.push_to_talk(true)`／`push_to_talk(false)`[[else]]`pt.voice.micMode('push')`，用遊戲自己的按鈕呼叫 `pt.voice.pushToTalk('start')`／`'stop'`[[end]]。按住期間玩家仍要有發言權、麥克風開著才會送出；玩家切到別的視窗時平台自動放開。誰能說話一律用 `voice.policy`，不要用按住說話代替。
 
 - `mode`：`open`（所有人）、`host_only`（只有房主）、`turn`（剛好一位）、`allowlist`（名單上的人）。名單外的人仍然**聽得到**名單上的人。
+- **全體禁言**：`allowlist` 送空名單（`allowedSpeakerIds: []`），生效期間所有人都不能說話、房主也一樣；到期或送下一條規則就恢復。投票、公布結果、唱歌不想被別人聽到時用。
 - **分組語音**（陣營秘密頻道）：加上 `groups: [{ id, members }]`，生效期間組員只在自己的組裡說話，其他人的裝置收不到；組員仍聽得到主頻道。最多 8 組、一人一組。狼人殺的夜晚：`mode` 用 `allowlist`、`allowedSpeakerIds` 空、`groups` 放狼人；天亮送一條沒有 `groups` 的新規則。
 - **旁聽（只聽不說）**：組可以加上 `listeners`（例如死亡玩家的上帝視角），名單上的人聽得到這一組、不能在組裡說話；可以是別組的組員（死亡玩家在 `dead` 組聊天，同時旁聽 `wolves`），一人最多旁聽 3 組。要開關旁聽就送一條新規則加上或拿掉 `listeners`（拿掉時組員會重新連線，中斷約 1 秒）。同一人要先後和不同的人討論時，每一段送一條新規則。
 - **要保密誰在組裡時，主頻道要全員靜音**（或只讓主持人說話）：主頻道看得到誰的麥克風被關掉。
@@ -89,13 +90,13 @@
 
 遊戲不能拿到麥克風或聲音，但可以拿到**玩家的音高**（唱歌、哼歌、比音準、用聲音控制角色）：平台在玩家手機上分析，只把數字交給這位玩家自己的遊戲畫面。
 
-1. **遊戲伺服器授權（用套件，自動續約）**：一局開始時在遊戲規則裡呼叫 [[if eq .Server "node"]]`room.allowPitch([唱歌的人], 'ptt')`，一局結束時 `room.stopPitch()`[[else]]`r.AllowPitch([]string{唱歌的人}, "ptt")`，一局結束時 `r.StopPitch()`[[end]]。在 onAction、tick 裡直接呼叫即可：套件會在鎖外送出、到期前自動續約、失敗時重試，房主重新開始或關房時自動停止；換唱歌的人就用新名單再呼叫一次。**不要自己呼叫 [[if eq .Server "node"]]`platform.pitchPolicy`[[else]]`pt.SendPitchPolicy`[[end]]**：要自己算到期時間（最長 1 小時）、局數與遞增的序號，而且每間房每分鐘最多 30 次（`pt check` 會提醒）。`mode`：`"ptt"` 按住說話時才分析；`"hands_free"` 免按住，見第 7 點。[[if eq .GameServer "none"]]**這個專案宣告沒有遊戲伺服器，所以目前不能用音高玩法**；要用時先提出架構變更（架構原則 1）。[[end]]
+1. **遊戲伺服器授權（用套件，自動續約）**：一局開始時在遊戲規則裡呼叫 [[if eq .Server "node"]]`room.allowPitch([唱歌的人], 'ptt')`，一局結束時 `room.stopPitch()`[[else]]`r.AllowPitch([]string{唱歌的人}, "ptt")`，一局結束時 `r.StopPitch()`[[end]]。在 onAction、tick 裡直接呼叫即可：套件會在鎖外送出、到期前自動續約、失敗時重試，房主重新開始或關房時自動停止；換唱歌的人就用新名單再呼叫一次。**不要自己呼叫 [[if eq .Server "node"]]`platform.pitchPolicy`[[else]]`pt.SendPitchPolicy`[[end]]**：要自己算到期時間（最長 1 小時）、局數與遞增的序號，而且每間房每分鐘最多 30 次（`pt check` 會提醒）。`mode`：`"ptt"` 玩家的聲音正在送出時才分析（有發言權、麥克風開著）；`"hands_free"` 免按住，見第 7 點。[[if eq .GameServer "none"]]**這個專案宣告沒有遊戲伺服器，所以目前不能用音高玩法**；要用時先提出架構變更（架構原則 1）。[[end]]
 2. **畫面端請求**：[[if eq .Client "godot"]]`PlayTogether.pitch_start()`、`PlayTogether.pitch_stop()`；訊號 `pitch_started`、`pitch_stopped(reason)`、`pitch_changed(payload)`[[else]]`pt.pitch.start({ mode: 'ptt' })`、`pt.pitch.stop()`；`pt.pitch.on('state', s => …)`、`pt.pitch.on('pitch', f => …)`[[end]]。第一次會由平台跳出同意畫面，遊戲不能代按。
 3. **收到的數字**：每秒約 40 次，`ptt` 只在玩家有發言權**而且聲音正在送出**時（麥克風開著；宣告按住說話時要按住）（`hands_free` 是授權期間一直送）：`voiced`、`hz`、`note`（MIDI，69 = A4）、`cents`（−50～50）、`confidence`（0–1）。沒聲音時 `voiced` 是 false、其他是 null。
-4. **停止原因**（`reason`）：`game`、`user`、`denied`（玩家不同意）、`not_authorized`（伺服器沒授權）、`mic_denied`、`unsupported`、`background`、`timeout`（玩家連續 1 小時沒按平台的「繼續」，或免按住 2 分鐘沒聽到聲音）、`busy`、`closed`。遊戲要能處理每一種（`pt check` 會檢查有沒有監聽停止）：在畫面說明原因，並**在玩家按按鈕時**（例如「再唱一首」）再呼叫 `start`，不要自動重試。自己送授權時，授權剩 60 秒還沒續約會收到 [[if eq .Client "godot"]]`pitch_expiring(remaining_ms)`[[else]]`pt.pitch.on('expiring', …)`[[end]]（用套件不會發生）。
+4. **停止原因**（`reason`）：`game`、`user`（玩家在平台選單選了「不再允許」）、`denied`（玩家不同意）、`not_authorized`（伺服器沒授權）、`mic_denied`、`unsupported`、`background`、`timeout`（玩家連續 1 小時沒按平台的「繼續」，或免按住 2 分鐘沒聽到聲音）、`busy`、`closed`。遊戲要能處理每一種（`pt check` 會檢查有沒有監聽停止）：在畫面說明原因，並**在玩家按按鈕時**（例如「再唱一首」）再呼叫 `start`，不要自動重試。自己送授權時，授權剩 60 秒還沒續約會收到 [[if eq .Client "godot"]]`pitch_expiring(remaining_ms)`[[else]]`pt.pitch.on('expiring', …)`[[end]]（用套件不會發生）。
 5. **只能當娛樂分數**：音高來自玩家的瀏覽器，不可信，不能用於排名、獎勵、解鎖（架構原則 4）。要比賽時由遊戲伺服器決定規則，並接受「玩家可能作弊」。
 6. **本機測試**：`pt dev` 不用真的麥克風，`start` 之後會送一組假的音高（滑音、靜音、顫音輪流），[[if ne .GameServer "none"]]假平台也會檢查授權的格式與局數；[[end]]真的聲音要在玩聚的預覽房間用手機測。
-7. **免按住（用聲音操控角色）**：一直要出聲的玩法不要讓玩家按住說話。授權用 `mode: "hands_free"`，畫面用 [[if eq .Client "godot"]]`PlayTogether.pitch_start(true)`[[else]]`pt.pitch.start({ mode: 'hands_free' })`[[end]]；兩邊都要，授權是 `ptt` 時畫面要求免按住會收到 `not_authorized`。玩家不用加入語音，聲音也不會傳給其他人。平台有另一份同意畫面、畫面上方一直顯示分析中。iOS 要玩家點一下才能開始收音：在玩家按「開始」之類的按鈕時呼叫 `start` 最順，否則平台會在畫面中間請玩家點一下。只在一局進行中授權，局與局之間 `stop`。語音指令也可以用 `hands_free`（[[if eq .Client "godot"]]`speech_start(true)`[[else]]`pt.speech.start({ mode: 'hands_free' })`[[end]]），平台用停頓判斷一句結束，沒聽出指令的聲音不會送給遊戲。
+7. **免按住（用聲音操控角色）**：一直要出聲的玩法不要讓玩家按住說話。授權用 `mode: "hands_free"`，畫面用 [[if eq .Client "godot"]]`PlayTogether.pitch_start(true)`[[else]]`pt.pitch.start({ mode: 'hands_free' })`[[end]]；兩邊都要，授權是 `ptt` 時畫面要求免按住會收到 `not_authorized`。玩家不用加入語音、不用有發言權，分析本身不會把聲音傳給其他人；但玩家在語音裡、有發言權時，聲音照發言規則傳出。**要讓玩家唱歌時不被別人聽到，那段時間送全體禁言**（`allowlist` 空名單），不要期待玩家自己關麥。平台有另一份同意畫面；分析期間右上角的麥克風按鈕顯示 🎵，玩家關掉麥克風就停止分析（2 分鐘沒聲音會 `timeout`）。iOS 要玩家點一下才能開始收音：在玩家按「開始」之類的按鈕時呼叫 `start` 最順，否則平台會在畫面中間請玩家點一下。只在一局進行中授權，局與局之間 `stop`。語音指令也可以用 `hands_free`（[[if eq .Client "godot"]]`speech_start(true)`[[else]]`pt.speech.start({ mode: 'hands_free' })`[[end]]），平台用停頓判斷一句結束，沒聽出指令的聲音不會送給遊戲。
 8. **延遲與轉送**：`pitch` 事件每秒約 40 次，平台在同一台手機裡交給遊戲（不到 1 毫秒），不要自己改成 WebSocket。自己畫面的即時反應（音準指針、角色跳躍）直接用收到的數字；要更即時可以用 [[if eq .Client "godot"]]`PlayTogether.pitch_start(hands_free, false)`[[else]]`pt.pitch.start({ mode, smoothing: false })`[[end]] 關掉平滑（偶爾會跳到高或低八度，要自己過濾）。**送給遊戲伺服器或其他玩家時要降頻**：每秒 10–15 次、只送音符或偏差的變化，或幾筆合成一包；不要每一筆都轉送（多人房會比語音還佔網路）。分數在遊戲伺服器按回合計算。
 
 ## 用聲音玩：語音指令

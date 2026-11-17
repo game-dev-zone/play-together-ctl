@@ -1784,7 +1784,7 @@ var voiceModeSchema = /* @__PURE__ */ _enum([
 ]);
 /**
 * 音高分析的模式：ptt＝只在有發言權且按住說話（或開麥）時分析；
-* hands_free＝授權期間持續分析，玩家不用加入語音、不用按住（聲音不傳給其他人；平台另外取得同意、畫面常駐顯示）。
+* hands_free＝授權期間持續分析，玩家不用加入語音、不用按住（聲音不傳給其他人；平台另外取得同意；麥克風按鈕顯示狀態，玩家關麥時停止分析）。
 * 遊戲畫面要求 hands_free 時，遊戲伺服器的授權也必須是 hands_free
 */
 var pitchModeSchema = /* @__PURE__ */ _enum(["ptt", "hands_free"]);
@@ -1857,7 +1857,7 @@ range(0, 1e4), range(0, 1e4), range(0, 1e4), range(0, 1e4);
 /**
 * 發言規則（docs/voice-chat.md）。由遊戲伺服器簽章送給平台。
 * - `turn`：剛好一位發言者
-* - `allowlist`：至少一位
+* - `allowlist`：名單上的人；空名單＝全體禁言（2026-11-17 開放，例如投票、唱歌時；有分組時就是狼人殺的夜晚）
 * - `open` / `host_only`：不帶名單
 */
 /** 分組語音的一組（docs/voice-groups.md）：生效期間組員只在組裡說話，其他人收不到 */
@@ -1877,7 +1877,7 @@ var voicePolicySchema = (/* @__PURE__ */ object({
 	groups: /* @__PURE__ */ optional((/* @__PURE__ */ array(voiceGroupSchema)).check(/* @__PURE__ */ _maxLength(8))),
 	effectiveAtServerMs: int().check(/* @__PURE__ */ _positive()),
 	expiresAtServerMs: int().check(/* @__PURE__ */ _positive())
-})).check(/* @__PURE__ */ refine((p) => p.expiresAtServerMs > p.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ refine((p) => p.mode !== "turn" || p.allowedSpeakerIds.length === 1, "turn 模式必須剛好一位發言者"), /* @__PURE__ */ refine((p) => p.mode !== "allowlist" || p.allowedSpeakerIds.length >= 1 || (p.groups?.length ?? 0) > 0, "allowlist 模式至少要一位發言者"), /* @__PURE__ */ refine((p) => p.mode !== "open" && p.mode !== "host_only" || p.allowedSpeakerIds.length === 0, "open / host_only 模式不帶發言者名單"), /* @__PURE__ */ refine((p) => new Set(p.allowedSpeakerIds).size === p.allowedSpeakerIds.length, "發言者名單不得重複"), /* @__PURE__ */ refine((p) => new Set((p.groups ?? []).map((g) => g.id)).size === (p.groups ?? []).length, "分組 id 不得重複"), /* @__PURE__ */ refine((p) => {
+})).check(/* @__PURE__ */ refine((p) => p.expiresAtServerMs > p.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ refine((p) => p.mode !== "turn" || p.allowedSpeakerIds.length === 1, "turn 模式必須剛好一位發言者"), /* @__PURE__ */ refine((p) => p.mode !== "open" && p.mode !== "host_only" || p.allowedSpeakerIds.length === 0, "open / host_only 模式不帶發言者名單"), /* @__PURE__ */ refine((p) => new Set(p.allowedSpeakerIds).size === p.allowedSpeakerIds.length, "發言者名單不得重複"), /* @__PURE__ */ refine((p) => new Set((p.groups ?? []).map((g) => g.id)).size === (p.groups ?? []).length, "分組 id 不得重複"), /* @__PURE__ */ refine((p) => {
 	const all = (p.groups ?? []).flatMap((g) => g.members);
 	return new Set(all).size === all.length;
 }, "一個人最多在一組"), /* @__PURE__ */ refine((p) => (p.groups ?? []).every((g) => {

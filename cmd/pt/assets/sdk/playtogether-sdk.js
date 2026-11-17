@@ -1599,7 +1599,7 @@ var hn = /* @__PURE__ */ W({
 	groups: /* @__PURE__ */ q((/* @__PURE__ */ U(hn)).check(/* @__PURE__ */ I(8))),
 	effectiveAtServerMs: V().check(/* @__PURE__ */ F()),
 	expiresAtServerMs: V().check(/* @__PURE__ */ F())
-})).check(/* @__PURE__ */ Y((e) => e.expiresAtServerMs > e.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ Y((e) => e.mode !== "turn" || e.allowedSpeakerIds.length === 1, "turn 模式必須剛好一位發言者"), /* @__PURE__ */ Y((e) => e.mode !== "allowlist" || e.allowedSpeakerIds.length >= 1 || (e.groups?.length ?? 0) > 0, "allowlist 模式至少要一位發言者"), /* @__PURE__ */ Y((e) => e.mode !== "open" && e.mode !== "host_only" || e.allowedSpeakerIds.length === 0, "open / host_only 模式不帶發言者名單"), /* @__PURE__ */ Y((e) => new Set(e.allowedSpeakerIds).size === e.allowedSpeakerIds.length, "發言者名單不得重複"), /* @__PURE__ */ Y((e) => new Set((e.groups ?? []).map((e) => e.id)).size === (e.groups ?? []).length, "分組 id 不得重複"), /* @__PURE__ */ Y((e) => {
+})).check(/* @__PURE__ */ Y((e) => e.expiresAtServerMs > e.effectiveAtServerMs, "expiresAtServerMs 必須晚於 effectiveAtServerMs"), /* @__PURE__ */ Y((e) => e.mode !== "turn" || e.allowedSpeakerIds.length === 1, "turn 模式必須剛好一位發言者"), /* @__PURE__ */ Y((e) => e.mode !== "open" && e.mode !== "host_only" || e.allowedSpeakerIds.length === 0, "open / host_only 模式不帶發言者名單"), /* @__PURE__ */ Y((e) => new Set(e.allowedSpeakerIds).size === e.allowedSpeakerIds.length, "發言者名單不得重複"), /* @__PURE__ */ Y((e) => new Set((e.groups ?? []).map((e) => e.id)).size === (e.groups ?? []).length, "分組 id 不得重複"), /* @__PURE__ */ Y((e) => {
 	let t = (e.groups ?? []).flatMap((e) => e.members);
 	return new Set(t).size === t.length;
 }, "一個人最多在一組"), /* @__PURE__ */ Y((e) => (e.groups ?? []).every((e) => {

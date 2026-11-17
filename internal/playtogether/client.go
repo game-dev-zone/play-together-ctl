@@ -83,10 +83,7 @@ func (p VoicePolicy) Validate() error {
 			return errors.New("turn 模式必須剛好一位發言者")
 		}
 	case VoiceAllowlist:
-		// 有分組時主頻道可以沒有人能說話（例如狼人殺的夜晚）
-		if n < 1 && len(p.Groups) == 0 {
-			return errors.New("allowlist 模式至少要一位發言者")
-		}
+		// 空名單＝全體禁言（2026-11-17 開放；有分組時就是狼人殺的夜晚：主頻道沒有人能說話、組員在組頻道說話）
 	case VoiceOpen, VoiceHostOnly:
 		if n > 0 {
 			return fmt.Errorf("%s 模式不帶發言者名單", p.Mode)
