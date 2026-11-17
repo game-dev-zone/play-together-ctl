@@ -87,6 +87,9 @@ type fakePlatform struct {
 	points      *fakePoints
 	// transcript 是專案申報的語音轉文字範圍（playtogether.json 的 voice.transcript；transcript.go）
 	transcript string
+	// transcriptDeclined：控制面板模擬「這位玩家不同意語音轉文字」（玩家代號）。本機預設當成已同意；
+	// 正式平台在進房前顯示同意畫面，不同意就拿不到啟動碼（transcript_consent_required）
+	transcriptDeclined map[string]bool
 }
 
 type fakeRoom struct {
@@ -199,6 +202,9 @@ func (f *fakePlatform) issue(player string) (code string, p *fakePlayer, roomID 
 	}
 	if r.Kicked[player] {
 		return "", nil, "", errors.New("kicked")
+	}
+	if f.transcript != "" && f.transcriptDeclined[player] {
+		return "", nil, "", errors.New("transcript_consent_required")
 	}
 	p = f.playerLocked(player)
 	if r.Host == "" {

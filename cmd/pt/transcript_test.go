@@ -65,3 +65,30 @@ func TestTranscriptDeclaration(t *testing.T) {
 		t.Fatalf("沒有申報不需要審核：%v", l)
 	}
 }
+
+// pt dev 的假平台：申報了語音轉文字時，控制面板可以模擬玩家不同意，之後拿不到啟動碼（和正式平台相同）；改成同意就恢復。
+func TestFakeTranscriptConsent(t *testing.T) {
+	fp := newFakePlatform(nil)
+	d := &devPanel{fp: fp}
+	if err := d.control("transcript-decline", "p1", ""); err == nil {
+		t.Fatal("沒有申報時不能模擬")
+	}
+	fp.transcript = "room"
+	if _, _, _, err := fp.issue("p1"); err != nil {
+		t.Fatalf("本機預設當成已同意：%v", err)
+	}
+	must(t, d.control("transcript-decline", "p1", ""))
+	if _, _, _, err := fp.issue("p1"); err == nil || err.Error() != "transcript_consent_required" {
+		t.Fatalf("不同意的玩家不能拿啟動碼：%v", err)
+	}
+	if _, _, _, err := fp.issue("p2"); err != nil {
+		t.Fatalf("別的玩家不受影響：%v", err)
+	}
+	must(t, d.control("transcript-agree", "p1", ""))
+	if _, _, _, err := fp.issue("p1"); err != nil {
+		t.Fatalf("改成同意後可以拿啟動碼：%v", err)
+	}
+	if err := d.control("transcript-decline", "bad player", ""); err == nil {
+		t.Fatal("玩家代號格式要檢查")
+	}
+}

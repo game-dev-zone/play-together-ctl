@@ -113,6 +113,20 @@ func (d *devPanel) control(action, player, text string) error {
 			return f.say(player, text)
 		}
 		return f.stopSpeech(player, text)
+	case "transcript-decline", "transcript-agree": // 語音轉文字：模擬玩家在進房前不同意（之後拿不到啟動碼）或改成同意
+		if !fakePlayerCode.MatchString(player) {
+			return errors.New("bad_player")
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.transcript == "" {
+			return errors.New("playtogether.json 沒有申報 voice.transcript")
+		}
+		if f.transcriptDeclined == nil {
+			f.transcriptDeclined = map[string]bool{}
+		}
+		f.transcriptDeclined[player] = action == "transcript-decline"
+		return nil
 	case "points-grant", "points-toggle", "points-approval": // 點數（測試）：發點數、切換玩家的點數玩法、平台核准的模擬
 		return f.pointsControl(action, player, text)
 	case "restart":

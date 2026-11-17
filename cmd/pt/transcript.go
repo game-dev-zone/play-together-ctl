@@ -4,7 +4,8 @@ package main
 //   - playtogether.json 的 voice.transcript："self"（逐字稿只給說話者自己的畫面）或 "room"（遊戲可以分享給同房間的玩家）
 //   - pt check 檢查值與架構（授權由遊戲伺服器送，所以要有遊戲伺服器）；需要審核的提示由規則資料 rules.json 的 voice.transcript 產生
 //   - pt upload 放進宣告快照的 voice 區塊；平台據此在玩家進房前要求同意（不同意就不能加入），授權範圍要和申報相同
-//   - pt dev 的假平台照同樣的規則檢查語音轉文字的授權（fakespeech.go）
+//   - pt dev 的假平台照同樣的規則檢查語音轉文字的授權（fakespeech.go）；進房前的同意本機預設當成已同意，
+//     控制面板「模擬不同意語音轉文字」之後這位玩家拿不到啟動碼（transcript_consent_required）
 
 // voiceConfig 是 playtogether.json 的 voice 區塊。
 type voiceConfig struct {

@@ -124,6 +124,10 @@
       <button id="say-stop">模擬停止</button>
       <span id="say-status" class="muted" role="status"></span>
     </div>
+    <div class="row" style="margin-top:8px">
+      <button id="tr-decline" title="申報了 voice.transcript 時：模擬這位玩家在進房前不同意（之後拿不到啟動碼）">模擬不同意語音轉文字</button>
+      <button id="tr-agree">改成同意</button>
+    </div>
   </section>
 
   <section>
@@ -167,6 +171,8 @@
   $('say-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && $('say-text').value.trim()) say('say', $('say-text').value); });
   $('say-silent').addEventListener('click', () => say('say', ''));
   $('say-stop').addEventListener('click', () => say('speech-stop', $('say-reason').value));
+  $('tr-decline').addEventListener('click', () => say('transcript-decline', ''));
+  $('tr-agree').addEventListener('click', () => say('transcript-agree', ''));
   const SPEECH_LABEL = { listening: '正在聽', allowed: '已授權，畫面還沒開始聽', '': '沒有授權' };
 
   function playerURL(code) {
