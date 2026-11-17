@@ -1,5 +1,5 @@
 {
-  "engine": "18869357a32bcc2f",
+  "engine": "cc09edc680de7a5b",
   "files": [
     {
       "path": "speech/LICENSE-sherpa-onnx.txt",
@@ -8,13 +8,13 @@
     },
     {
       "path": "speech/NOTICE.txt",
-      "size": 4145,
-      "sha256": "9ef738d5b72091d7f377f100d7e39f39fc9de567d61d253ffc1d69d10beb60f4"
+      "size": 4588,
+      "sha256": "74f111c4adbdf88939f5a6255448d87437f3ac920f500c05875a95db52719e73"
     },
     {
       "path": "speech/SOURCE.md",
-      "size": 7659,
-      "sha256": "abfc7001239533547eff3fcad6192a9bf508e0131c71383cb97657062f28a6bb"
+      "size": 8768,
+      "sha256": "df7e50a9dab3c429a52effe6c970d9e7e953ba181af654b6f5a940f69d1b0b80"
     },
     {
       "path": "speech/kws-zh-decoder.int8.onnx",
