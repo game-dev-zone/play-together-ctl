@@ -8,17 +8,17 @@
   /* 和玩聚平台遊戲外殼相同的按鈕與配色；位置、大小、圖示由平台固定，配色照 playtogether.json 的 shell */
   html, body { margin: 0; height: 100%; background: #000; font: 15px/1.6 system-ui, -apple-system, "Noto Sans TC", sans-serif; }
   .shell {
-    --fab-bg: rgba(15, 23, 34, 0.7); --fab-border: rgba(255, 255, 255, 0.25); --fab-fg: #fff; --ptt-bg: rgba(15, 23, 34, 0.8);
+    --fab-bg: rgba(15, 23, 34, 0.7); --fab-border: rgba(255, 255, 255, 0.25); --fab-fg: #fff;
     --panel-bg: rgba(15, 23, 34, 0.96); --panel-text: #f3f5fa; --panel-muted: #aab3c5; --panel-border: rgba(255, 255, 255, 0.28);
     position: fixed; inset: 0;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   .shell.st-light {
-    --fab-bg: rgba(255, 255, 255, 0.86); --fab-border: rgba(15, 23, 34, 0.2); --fab-fg: #1b2333; --ptt-bg: rgba(255, 255, 255, 0.9);
+    --fab-bg: rgba(255, 255, 255, 0.86); --fab-border: rgba(15, 23, 34, 0.2); --fab-fg: #1b2333;
     --panel-bg: rgba(255, 255, 255, 0.97); --panel-text: #1b2333; --panel-muted: #566072; --panel-border: rgba(15, 23, 34, 0.2);
   }
-  .shell.st-minimal { --fab-bg: rgba(15, 23, 34, 0.36); --fab-border: rgba(255, 255, 255, 0.16); --ptt-bg: rgba(15, 23, 34, 0.5); }
-  .shell.st-minimal .fab, .shell.st-minimal .ptt { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+  .shell.st-minimal { --fab-bg: rgba(15, 23, 34, 0.36); --fab-border: rgba(255, 255, 255, 0.16); }
+  .shell.st-minimal .fab { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
   iframe { width: 100%; height: 100%; border: 0; display: block; background: #000; }
   .fab {
     position: absolute; top: calc(10px + env(safe-area-inset-top)); width: 44px; height: 44px; border-radius: 50%;
@@ -27,12 +27,7 @@
   }
   .menu { left: calc(10px + env(safe-area-inset-left)); }
   .mic { right: calc(10px + env(safe-area-inset-right)); }
-  .ptt {
-    position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom));
-    min-width: 112px; min-height: 56px; border-radius: 28px; border: 2px solid var(--fab-border); background: var(--ptt-bg);
-    color: var(--fab-fg); font: inherit; font-weight: 700;
-  }
-  .shell.has-accent .fab, .shell.has-accent .ptt { border: 2px solid var(--shell-accent); }
+  .shell.has-accent .fab { border: 2px solid var(--shell-accent); }
   .shell.has-accent .sheet { border-top: 3px solid var(--shell-accent); }
   .sheet {
     position: absolute; left: 10px; top: calc(62px + env(safe-area-inset-top)); width: min(320px, calc(100% - 20px));
@@ -78,8 +73,7 @@
 <div id="shell" class="shell">
   <iframe id="game" title="遊戲" sandbox="allow-scripts allow-same-origin allow-pointer-lock"></iframe>
   <button type="button" class="fab menu" id="menu" aria-label="房間選單" aria-expanded="false">≡</button>
-  <button type="button" class="fab mic" aria-label="加入語音">🎙</button>
-  <button type="button" class="ptt">按住說話</button>
+  <button type="button" class="fab mic" aria-label="關閉麥克風（玩家自己的開關）">🎙</button>
   <div class="sheet" id="sheet" role="dialog" aria-label="房間選單" hidden>
     <p><strong>平台選單（本機預覽）</strong></p>
     <p class="muted">只示範配色。正式平台的選單內容（邀請、檢舉、離開等）由玩聚決定，遊戲改不了。</p>

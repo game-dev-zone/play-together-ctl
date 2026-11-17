@@ -1469,6 +1469,7 @@ var ln = /* @__PURE__ */ W({
 	"voice.state": /* @__PURE__ */ W({
 		connected: /* @__PURE__ */ H(),
 		canSpeak: /* @__PURE__ */ H(),
+		micOn: /* @__PURE__ */ q(/* @__PURE__ */ H()),
 		mode: qt,
 		group: /* @__PURE__ */ q(/* @__PURE__ */ J((/* @__PURE__ */ B()).check(/* @__PURE__ */ R(/^[a-z][a-z0-9_-]{0,15}$/)))),
 		listening: /* @__PURE__ */ q((/* @__PURE__ */ U((/* @__PURE__ */ B()).check(/* @__PURE__ */ R(/^[a-z][a-z0-9_-]{0,15}$/)))).check(/* @__PURE__ */ I(3)))
@@ -1777,6 +1778,7 @@ function Tn(e, t, n, r, i) {
 				on: (e, t) => o.on(e, t)
 			},
 			voice: {
+				micMode: (e) => n("voice.micMode", { mode: e }),
 				pushToTalk: (e) => n("voice.pushToTalk", { action: e }),
 				request: () => n("voice.request", { kind: "speak" }),
 				on: (e, t) => s.on(e, t)

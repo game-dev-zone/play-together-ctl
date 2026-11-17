@@ -127,10 +127,17 @@ func set_orientation(value: String) -> void:
 		_bridge.orientation(value)
 
 
-## 隱藏或顯示平台的「按住說話」按鈕（改用遊戲自己的介面時隱藏）
+## 舊版接口：平台已經沒有按住說話按鈕。false 等同 set_push_to_talk_mode(true)
 func set_ptt_button_visible(visible: bool) -> void:
 	if _bridge:
 		_bridge.pttButton(visible)
+
+
+## 麥克風模式：false（預設）玩家有發言權就送出聲音；true 只在 push_to_talk(true) 到 push_to_talk(false) 之間送出（遊戲自己的按住說話按鈕）。
+## 誰有發言權由遊戲伺服器的發言規則決定；玩家可以隨時用平台右上角的按鈕關閉自己的麥克風
+func set_push_to_talk_mode(enabled: bool) -> void:
+	if _bridge:
+		_bridge.micMode(enabled)
 
 
 ## 隱藏或顯示平台選單的「遊戲聲音」開關（遊戲自己有聲音設定時隱藏；隱藏時平台送一次 mute_changed(false)，之後不再送）
@@ -139,7 +146,7 @@ func set_sound_toggle_visible(visible: bool) -> void:
 		_bridge.soundToggle(visible)
 
 
-## 遊戲自己的按住說話按鈕：按下傳 true、放開傳 false
+## 遊戲自己的按住說話按鈕：按下傳 true、放開傳 false（只在 set_push_to_talk_mode(true) 時有作用）
 func push_to_talk(start: bool) -> void:
 	if _bridge:
 		_bridge.pushToTalk(start)
