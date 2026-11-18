@@ -170,10 +170,12 @@
       // 遊戲伺服器換了詞彙表：重新準備（和平台相同，準備的這段時間說的話不會辨識）；失敗就停止，不留下不能用的引擎
       else if (SP.engine && kind === 'kws' && info.sequence !== SP.sequence && !SP.busy) {
         spLog('詞彙表換了，重新準備中（這段時間說的話不會辨識，和平台相同）', '', 'muted');
+        const gen = SP.gen;
         try {
           await spPrepare();
         } catch (e) {
-          spStop('重新準備詞彙表失敗：' + ((e && e.message) || e) + '，請重新啟動麥克風');
+          // 只停止這一次啟動的引擎（期間已經停止又重新啟動時，舊的失敗不影響新的）
+          if (gen === SP.gen) spStop('重新準備詞彙表失敗：' + ((e && e.message) || e) + '，請重新啟動麥克風');
         }
       }
     } catch {
