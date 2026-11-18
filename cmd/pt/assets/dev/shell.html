@@ -92,8 +92,8 @@
     <p id="sp-engine" class="muted"></p>
     <div class="row" id="sp-asr-opts">
       <label>模型 <select id="sp-variant">
-        <option value="zh-14m">zh-14m（玩聚平台使用中，約 26 MB）</option>
-        <option value="multi-zh-hans">multi-zh-hans（候選，平台沒有使用，約 76 MB）</option>
+        <option value="zh-14m">zh-14m（玩聚平台使用中，模型約 26 MB）</option>
+        <option value="multi-zh-hans">multi-zh-hans（候選，平台沒有使用，模型約 76 MB）</option>
       </select></label>
       <label>解碼 <select id="sp-method">
         <option value="modified_beam_search">modified_beam_search（平台使用中）</option>
@@ -169,14 +169,17 @@
       st.textContent = !info.allowed ? '這位玩家沒有語音辨識的授權：遊戲伺服器要先送 speech.policy（語音指令帶詞彙表；語音轉文字用 AllowTranscript）。'
         : !info.listening ? '已授權' + what + '，但遊戲畫面還沒開始聽（遊戲要先呼叫 speech.start）。現在辨識的結果不會送出。'
           : '已授權' + what + '，遊戲正在聽。';
+      // 第一次要下載的量（含兩種引擎共用的 WASM 約 13 MB）：語音指令約 18 MB、語音轉文字約 40 MB；候選模型另外從 Hugging Face 下載到瀏覽器快取
+      const candidate = kind === 'asr' && $('sp-variant').value !== 'zh-14m';
       const cached = kind === 'kws' ? info.engineCached : info.asrCached;
       if (info.downloading && info.downloading.total) {
         // pt 正在從玩聚網站下載（下載完、核對雜湊後才交給瀏覽器）
         const d = info.downloading;
         $('sp-engine').textContent = 'pt 正在從 ' + info.source + ' 下載辨識引擎：' + Math.round((d.loaded / d.total) * 100) + '%（' + (d.loaded / 1e6).toFixed(1) + ' / ' + (d.total / 1e6).toFixed(1) + ' MB）';
       } else $('sp-engine').textContent = !info.source ? '沒有玩聚網站可以下載辨識引擎：請在 playtogether.json 填 platform，或設定 PT_SPEECH_FROM 後重新執行 pt dev。'
-        : cached ? '辨識引擎：已下載（' + info.source + '）'
-          : '辨識引擎：第一次啟動時從 ' + info.source + ' 下載約 ' + (kind === 'kws' ? '18' : '26') + ' MB 到本機快取。';
+        : candidate ? '候選模型：第一次啟動時從 Hugging Face 下載約 76 MB 到瀏覽器快取（引擎的其他檔案' + (cached ? '已下載' : '從 ' + info.source + ' 下載約 15 MB') + '）。'
+          : cached ? '辨識引擎：已下載（' + info.source + '）'
+            : '辨識引擎：第一次啟動時從 ' + info.source + ' 下載約 ' + (kind === 'kws' ? '18' : '40') + ' MB 到本機快取。';
       // 授權結束（遊戲伺服器停止、到期、玩家被移出）：停止麥克風與引擎
       if ((SP.engine || SP.starting) && !info.allowed) spStop('授權已經結束，停止辨識');
       // 授權在語音指令與語音轉文字之間換了：引擎不同，要重新啟動
@@ -261,7 +264,7 @@
     const candidate = SP.kind === 'asr' && variant !== 'zh-14m';
     const cached = SP.kind === 'kws' ? SP.info.engineCached : SP.info.asrCached && !candidate;
     $('sp-start').disabled = $('sp-variant').disabled = $('sp-method').disabled = true;
-    $('sp-start').textContent = cached ? '啟動中…' : '下載辨識引擎中（約 ' + (SP.kind === 'kws' ? '18' : candidate ? '76' : '26') + ' MB）…';
+    $('sp-start').textContent = cached ? '啟動中…' : '下載辨識引擎中（約 ' + (SP.kind === 'kws' ? '18' : candidate ? '91' : '40') + ' MB）…';
     let engine = null;
     let recognizer = null;
     const cancelled = () => {
@@ -282,7 +285,9 @@
         method,
         // 每一句的統計：比較模型時看速度（RTF＝解碼時間／聲音長度，越小越快；手機大約慢 3–10 倍）
         onUtterance: (s) => {
-          if (gen === SP.gen && s.audioMs) spLog('　' + variant + '／' + method + '：聲音 ' + (s.audioMs / 1000).toFixed(1) + ' 秒、解碼 ' + Math.round(s.computeMs) + ' ms、RTF ' + (s.computeMs / s.audioMs).toFixed(3) + (s.text ? '' : '（沒聽到）'), '', 'muted');
+          // RTF 用實際解碼的長度（聲音＋結尾補的靜音），和解碼時間對齊
+          const processed = s.processedMs || s.audioMs;
+          if (gen === SP.gen && processed) spLog('　' + variant + '／' + method + '：聲音 ' + (s.audioMs / 1000).toFixed(1) + ' 秒、解碼 ' + Math.round(s.computeMs) + ' ms、RTF ' + (s.computeMs / processed).toFixed(3) + (s.text ? '' : '（沒聽到）'), '', 'muted');
         },
         // 說到一半的文字：只顯示在這裡（本機不送中途結果給遊戲）
         onPartial: (text) => { if (gen !== SP.gen) return; $('sp-live').hidden = false; $('sp-live').textContent = '聽到：' + text; },

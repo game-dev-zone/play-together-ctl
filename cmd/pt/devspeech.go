@@ -3,7 +3,7 @@ package main
 // pt dev 的本機語音辨識：在「用平台外殼開啟」的預覽頁用麥克風說話，用和玩聚平台相同的辨識程式與詞彙表比對，
 // 辨識出的文字走控制面板「輸入一句話」同一條路交給遊戲。
 //
-// 辨識引擎與模型（語音指令約 18 MB、語音轉文字約 26 MB，只下載用到的）不放進 pt：第一次用時從玩聚網站（playtogether.json 的 platform，或 PT_SPEECH_FROM、PT_API_URL）
+// 辨識引擎與模型（語音指令約 18 MB、語音轉文字約 40 MB（共用其中約 13 MB），只下載用到的）不放進 pt：第一次用時從玩聚網站（playtogether.json 的 platform，或 PT_SPEECH_FROM、PT_API_URL）
 // 下載到本機快取，逐一核對 speech-manifest.json 的 SHA-256，之後離線也能用。只提供清單裡的檔案。
 
 import (
@@ -248,7 +248,7 @@ func (d *devPanel) speechInfo(w http.ResponseWriter, r *http.Request) {
 		out["sequence"], out["language"], out["vocabulary"] = f.room.Speech.Sequence, f.room.Speech.Language, f.room.Speech.Vocabulary
 	}
 	f.mu.Unlock()
-	// 兩種引擎分開算有沒有下載過（引擎實際會載入的檔案，大小與雜湊都對）：語音指令（約 18 MB）、語音轉文字（約 26 MB 的模型＋共用的 WASM）。
+	// 兩種引擎分開算有沒有下載過（引擎實際會載入的檔案，大小與雜湊都對）：語音指令（約 18 MB）、語音轉文字（約 26 MB 的模型＋共用的 WASM，合計約 40 MB）。
 	// 授權與說明文件（LICENSE、NOTICE、SOURCE）引擎不會載入，不算
 	m := loadSpeechManifest()
 	kws, asr := m.Engine != "", m.Engine != ""

@@ -1,5 +1,5 @@
 {
-  "engine": "78eb785cadf48840",
+  "engine": "1adbc106247f92cb",
   "files": [
     {
       "path": "speech/LICENSE-sherpa-onnx.txt",
@@ -13,8 +13,8 @@
     },
     {
       "path": "speech/SOURCE.md",
-      "size": 9072,
-      "sha256": "ff36fb1cc0a8fe28df5074cc6c194f790f68ceccb90f7783adb30d50371f1e88"
+      "size": 9116,
+      "sha256": "f159fbc85034bac417a6bac0ab1f5d32930b1281dd532cc6a3311376acff7d50"
     },
     {
       "path": "speech/asr-s2twp-1cd0846e.json",
@@ -23,8 +23,8 @@
     },
     {
       "path": "speech/asr-worker.js",
-      "size": 15846,
-      "sha256": "c119e2420f1805871ad4720c1d576919fee264029bbd4d09491bdcb25941c400"
+      "size": 16201,
+      "sha256": "e47b07d80af6e6119f5e7f9b6157a4a6e94127fe689d784f79f5deeb4b5598fb"
     },
     {
       "path": "speech/asr-zh-decoder-22f123bb.int8.onnx",
