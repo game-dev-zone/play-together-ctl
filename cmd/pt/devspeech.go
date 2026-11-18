@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -101,6 +102,42 @@ func fileSHA256(p string) (string, error) {
 
 var errSpeechNoSource = errors.New("no_source")
 
+// speechDownloads：pt 正在從玩聚網站下載的檔案（路徑 → 已下載的位元組），預覽頁用來顯示 pt 這一段的下載進度
+// （pt 下載完、核對雜湊後才交給瀏覽器，瀏覽器自己的進度在那之前不會動）。
+var speechDownloads sync.Map
+
+type speechProgress struct{ n atomic.Int64 }
+
+func (p *speechProgress) Write(b []byte) (int, error) {
+	p.n.Add(int64(len(b)))
+	return len(b), nil
+}
+
+// speechCacheOK：快取裡的檔案是不是完整而且雜湊正確。雜湊只在檔案變動（大小或修改時間）時重算一次。
+var speechHashMemo sync.Map // 本機路徑 → speechHashSeen
+
+type speechHashSeen struct {
+	size  int64
+	mtime time.Time
+	ok    bool
+}
+
+func speechCacheOK(local string, f speechFile) bool {
+	st, err := os.Stat(local)
+	if err != nil || st.Size() != f.Size {
+		return false
+	}
+	if v, ok := speechHashMemo.Load(local); ok {
+		if s := v.(speechHashSeen); s.size == st.Size() && s.mtime.Equal(st.ModTime()) {
+			return s.ok
+		}
+	}
+	sum, err := fileSHA256(local)
+	ok := err == nil && sum == f.SHA256
+	speechHashMemo.Store(local, speechHashSeen{size: st.Size(), mtime: st.ModTime(), ok: ok})
+	return ok
+}
+
 // ensureSpeechFile 確保快取裡有這個檔案而且雜湊正確；沒有就從玩聚網站下載。回傳本機路徑。
 func ensureSpeechFile(ctx context.Context, source string, f speechFile) (string, error) {
 	m := loadSpeechManifest()
@@ -141,7 +178,10 @@ func ensureSpeechFile(ctx context.Context, source string, f speechFile) (string,
 	}
 	defer os.Remove(tmp.Name())
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(res.Body, f.Size+1))
+	prog := &speechProgress{}
+	speechDownloads.Store(f.Path, prog)
+	defer speechDownloads.Delete(f.Path)
+	n, err := io.Copy(io.MultiWriter(tmp, h, prog), io.LimitReader(res.Body, f.Size+1))
 	tmp.Close()
 	if err != nil {
 		return "", fmt.Errorf("下載 %s 失敗：%w", f.Path, err)
@@ -208,25 +248,41 @@ func (d *devPanel) speechInfo(w http.ResponseWriter, r *http.Request) {
 		out["sequence"], out["language"], out["vocabulary"] = f.room.Speech.Sequence, f.room.Speech.Language, f.room.Speech.Vocabulary
 	}
 	f.mu.Unlock()
-	// 兩種引擎分開算有沒有下載過：語音指令（關鍵詞偵測，約 18 MB）、語音轉文字（約 26 MB 的模型＋共用的 WASM）
+	// 兩種引擎分開算有沒有下載過（引擎實際會載入的檔案，大小與雜湊都對）：語音指令（約 18 MB）、語音轉文字（約 26 MB 的模型＋共用的 WASM）。
+	// 授權與說明文件（LICENSE、NOTICE、SOURCE）引擎不會載入，不算
 	m := loadSpeechManifest()
 	kws, asr := m.Engine != "", m.Engine != ""
 	if dir, err := speechCacheDir(m.Engine); err == nil {
 		for _, sf := range m.Files {
-			st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(sf.Path)))
-			ok := err == nil && st.Size() == sf.Size
-			if isASRFile(sf.Path) {
+			if isSpeechDocFile(sf.Path) {
+				continue
+			}
+			ok := speechCacheOK(filepath.Join(dir, filepath.FromSlash(sf.Path)), sf)
+			switch {
+			case isASRFile(sf.Path):
 				asr = asr && ok
-			} else if !isKWSOnlyFile(sf.Path) {
-				kws, asr = kws && ok, asr && ok // 共用的檔案（WASM、收音）
-			} else {
+			case isKWSOnlyFile(sf.Path):
 				kws = kws && ok
+			default: // 共用的檔案（WASM、收音）
+				kws, asr = kws && ok, asr && ok
 			}
 		}
 	} else {
 		kws, asr = false, false
 	}
 	out["engineCached"], out["asrCached"] = kws, asr
+	// pt 正在從玩聚網站下載的部分（位元組）
+	var loaded, total int64
+	speechDownloads.Range(func(k, v any) bool {
+		if f, ok := speechFileFor("/" + k.(string)); ok {
+			loaded += v.(*speechProgress).n.Load()
+			total += f.Size
+		}
+		return true
+	})
+	if total > 0 {
+		out["downloading"] = map[string]int64{"loaded": loaded, "total": total}
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	f.write(w, 200, out)
 }
@@ -241,4 +297,10 @@ func isASRFile(p string) bool {
 func isKWSOnlyFile(p string) bool {
 	base := path.Base(p)
 	return strings.HasPrefix(base, "kws-") || base == "sherpa-onnx-kws.js" || base == "speech-worker.js" || base == "pinyin-zh.json"
+}
+
+// isSpeechDocFile：授權與說明文件（引擎不會載入）。
+func isSpeechDocFile(p string) bool {
+	base := path.Base(p)
+	return strings.HasPrefix(base, "LICENSE") || base == "NOTICE.txt" || base == "SOURCE.md"
 }

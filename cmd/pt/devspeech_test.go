@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // 本機語音辨識的引擎下載：只給清單裡的檔案、雜湊不符不收、下載一次後用快取、沒有來源時說明。
@@ -131,5 +132,28 @@ func TestSpeechFileKinds(t *testing.T) {
 	}
 	if !slices.Contains(shared, "speech/sherpa-onnx-wasm-web.wasm") || !slices.Contains(shared, "speech-worklet.js") {
 		t.Fatalf("WASM 與收音是兩種引擎共用的：%v", shared)
+	}
+}
+
+// 快取裡同樣大小但內容壞掉的檔案不算下載過；修好之後重新判斷。
+func TestSpeechCacheOK(t *testing.T) {
+	dir := t.TempDir()
+	good := []byte("引擎檔案")
+	sum := sha256.Sum256(good)
+	f := speechFile{Path: "speech/x.js", Size: int64(len(good)), SHA256: hex.EncodeToString(sum[:])}
+	local := dir + "/x.js"
+	bad := append([]byte(nil), good...)
+	bad[0] ^= 0xff
+	must(t, os.WriteFile(local, bad, 0o644))
+	if speechCacheOK(local, f) {
+		t.Fatal("大小相同但雜湊不對：不算下載過")
+	}
+	must(t, os.WriteFile(local, good, 0o644))
+	must(t, os.Chtimes(local, time.Now().Add(time.Second), time.Now().Add(time.Second))) // 修改時間一定不同
+	if !speechCacheOK(local, f) {
+		t.Fatal("內容正確：算下載過")
+	}
+	if !isSpeechDocFile("speech/LICENSE-sherpa-onnx.txt") || !isSpeechDocFile("speech/NOTICE.txt") || isSpeechDocFile("speech/asr-worker.js") {
+		t.Fatal("說明文件不算引擎檔案")
 	}
 }

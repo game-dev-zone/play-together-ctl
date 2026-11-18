@@ -85,7 +85,7 @@
   <button type="button" class="fab speech-fab" id="speech-fab" aria-expanded="false">🗣 語音辨識（本機）</button>
   <div class="speech" id="speech" role="dialog" aria-label="語音辨識（本機）" hidden>
     <p><strong>語音指令、語音轉文字：用麥克風在本機辨識</strong></p>
-    <p class="muted">和玩聚平台相同的辨識程式：授權有詞彙表時是語音指令，沒有詞彙表時是語音轉文字。辨識出的文字會當成這位玩家說的話交給遊戲（和控制面板「輸入一句話」相同）。語音轉文字在本機只送每一句的最終文字，說到一半的文字只顯示在這裡（中途結果 final: false 要在玩聚的預覽房間測）。</p>
+    <p class="muted">和玩聚平台相同的辨識程式：授權有詞彙表時是語音指令，沒有詞彙表時是語音轉文字。辨識出的文字會當成這位玩家說的話交給遊戲（和控制面板「輸入一句話」相同）。語音轉文字在本機只送最終文字（每說完一句送一次；超過 80 字的長句會先分段送出），說到一半的文字只顯示在這裡（中途結果 final: false 要在玩聚的預覽房間測）。</p>
     <p id="sp-status"></p>
     <p id="sp-engine" class="muted"></p>
     <div class="row">
@@ -114,7 +114,8 @@
   });
   // ---------- 本機語音辨識 ----------
   // kind：'kws'（語音指令，授權有詞彙表）或 'asr'（語音轉文字，沒有詞彙表）
-  const SP = { info: null, engine: null, recognizer: null, matcher: null, sequence: null, mode: 'ptt', busy: false, kind: '' };
+  // gen：每次啟動換一個；停止後舊引擎晚到的結果（世代不同）不送。sendChain：結果依序送出（長句分段時不會亂序）
+  const SP = { info: null, engine: null, recognizer: null, matcher: null, sequence: null, mode: 'ptt', busy: false, kind: '', gen: 0, sendChain: Promise.resolve() };
   const spKind = (info) => (info && info.vocabulary ? 'kws' : 'asr');
   const spPlayer = new URLSearchParams(location.search).get('player') || 'p1';
   $('speech-fab').addEventListener('click', () => {
@@ -149,11 +150,17 @@
         : !info.listening ? '已授權' + what + '，但遊戲畫面還沒開始聽（遊戲要先呼叫 speech.start）。現在辨識的結果不會送出。'
           : '已授權' + what + '，遊戲正在聽。';
       const cached = kind === 'kws' ? info.engineCached : info.asrCached;
-      $('sp-engine').textContent = !info.source ? '沒有玩聚網站可以下載辨識引擎：請在 playtogether.json 填 platform，或設定 PT_SPEECH_FROM 後重新執行 pt dev。'
+      if (info.downloading && info.downloading.total) {
+        // pt 正在從玩聚網站下載（下載完、核對雜湊後才交給瀏覽器）
+        const d = info.downloading;
+        $('sp-engine').textContent = 'pt 正在從 ' + info.source + ' 下載辨識引擎：' + Math.round((d.loaded / d.total) * 100) + '%（' + (d.loaded / 1e6).toFixed(1) + ' / ' + (d.total / 1e6).toFixed(1) + ' MB）';
+      } else $('sp-engine').textContent = !info.source ? '沒有玩聚網站可以下載辨識引擎：請在 playtogether.json 填 platform，或設定 PT_SPEECH_FROM 後重新執行 pt dev。'
         : cached ? '辨識引擎：已下載（' + info.source + '）'
           : '辨識引擎：第一次啟動時從 ' + info.source + ' 下載約 ' + (kind === 'kws' ? '18' : '26') + ' MB 到本機快取。';
+      // 授權結束（遊戲伺服器停止、到期、玩家被移出）：停止麥克風與引擎
+      if (SP.engine && !info.allowed) spStop('授權已經結束，停止辨識');
       // 授權在語音指令與語音轉文字之間換了：引擎不同，要重新啟動
-      if (SP.engine && info.allowed && kind !== SP.kind) spStop('授權換成' + (kind === 'kws' ? '語音指令' : '語音轉文字') + '：請重新啟動麥克風');
+      else if (SP.engine && kind !== SP.kind) spStop('授權換成' + (kind === 'kws' ? '語音指令' : '語音轉文字') + '：請重新啟動麥克風');
       // 遊戲伺服器換了詞彙表：重新準備
       else if (SP.engine && kind === 'kws' && info.sequence !== SP.sequence && !SP.busy) await spPrepare();
     } catch {
@@ -184,7 +191,15 @@
       SP.busy = false;
     }
   }
-  async function spSend(alternatives) {
+  // 依序送出（前一句送完才送下一句）；停止之後才到的結果不送
+  function spSend(alternatives) {
+    const gen = SP.gen;
+    SP.sendChain = SP.sendChain
+      .then(() => (gen === SP.gen ? spSendNow(alternatives) : null))
+      .catch((e) => spLog('送出失敗：' + ((e && e.message) || e), '', 'err'));
+    return SP.sendChain;
+  }
+  async function spSendNow(alternatives) {
     const text = alternatives[0] ? alternatives[0].text : '';
     const detail = alternatives.length ? alternatives.map((a, i) => (i + 1) + '. ' + a.text + (a.phrase ? '（句型「' + a.phrase + '」' + (a.slots && Object.keys(a.slots).length ? ' ' + JSON.stringify(a.slots) : '') + '）' : '')).join('　') : '';
     if (!alternatives.length && SP.mode === 'hands_free') {
@@ -207,11 +222,16 @@
     try {
       await spLoadScript();
       if (!PTDevSpeech.speechEngineSupported()) throw new Error('這個瀏覽器不支援（要 WebAssembly 與 AudioWorklet）');
+      const gen = ++SP.gen;
+      const engineFailed = () => {
+        if (gen === SP.gen) spStop('辨識引擎出錯，已停止' + (SP.engine && SP.engine.lastError ? '（' + SP.engine.lastError + '）' : '') + '：請重新啟動麥克風');
+      };
       SP.engine = SP.kind === 'kws' ? PTDevSpeech.createSpeechEngine() : PTDevSpeech.createAsrEngine({
         // 說到一半的文字：只顯示在這裡（本機不送中途結果給遊戲）
-        onPartial: (text) => { $('sp-live').hidden = false; $('sp-live').textContent = '聽到：' + text; },
-        // 一句太長時先定案的一段：當成一句送出
-        onSegment: (text) => { if (text) spSend([{ text, confidence: null }]); },
+        onPartial: (text) => { if (gen !== SP.gen) return; $('sp-live').hidden = false; $('sp-live').textContent = '聽到：' + text; },
+        // 一句超過 80 字時先定案的一段：當成一句先送出（這一句剩下的由 end() 送）
+        onSegment: (text) => { if (gen === SP.gen && text) spSend([{ text, confidence: null }]); },
+        onError: engineFailed,
         onProgress: (loaded, total) => {
           if (total) $('sp-start').textContent = '下載辨識引擎中 ' + Math.round((loaded / total) * 100) + '%（' + (loaded / 1e6).toFixed(1) + ' / ' + (total / 1e6).toFixed(1) + ' MB）';
         },
@@ -220,7 +240,7 @@
       // 麥克風要在點擊裡先要；引擎準備（含下載）同時做
       const prepared = spPrepare();
       prepared.catch(() => {});
-      await SP.recognizer.start((alts) => spSend(alts), () => spStop('麥克風停止了'));
+      await SP.recognizer.start((alts) => { if (gen === SP.gen) spSend(alts); }, () => { if (gen === SP.gen) spStop('麥克風停止了'); }, engineFailed);
       await prepared;
       if (SP.mode === 'hands_free') {
         SP.recognizer.setActive(true);
@@ -237,6 +257,7 @@
     }
   });
   function spStop(reason) {
+    SP.gen++; // 舊引擎之後才到的結果、回呼都不再處理
     if (SP.recognizer) SP.recognizer.stop();
     if (SP.engine) SP.engine.dispose();
     SP.recognizer = SP.engine = null;
