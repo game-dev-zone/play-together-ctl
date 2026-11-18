@@ -59,13 +59,14 @@ var fakeSigHints = map[string]string{
 }
 
 type fakePlatform struct {
-	mu       sync.Mutex
-	pub      ed25519.PublicKey
-	nonces   map[string]time.Time
-	skew     time.Duration // 模擬平台時鐘和遊戲伺服器的差距
-	down     bool          // 模擬平台暫時連不到：遊戲伺服器的 API 回 503
-	disabled bool          // 模擬遊戲被平台停用：GET /v1/game/status 回 serving:false，其他 API 和真的平台一樣回 401 unknown_key
-	shell    shellConfig   // playtogether.json 的外殼樣式（控制面板的「用平台外殼開啟」預覽）
+	mu         sync.Mutex
+	pub        ed25519.PublicKey
+	nonces     map[string]time.Time
+	skew       time.Duration // 模擬平台時鐘和遊戲伺服器的差距
+	down       bool          // 模擬平台暫時連不到：遊戲伺服器的 API 回 503
+	disabled   bool          // 模擬遊戲被平台停用：GET /v1/game/status 回 serving:false，其他 API 和真的平台一樣回 401 unknown_key
+	shell      shellConfig   // playtogether.json 的外殼樣式（控制面板的「用平台外殼開啟」預覽）
+	projectSDK string        // playtogether.json 的 sdkVersion（控制面板顯示，和 pt 內嵌的 SDK 比較）
 	// speechFrom 是下載本機語音辨識引擎的玩聚網站（devspeech.go）；空字串時預覽頁的麥克風辨識不能用
 	speechFrom string
 	rooms      map[string]*fakeRoom

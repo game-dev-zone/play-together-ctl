@@ -213,6 +213,18 @@ func TestFakePlatformOrigins(t *testing.T) {
 	if st := control(self, "application/json"); st != 200 || fp.state(0).Room.Open {
 		t.Fatalf("面板自己的請求：%d", st)
 	}
+	// 控制面板最上面顯示的版本
+	fp.projectSDK = "0.0.1"
+	res, err = http.Get(self + "/dev/state")
+	must(t, err)
+	var st struct {
+		Versions devVersions `json:"versions"`
+	}
+	must(t, json.NewDecoder(res.Body).Decode(&st))
+	res.Body.Close()
+	if st.Versions.PT != version || st.Versions.SDK != sdkVersion() || st.Versions.ProjectSDK != "0.0.1" {
+		t.Fatalf("版本：%+v", st.Versions)
+	}
 }
 
 // pt verify server：Go 與 Node 範本都要全部通過；故意弄壞的伺服器要被抓到。

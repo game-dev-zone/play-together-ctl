@@ -88,6 +88,7 @@ func devHosted(p *project, addr string, players int, smoke, mock bool) error {
 		fp := newFakePlatform(pub)
 		fp.serverURL = serverURL
 		fp.shell = devShell(p)
+		fp.projectSDK = projectSDKVersion(p)
 		fp.speechFrom = speechSource(p)
 		fp.pointsStake = devPointsStake(p)
 		fp.transcript = p.transcriptScope()

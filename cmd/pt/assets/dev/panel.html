@@ -39,6 +39,7 @@
 <body>
 <main>
   <h1>pt dev：本機假平台</h1>
+  <p id="versions" class="muted" style="margin:0 0 6px"></p>
   <p class="lead">這頁代替玩聚平台：發啟動碼、回應遊戲伺服器的 API 並驗證簽章。用下面的按鈕模擬房主與平台的狀態，確認你的遊戲伺服器處理正確。只在本機，不會連到真的玩聚。</p>
 
   <div class="grid">
@@ -256,6 +257,10 @@
 
   function render(s) {
     players = s.players || [];
+    const v = s.versions || {};
+    let vt = `pt ${v.pt || '?'}・pt 內建 SDK ${v.sdk || '?'}`;
+    if (v.projectSdk) vt += `・專案 SDK ${v.projectSdk}` + (v.projectSdk !== v.sdk ? '（和 pt 內建的不同：專案的比較舊就執行 pt sdk update，比較新就更新 pt）' : '');
+    $('versions').textContent = vt;
     $('room').textContent = `房號 ${s.room.id}・第 ${s.room.epoch} 局・${s.room.open ? '開放中' : '已關閉'}`;
     $('down').classList.toggle('on', s.down);
     $('down').textContent = s.down ? '平台連不到（點一下恢復）' : '平台連不到';

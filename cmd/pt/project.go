@@ -928,6 +928,7 @@ func cmdDev(args []string) error {
 		defer cleanup()
 		fp := newFakePlatform(pub)
 		fp.shell = devShell(p)
+		fp.projectSDK = projectSDKVersion(p)
 		fp.speechFrom = speechSource(p)
 		fp.pointsStake = devPointsStake(p)
 		var srv *http.Server

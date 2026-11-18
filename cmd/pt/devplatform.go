@@ -58,10 +58,11 @@ func (d *devPanel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s := d.fp.state(after)
 		d.fp.write(w, 200, struct {
 			fakeState
-			Site  string      `json:"site"`
-			Self  string      `json:"self"`
-			Shell shellConfig `json:"shell"`
-		}{s, d.site, d.self, d.fp.shell})
+			Site     string      `json:"site"`
+			Self     string      `json:"self"`
+			Shell    shellConfig `json:"shell"`
+			Versions devVersions `json:"versions"`
+		}{s, d.site, d.self, d.fp.shell, devVersions{PT: version, SDK: sdkVersion(), ProjectSDK: d.fp.projectSDK}})
 	case r.Method == http.MethodGet && r.URL.Path == "/dev/shell":
 		// 平台外殼預覽：用和平台相同的 iframe 權限放進遊戲，疊上平台的浮動按鈕（配色照 playtogether.json 的 shell）
 		page, err := embedded.ReadFile("assets/dev/shell.html")
@@ -270,6 +271,7 @@ func devPlatformOnly(p *project, site, addr string, players int, serverURL strin
 	fp := newFakePlatform(pub)
 	fp.serverURL = serverURL
 	fp.shell = devShell(p)
+	fp.projectSDK = projectSDKVersion(p)
 	fp.speechFrom = speechSource(p)
 	fp.pointsStake = devPointsStake(p)
 	fp.transcript = p.transcriptScope()
@@ -308,4 +310,18 @@ func devPlatformOnly(p *project, site, addr string, players int, serverURL strin
 	signal.Notify(stop, os.Interrupt)
 	<-stop
 	return nil
+}
+
+// devVersions：控制面板最上面顯示的版本（開發者回報問題、確認有沒有更新時用）。
+type devVersions struct {
+	PT         string `json:"pt"`         // 這個 pt 的版本
+	SDK        string `json:"sdk"`        // pt 內嵌的 SDK 版本
+	ProjectSDK string `json:"projectSdk"` // 專案 playtogether.json 的 sdkVersion（沒有專案時是空的）
+}
+
+func projectSDKVersion(p *project) string {
+	if p == nil {
+		return ""
+	}
+	return p.SDKVersion
 }
