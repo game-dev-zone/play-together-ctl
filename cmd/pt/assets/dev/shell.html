@@ -67,6 +67,8 @@
     max-width: calc(100% - 160px); margin: 0; padding: 4px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.6); color: #fff;
     font-size: 0.75rem; pointer-events: none;
   }
+.speech select { max-width: 100%; font: inherit; }
+  .speech label { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -88,6 +90,17 @@
     <p class="muted">和玩聚平台相同的辨識程式：授權有詞彙表時是語音指令，沒有詞彙表時是語音轉文字。辨識出的文字會當成這位玩家說的話交給遊戲（和控制面板「輸入一句話」相同）。語音轉文字在本機只送最終文字（每說完一句送一次；超過 80 字的長句會先分段送出），說到一半的文字只顯示在這裡（中途結果 final: false 要在玩聚的預覽房間測）。</p>
     <p id="sp-status"></p>
     <p id="sp-engine" class="muted"></p>
+    <div class="row" id="sp-asr-opts">
+      <label>模型 <select id="sp-variant">
+        <option value="zh-14m">zh-14m（玩聚平台使用中，約 26 MB）</option>
+        <option value="multi-zh-hans">multi-zh-hans（候選，平台沒有使用，約 76 MB）</option>
+      </select></label>
+      <label>解碼 <select id="sp-method">
+        <option value="modified_beam_search">modified_beam_search（平台使用中）</option>
+        <option value="greedy_search">greedy_search（比較快、通常比較不準）</option>
+      </select></label>
+    </div>
+    <p class="muted" id="sp-asr-note">語音轉文字可以換模型與解碼方式比較準確度和速度（每一句的紀錄會列出用的模型、RTF）。玩聚平台目前用 zh-14m＋modified_beam_search，上架後玩家用的是這一組；候選模型直接從 Hugging Face 下載到瀏覽器快取。</p>
     <div class="row">
       <label><input type="radio" name="sp-mode" value="ptt" checked> 按住說話</label>
       <label><input type="radio" name="sp-mode" value="hands_free"> 免按住（停頓分句）</label>
@@ -151,6 +164,7 @@
       const st = $('sp-status');
       st.className = info.allowed && info.listening ? '' : 'warn';
       const kind = spKind(info);
+      $('sp-asr-opts').hidden = $('sp-asr-note').hidden = kind !== 'asr';
       const what = kind === 'kws' ? '語音指令（詞彙表 ' + (info.vocabulary.phrases || []).length + ' 個句型）' : '語音轉文字（沒有詞彙表）';
       st.textContent = !info.allowed ? '這位玩家沒有語音辨識的授權：遊戲伺服器要先送 speech.policy（語音指令帶詞彙表；語音轉文字用 AllowTranscript）。'
         : !info.listening ? '已授權' + what + '，但遊戲畫面還沒開始聽（遊戲要先呼叫 speech.start）。現在辨識的結果不會送出。'
@@ -208,7 +222,7 @@
       if (gen !== SP.gen || engine !== SP.engine) return;
       SP.matcher = matcher;
       SP.sequence = info.sequence;
-      spLog(v ? '辨識器準備好（詞彙表序號 ' + SP.sequence + '）' : '語音轉文字準備好', '', 'muted');
+      spLog(v ? '辨識器準備好（詞彙表序號 ' + SP.sequence + '）' : '語音轉文字準備好（' + SP.asrLabel + '）', '', 'muted');
     } finally {
       if (gen === SP.gen) SP.busy = false;
     }
@@ -242,9 +256,12 @@
     SP.starting = true;
     SP.mode = document.querySelector('input[name=sp-mode]:checked').value;
     SP.kind = spKind(SP.info);
-    const cached = SP.kind === 'kws' ? SP.info.engineCached : SP.info.asrCached;
-    $('sp-start').disabled = true;
-    $('sp-start').textContent = cached ? '啟動中…' : '下載辨識引擎中（約 ' + (SP.kind === 'kws' ? '18' : '26') + ' MB）…';
+    const variant = $('sp-variant').value;
+    const method = $('sp-method').value;
+    const candidate = SP.kind === 'asr' && variant !== 'zh-14m';
+    const cached = SP.kind === 'kws' ? SP.info.engineCached : SP.info.asrCached && !candidate;
+    $('sp-start').disabled = $('sp-variant').disabled = $('sp-method').disabled = true;
+    $('sp-start').textContent = cached ? '啟動中…' : '下載辨識引擎中（約 ' + (SP.kind === 'kws' ? '18' : candidate ? '76' : '26') + ' MB）…';
     let engine = null;
     let recognizer = null;
     const cancelled = () => {
@@ -261,6 +278,12 @@
         if (gen === SP.gen) spStop('辨識引擎出錯，已停止' + (engine && engine.lastError ? '（' + engine.lastError + '）' : '') + '：請重新啟動麥克風');
       };
       engine = SP.kind === 'kws' ? PTDevSpeech.createSpeechEngine() : PTDevSpeech.createAsrEngine({
+        variant,
+        method,
+        // 每一句的統計：比較模型時看速度（RTF＝解碼時間／聲音長度，越小越快；手機大約慢 3–10 倍）
+        onUtterance: (s) => {
+          if (gen === SP.gen && s.audioMs) spLog('　' + variant + '／' + method + '：聲音 ' + (s.audioMs / 1000).toFixed(1) + ' 秒、解碼 ' + Math.round(s.computeMs) + ' ms、RTF ' + (s.computeMs / s.audioMs).toFixed(3) + (s.text ? '' : '（沒聽到）'), '', 'muted');
+        },
         // 說到一半的文字：只顯示在這裡（本機不送中途結果給遊戲）
         onPartial: (text) => { if (gen !== SP.gen) return; $('sp-live').hidden = false; $('sp-live').textContent = '聽到：' + text; },
         // 一句超過 80 字時先定案的一段：當成一句先送出（這一句剩下的由 end() 送）
@@ -271,6 +294,7 @@
         },
       });
       recognizer = new PTDevSpeech.SpeechRecognizer(engine, SP.mode === 'hands_free');
+      SP.asrLabel = variant + '／' + method + (candidate ? '，候選模型' : '，和平台相同');
       SP.engine = engine;
       SP.recognizer = recognizer;
       // 麥克風要在點擊裡先要；引擎準備（含下載）同時做
@@ -308,7 +332,7 @@
     SP.sequence = null;
     SP.kind = '';
     $('sp-start').hidden = false;
-    $('sp-start').disabled = false;
+    $('sp-start').disabled = $('sp-variant').disabled = $('sp-method').disabled = false;
     $('sp-start').textContent = '啟動麥克風';
     $('sp-stop').hidden = $('sp-hold').hidden = $('sp-live').hidden = true;
     if (reason) spLog(reason, '', 'warn');
