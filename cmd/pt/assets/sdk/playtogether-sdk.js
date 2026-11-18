@@ -1423,7 +1423,7 @@ function sn(e) {
 	let t = 0;
 	for (let n of e.phrases) {
 		let r = 1;
-		for (let t of on(n)) {
+		for (let t of new Set(on(n))) {
 			let n = e.slots?.[t];
 			if (!n || !nn.test(t)) return -1;
 			let i = n.type === "integer" ? n.max - n.min + 1 : n.values.length;

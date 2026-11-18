@@ -436,11 +436,16 @@ func (v SpeechVocabulary) Size() (int, error) {
 		}
 		seen[phrase] = true
 		n := 1
+		used := map[string]bool{} // 同一個欄位出現好幾次時是同一個值（例如「{n} 個 {n}」），只算一次
 		for _, m := range speechSlotRef.FindAllStringSubmatch(phrase, -1) {
 			size, ok := sizes[m[1]]
 			if !ok {
 				return 0, fmt.Errorf("句型 %q 用到沒有定義的欄位 %q", phrase, m[1])
 			}
+			if used[m[1]] {
+				continue
+			}
+			used[m[1]] = true
 			if n *= size; n > SpeechMaxPhrases {
 				return 0, fmt.Errorf("詞彙表展開後超過 %d 句", SpeechMaxPhrases)
 			}
