@@ -1,5 +1,5 @@
 {
-  "engine": "f1122c5dd287d0a2",
+  "engine": "78eb785cadf48840",
   "files": [
     {
       "path": "speech/LICENSE-sherpa-onnx.txt",
@@ -15,6 +15,36 @@
       "path": "speech/SOURCE.md",
       "size": 9072,
       "sha256": "ff36fb1cc0a8fe28df5074cc6c194f790f68ceccb90f7783adb30d50371f1e88"
+    },
+    {
+      "path": "speech/asr-s2twp-1cd0846e.json",
+      "size": 1274888,
+      "sha256": "1cd0846ee28d6a2483d99649e49b22e60d5ab676093e07c58a87015d9be2705a"
+    },
+    {
+      "path": "speech/asr-worker.js",
+      "size": 15846,
+      "sha256": "c119e2420f1805871ad4720c1d576919fee264029bbd4d09491bdcb25941c400"
+    },
+    {
+      "path": "speech/asr-zh-decoder-22f123bb.int8.onnx",
+      "size": 1888682,
+      "sha256": "22f123bb8cba9b38974b3df18a3f45e7081f4985ebb2e075d9f21f618c468bbf"
+    },
+    {
+      "path": "speech/asr-zh-encoder-1c556ea5.int8.onnx",
+      "size": 21621684,
+      "sha256": "1c556ea57cec304e55ec4b72e52c1cc098bb01476ed7d90f3de939fe126487b1"
+    },
+    {
+      "path": "speech/asr-zh-joiner-a7cf9d82.int8.onnx",
+      "size": 1795562,
+      "sha256": "a7cf9d82757bdcf786059454495a9ca95e4bd7347f72473fc08d794475c36169"
+    },
+    {
+      "path": "speech/asr-zh-tokens-8b294db9.txt",
+      "size": 48697,
+      "sha256": "8b294db9045d6e5f94647f4c1eec1af4da143a75053c399611444b378ff966ac"
     },
     {
       "path": "speech/kws-zh-decoder.int8.onnx",
@@ -42,6 +72,11 @@
       "sha256": "8d48edb1a83e005cbe315d44891255f0bdc16e94c3b0395f66a89c250142d385"
     },
     {
+      "path": "speech/sherpa-onnx-asr.js",
+      "size": 54712,
+      "sha256": "fff0b2059f4e203d8d3c9fc4af997d146e724236c081b9f5af1e5df05c5a421b"
+    },
+    {
       "path": "speech/sherpa-onnx-kws.js",
       "size": 9925,
       "sha256": "03b44e372795fd907e84eecd29419e1d052dc6704ac06935c9bf9fe19b3e3434"
@@ -60,6 +95,11 @@
       "path": "speech/speech-worker.js",
       "size": 4731,
       "sha256": "32820f1d163d6bb84b042c2314b16b308fc39cc8eaa0d9f7753255ec5486c2d5"
+    },
+    {
+      "path": "speech/zh-convert.js",
+      "size": 1455,
+      "sha256": "948d5a91d45a53dcd15f94afbfdd94be5eed2d32045f1d341fe1df3ce255fe14"
     },
     {
       "path": "speech-worklet.js",

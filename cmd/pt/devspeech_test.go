@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -93,5 +95,41 @@ func TestSpeechSource(t *testing.T) {
 	t.Setenv("PT_SPEECH_FROM", "https://dev.pt.example/")
 	if s := speechSource(&project{Platform: "https://pt.example"}); s != "https://dev.pt.example" {
 		t.Fatalf("PT_SPEECH_FROM 優先：%q", s)
+	}
+}
+
+// 清單裡的檔案分成語音轉文字專用、語音指令專用、共用（「已下載」分開算，只用語音指令的人不用下載語音轉文字的模型）。
+func TestSpeechFileKinds(t *testing.T) {
+	raw, err := embedded.ReadFile("assets/dev/speech-manifest.json") // 直接讀內嵌的清單（別的測試會換掉 loadSpeechManifest 的內容）
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m speechManifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	var asr, kws, shared []string
+	for _, f := range m.Files {
+		switch {
+		case isASRFile(f.Path):
+			asr = append(asr, f.Path)
+		case isKWSOnlyFile(f.Path):
+			kws = append(kws, f.Path)
+		default:
+			shared = append(shared, f.Path)
+		}
+	}
+	for _, want := range []string{"speech/asr-worker.js", "speech/sherpa-onnx-asr.js", "speech/zh-convert.js"} {
+		if !slices.Contains(asr, want) {
+			t.Fatalf("清單少了語音轉文字的 %s：%v", want, asr)
+		}
+	}
+	for _, want := range []string{"speech/speech-worker.js", "speech/sherpa-onnx-kws.js", "speech/pinyin-zh.json"} {
+		if !slices.Contains(kws, want) {
+			t.Fatalf("清單少了語音指令的 %s：%v", want, kws)
+		}
+	}
+	if !slices.Contains(shared, "speech/sherpa-onnx-wasm-web.wasm") || !slices.Contains(shared, "speech-worklet.js") {
+		t.Fatalf("WASM 與收音是兩種引擎共用的：%v", shared)
 	}
 }

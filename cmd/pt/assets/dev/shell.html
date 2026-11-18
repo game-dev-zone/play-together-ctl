@@ -82,10 +82,10 @@
     <button type="button">檢舉</button>
     <button type="button">離開房間</button>
   </div>
-  <button type="button" class="fab speech-fab" id="speech-fab" aria-expanded="false">🗣 語音指令（本機）</button>
-  <div class="speech" id="speech" role="dialog" aria-label="語音指令（本機辨識）" hidden>
-    <p><strong>語音指令：用麥克風在本機辨識</strong></p>
-    <p class="muted">和玩聚平台相同的辨識程式與詞彙表比對。辨識出的文字會當成這位玩家說的話交給遊戲（和控制面板「輸入一句話」相同）。</p>
+  <button type="button" class="fab speech-fab" id="speech-fab" aria-expanded="false">🗣 語音辨識（本機）</button>
+  <div class="speech" id="speech" role="dialog" aria-label="語音辨識（本機）" hidden>
+    <p><strong>語音指令、語音轉文字：用麥克風在本機辨識</strong></p>
+    <p class="muted">和玩聚平台相同的辨識程式：授權有詞彙表時是語音指令，沒有詞彙表時是語音轉文字。辨識出的文字會當成這位玩家說的話交給遊戲（和控制面板「輸入一句話」相同）。語音轉文字在本機只送每一句的最終文字，說到一半的文字只顯示在這裡（中途結果 final: false 要在玩聚的預覽房間測）。</p>
     <p id="sp-status"></p>
     <p id="sp-engine" class="muted"></p>
     <div class="row">
@@ -113,7 +113,9 @@
     $('menu').setAttribute('aria-expanded', String(open));
   });
   // ---------- 本機語音辨識 ----------
-  const SP = { info: null, engine: null, recognizer: null, matcher: null, sequence: null, mode: 'ptt', busy: false };
+  // kind：'kws'（語音指令，授權有詞彙表）或 'asr'（語音轉文字，沒有詞彙表）
+  const SP = { info: null, engine: null, recognizer: null, matcher: null, sequence: null, mode: 'ptt', busy: false, kind: '' };
+  const spKind = (info) => (info && info.vocabulary ? 'kws' : 'asr');
   const spPlayer = new URLSearchParams(location.search).get('player') || 'p1';
   $('speech-fab').addEventListener('click', () => {
     const open = $('speech').hidden;
@@ -141,14 +143,19 @@
       SP.info = info;
       const st = $('sp-status');
       st.className = info.allowed && info.listening ? '' : 'warn';
-      st.textContent = !info.allowed ? '這位玩家沒有語音指令的授權：遊戲伺服器要先送 speech.policy。'
-        : !info.vocabulary ? '授權沒有詞彙表：目前的辨識引擎一定要有詞彙表。'
-          : !info.listening ? '已授權，但遊戲畫面還沒開始聽（遊戲要先呼叫 speech.start）。現在辨識的結果不會送出。'
-            : '已授權，遊戲正在聽（詞彙表 ' + (info.vocabulary.phrases || []).length + ' 個句型）。';
+      const kind = spKind(info);
+      const what = kind === 'kws' ? '語音指令（詞彙表 ' + (info.vocabulary.phrases || []).length + ' 個句型）' : '語音轉文字（沒有詞彙表）';
+      st.textContent = !info.allowed ? '這位玩家沒有語音辨識的授權：遊戲伺服器要先送 speech.policy（語音指令帶詞彙表；語音轉文字用 AllowTranscript）。'
+        : !info.listening ? '已授權' + what + '，但遊戲畫面還沒開始聽（遊戲要先呼叫 speech.start）。現在辨識的結果不會送出。'
+          : '已授權' + what + '，遊戲正在聽。';
+      const cached = kind === 'kws' ? info.engineCached : info.asrCached;
       $('sp-engine').textContent = !info.source ? '沒有玩聚網站可以下載辨識引擎：請在 playtogether.json 填 platform，或設定 PT_SPEECH_FROM 後重新執行 pt dev。'
-        : info.engineCached ? '辨識引擎：已下載（' + info.source + '）' : '辨識引擎：第一次啟動時從 ' + info.source + ' 下載約 18 MB 到本機快取。';
+        : cached ? '辨識引擎：已下載（' + info.source + '）'
+          : '辨識引擎：第一次啟動時從 ' + info.source + ' 下載約 ' + (kind === 'kws' ? '18' : '26') + ' MB 到本機快取。';
+      // 授權在語音指令與語音轉文字之間換了：引擎不同，要重新啟動
+      if (SP.engine && info.allowed && kind !== SP.kind) spStop('授權換成' + (kind === 'kws' ? '語音指令' : '語音轉文字') + '：請重新啟動麥克風');
       // 遊戲伺服器換了詞彙表：重新準備
-      if (SP.engine && info.vocabulary && info.sequence !== SP.sequence && !SP.busy) await spPrepare();
+      else if (SP.engine && kind === 'kws' && info.sequence !== SP.sequence && !SP.busy) await spPrepare();
     } catch {
       $('sp-status').textContent = '讀不到 pt dev 的狀態。';
     }
@@ -169,10 +176,10 @@
     SP.busy = true;
     try {
       const v = SP.info.vocabulary;
-      SP.matcher = PTDevSpeech.createSpeechMatcher(v, SP.info.language || 'zh-TW');
-      await SP.engine.prepare({ language: SP.info.language || 'zh-TW', matcher: SP.matcher, strict: !!v.strict });
+      SP.matcher = v ? PTDevSpeech.createSpeechMatcher(v, SP.info.language || 'zh-TW') : null;
+      await SP.engine.prepare({ language: SP.info.language || 'zh-TW', matcher: SP.matcher, strict: !!(v && v.strict) });
       SP.sequence = SP.info.sequence;
-      spLog('辨識器準備好（詞彙表序號 ' + SP.sequence + '）', '', 'muted');
+      spLog(v ? '辨識器準備好（詞彙表序號 ' + SP.sequence + '）' : '語音轉文字準備好', '', 'muted');
     } finally {
       SP.busy = false;
     }
@@ -181,7 +188,7 @@
     const text = alternatives[0] ? alternatives[0].text : '';
     const detail = alternatives.length ? alternatives.map((a, i) => (i + 1) + '. ' + a.text + (a.phrase ? '（句型「' + a.phrase + '」' + (a.slots && Object.keys(a.slots).length ? ' ' + JSON.stringify(a.slots) : '') + '）' : '')).join('　') : '';
     if (!alternatives.length && SP.mode === 'hands_free') {
-      spLog('沒聽出指令（免按住時和平台一樣不送）', '', 'muted');
+      spLog(SP.kind === 'asr' ? '沒聽到（免按住時和平台一樣不送）' : '沒聽出指令（免按住時和平台一樣不送）', '', 'muted');
       return;
     }
     const res = await fetch('/dev/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'say', player: spPlayer, text }) });
@@ -191,14 +198,24 @@
   }
   $('sp-start').addEventListener('click', async () => {
     if (!SP.info || !SP.info.source) return spLog('沒有玩聚網站可以下載辨識引擎', '', 'err');
-    if (!SP.info.vocabulary) return spLog('授權沒有詞彙表，不能辨識', '', 'err');
+    if (!SP.info.allowed) return spLog('這位玩家沒有語音辨識的授權', '', 'err');
     SP.mode = document.querySelector('input[name=sp-mode]:checked').value;
+    SP.kind = spKind(SP.info);
+    const cached = SP.kind === 'kws' ? SP.info.engineCached : SP.info.asrCached;
     $('sp-start').disabled = true;
-    $('sp-start').textContent = SP.info.engineCached ? '啟動中…' : '下載辨識引擎中（約 18 MB）…';
+    $('sp-start').textContent = cached ? '啟動中…' : '下載辨識引擎中（約 ' + (SP.kind === 'kws' ? '18' : '26') + ' MB）…';
     try {
       await spLoadScript();
       if (!PTDevSpeech.speechEngineSupported()) throw new Error('這個瀏覽器不支援（要 WebAssembly 與 AudioWorklet）');
-      SP.engine = PTDevSpeech.createSpeechEngine();
+      SP.engine = SP.kind === 'kws' ? PTDevSpeech.createSpeechEngine() : PTDevSpeech.createAsrEngine({
+        // 說到一半的文字：只顯示在這裡（本機不送中途結果給遊戲）
+        onPartial: (text) => { $('sp-live').hidden = false; $('sp-live').textContent = '聽到：' + text; },
+        // 一句太長時先定案的一段：當成一句送出
+        onSegment: (text) => { if (text) spSend([{ text, confidence: null }]); },
+        onProgress: (loaded, total) => {
+          if (total) $('sp-start').textContent = '下載辨識引擎中 ' + Math.round((loaded / total) * 100) + '%（' + (loaded / 1e6).toFixed(1) + ' / ' + (total / 1e6).toFixed(1) + ' MB）';
+        },
+      });
       SP.recognizer = new PTDevSpeech.SpeechRecognizer(SP.engine, SP.mode === 'hands_free');
       // 麥克風要在點擊裡先要；引擎準備（含下載）同時做
       const prepared = spPrepare();
@@ -224,6 +241,7 @@
     if (SP.engine) SP.engine.dispose();
     SP.recognizer = SP.engine = null;
     SP.sequence = null;
+    SP.kind = '';
     $('sp-start').hidden = false;
     $('sp-start').disabled = false;
     $('sp-start').textContent = '啟動麥克風';

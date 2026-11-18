@@ -3,7 +3,7 @@ package main
 // pt dev 的本機語音辨識：在「用平台外殼開啟」的預覽頁用麥克風說話，用和玩聚平台相同的辨識程式與詞彙表比對，
 // 辨識出的文字走控制面板「輸入一句話」同一條路交給遊戲。
 //
-// 辨識引擎與模型（約 18 MB）不放進 pt：第一次用時從玩聚網站（playtogether.json 的 platform，或 PT_SPEECH_FROM、PT_API_URL）
+// 辨識引擎與模型（語音指令約 18 MB、語音轉文字約 26 MB，只下載用到的）不放進 pt：第一次用時從玩聚網站（playtogether.json 的 platform，或 PT_SPEECH_FROM、PT_API_URL）
 // 下載到本機快取，逐一核對 speech-manifest.json 的 SHA-256，之後離線也能用。只提供清單裡的檔案。
 
 import (
@@ -208,17 +208,37 @@ func (d *devPanel) speechInfo(w http.ResponseWriter, r *http.Request) {
 		out["sequence"], out["language"], out["vocabulary"] = f.room.Speech.Sequence, f.room.Speech.Language, f.room.Speech.Vocabulary
 	}
 	f.mu.Unlock()
+	// 兩種引擎分開算有沒有下載過：語音指令（關鍵詞偵測，約 18 MB）、語音轉文字（約 26 MB 的模型＋共用的 WASM）
 	m := loadSpeechManifest()
-	cached := m.Engine != ""
+	kws, asr := m.Engine != "", m.Engine != ""
 	if dir, err := speechCacheDir(m.Engine); err == nil {
 		for _, sf := range m.Files {
-			if st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(sf.Path))); err != nil || st.Size() != sf.Size {
-				cached = false
-				break
+			st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(sf.Path)))
+			ok := err == nil && st.Size() == sf.Size
+			if isASRFile(sf.Path) {
+				asr = asr && ok
+			} else if !isKWSOnlyFile(sf.Path) {
+				kws, asr = kws && ok, asr && ok // 共用的檔案（WASM、收音）
+			} else {
+				kws = kws && ok
 			}
 		}
+	} else {
+		kws, asr = false, false
 	}
-	out["engineCached"] = cached
+	out["engineCached"], out["asrCached"] = kws, asr
 	w.Header().Set("Cache-Control", "no-store")
 	f.write(w, 200, out)
+}
+
+// isASRFile：只有語音轉文字用的檔案（Worker、模型、簡轉繁）。
+func isASRFile(p string) bool {
+	base := path.Base(p)
+	return strings.HasPrefix(base, "asr-") || base == "sherpa-onnx-asr.js" || base == "zh-convert.js"
+}
+
+// isKWSOnlyFile：只有語音指令（關鍵詞偵測）用的檔案。
+func isKWSOnlyFile(p string) bool {
+	base := path.Base(p)
+	return strings.HasPrefix(base, "kws-") || base == "sherpa-onnx-kws.js" || base == "speech-worker.js" || base == "pinyin-zh.json"
 }
