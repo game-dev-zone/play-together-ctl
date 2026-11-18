@@ -151,6 +151,17 @@
     $('sp-log').prepend(li);
     while ($('sp-log').children.length > 30) $('sp-log').lastChild.remove();
   }
+  // 候選模型（multi-zh-hans）有沒有在瀏覽器快取（asr-worker.js 的 Cache Storage「pt-speech-v1」，4 個檔：encoder、decoder、joiner、tokens）
+  async function spCandidateCached() {
+    try {
+      if (!window.caches) return false;
+      const c = await caches.open('pt-speech-v1');
+      const keys = await c.keys();
+      return keys.filter((r) => r.url.includes('sherpa-onnx-streaming-zipformer-multi-zh-hans')).length >= 4;
+    } catch {
+      return false;
+    }
+  }
   // 輪詢的回應可能亂序：只採用比已採用的更新的那一次（舊的「已授權」不能蓋掉新的撤銷）
   let spAsked = 0;
   let spApplied = 0;
@@ -172,12 +183,14 @@
       // 第一次要下載的量（含兩種引擎共用的 WASM 約 13 MB）：語音指令約 18 MB、語音轉文字約 40 MB；候選模型另外從 Hugging Face 下載到瀏覽器快取
       const candidate = kind === 'asr' && $('sp-variant').value !== 'zh-14m';
       const cached = kind === 'kws' ? info.engineCached : info.asrCached;
+      const candidateCached = candidate && (await spCandidateCached());
+      if (my < spApplied) return;
       if (info.downloading && info.downloading.total) {
         // pt 正在從玩聚網站下載（下載完、核對雜湊後才交給瀏覽器）
         const d = info.downloading;
         $('sp-engine').textContent = 'pt 正在從 ' + info.source + ' 下載辨識引擎：' + Math.round((d.loaded / d.total) * 100) + '%（' + (d.loaded / 1e6).toFixed(1) + ' / ' + (d.total / 1e6).toFixed(1) + ' MB）';
       } else $('sp-engine').textContent = !info.source ? '沒有玩聚網站可以下載辨識引擎：請在 playtogether.json 填 platform，或設定 PT_SPEECH_FROM 後重新執行 pt dev。'
-        : candidate ? '候選模型：第一次啟動時從 Hugging Face 下載約 76 MB 到瀏覽器快取（引擎的其他檔案' + (cached ? '已下載' : '從 ' + info.source + ' 下載約 15 MB') + '）。'
+        : candidate ? (candidateCached ? '候選模型：已在瀏覽器快取' : '候選模型：第一次啟動時從 Hugging Face 下載約 76 MB 到瀏覽器快取') + '（引擎的其他檔案' + (cached ? '已下載' : '從 ' + info.source + ' 下載約 15 MB') + '）。'
           : cached ? '辨識引擎：已下載（' + info.source + '）'
             : '辨識引擎：第一次啟動時從 ' + info.source + ' 下載約 ' + (kind === 'kws' ? '18' : '40') + ' MB 到本機快取。';
       // 授權結束（遊戲伺服器停止、到期、玩家被移出）：停止麥克風與引擎
@@ -262,9 +275,13 @@
     const variant = $('sp-variant').value;
     const method = $('sp-method').value;
     const candidate = SP.kind === 'asr' && variant !== 'zh-14m';
-    const cached = SP.kind === 'kws' ? SP.info.engineCached : SP.info.asrCached && !candidate;
+    const engineCached = SP.kind === 'kws' ? SP.info.engineCached : SP.info.asrCached;
     $('sp-start').disabled = $('sp-variant').disabled = $('sp-method').disabled = true;
-    $('sp-start').textContent = cached ? '啟動中…' : '下載辨識引擎中（約 ' + (SP.kind === 'kws' ? '18' : candidate ? '91' : '40') + ' MB）…';
+    // 還要下載多少：候選模型看瀏覽器快取（約 76 MB），引擎的其他檔案看 pt 的快取
+    const modelCached = !candidate || (await spCandidateCached());
+    if (gen !== SP.gen) return;
+    const needMB = (engineCached ? 0 : SP.kind === 'kws' ? 18 : candidate ? 15 : 40) + (modelCached ? 0 : 76);
+    $('sp-start').textContent = needMB ? '下載辨識引擎中（約 ' + needMB + ' MB）…' : '啟動中…';
     let engine = null;
     let recognizer = null;
     const cancelled = () => {
