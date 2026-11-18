@@ -185,16 +185,23 @@
       document.head.appendChild(el);
     });
   }
+  // 用開始時的同一份授權快照準備；等待期間被停止（世代換了）就不寫狀態。詞彙表在等待期間又換了：
+  // 這裡記下的是快照的序號，下一次輪詢看到序號不同會再準備一次
   async function spPrepare() {
+    const gen = SP.gen;
+    const engine = SP.engine;
+    const info = SP.info;
     SP.busy = true;
     try {
-      const v = SP.info.vocabulary;
-      SP.matcher = v ? PTDevSpeech.createSpeechMatcher(v, SP.info.language || 'zh-TW') : null;
-      await SP.engine.prepare({ language: SP.info.language || 'zh-TW', matcher: SP.matcher, strict: !!(v && v.strict) });
-      SP.sequence = SP.info.sequence;
+      const v = info.vocabulary;
+      const matcher = v ? PTDevSpeech.createSpeechMatcher(v, info.language || 'zh-TW') : null;
+      await engine.prepare({ language: info.language || 'zh-TW', matcher, strict: !!(v && v.strict) });
+      if (gen !== SP.gen || engine !== SP.engine) return;
+      SP.matcher = matcher;
+      SP.sequence = info.sequence;
       spLog(v ? '辨識器準備好（詞彙表序號 ' + SP.sequence + '）' : '語音轉文字準備好', '', 'muted');
     } finally {
-      SP.busy = false;
+      if (gen === SP.gen) SP.busy = false;
     }
   }
   // 依序送出（前一句送完才送下一句）；停止之後才到的結果不送
@@ -282,6 +289,7 @@
   function spStop(reason) {
     SP.gen++; // 舊引擎之後才到的結果、回呼、還在等待的啟動都不再處理
     SP.starting = false;
+    SP.busy = false;
     if (SP.recognizer) SP.recognizer.stop();
     if (SP.engine) SP.engine.dispose();
     SP.recognizer = SP.engine = null;
