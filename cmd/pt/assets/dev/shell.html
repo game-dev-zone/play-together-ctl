@@ -115,7 +115,7 @@
   // ---------- 本機語音辨識 ----------
   // kind：'kws'（語音指令，授權有詞彙表）或 'asr'（語音轉文字，沒有詞彙表）
   // gen：每次啟動換一個；停止後舊引擎晚到的結果（世代不同）不送。sendChain：結果依序送出（長句分段時不會亂序）
-  const SP = { info: null, engine: null, recognizer: null, matcher: null, sequence: null, mode: 'ptt', busy: false, kind: '', gen: 0, starting: false, sendChain: Promise.resolve() };
+  const SP = { info: null, engine: null, recognizer: null, matcher: null, sequence: null, mode: 'ptt', busy: false, kind: '', gen: 0, starting: false, sendChain: Promise.resolve(), abort: new AbortController() };
   const spKind = (info) => (info && info.vocabulary ? 'kws' : 'asr');
   const spPlayer = new URLSearchParams(location.search).get('player') || 'p1';
   $('speech-fab').addEventListener('click', () => {
@@ -167,8 +167,15 @@
       if ((SP.engine || SP.starting) && !info.allowed) spStop('授權已經結束，停止辨識');
       // 授權在語音指令與語音轉文字之間換了：引擎不同，要重新啟動
       else if (SP.engine && kind !== SP.kind) spStop('授權換成' + (kind === 'kws' ? '語音指令' : '語音轉文字') + '：請重新啟動麥克風');
-      // 遊戲伺服器換了詞彙表：重新準備
-      else if (SP.engine && kind === 'kws' && info.sequence !== SP.sequence && !SP.busy) await spPrepare();
+      // 遊戲伺服器換了詞彙表：重新準備（和平台相同，準備的這段時間說的話不會辨識）；失敗就停止，不留下不能用的引擎
+      else if (SP.engine && kind === 'kws' && info.sequence !== SP.sequence && !SP.busy) {
+        spLog('詞彙表換了，重新準備中（這段時間說的話不會辨識，和平台相同）', '', 'muted');
+        try {
+          await spPrepare();
+        } catch (e) {
+          spStop('重新準備詞彙表失敗：' + ((e && e.message) || e) + '，請重新啟動麥克風');
+        }
+      }
     } catch {
       $('sp-status').textContent = '讀不到 pt dev 的狀態。';
     }
@@ -209,7 +216,7 @@
     const gen = SP.gen;
     SP.sendChain = SP.sendChain
       .then(() => (gen === SP.gen ? spSendNow(alternatives) : null))
-      .catch((e) => spLog('送出失敗：' + ((e && e.message) || e), '', 'err'));
+      .catch((e) => { if (!(e && e.name === 'AbortError')) spLog('送出失敗：' + ((e && e.message) || e), '', 'err'); });
     return SP.sendChain;
   }
   async function spSendNow(alternatives) {
@@ -219,7 +226,8 @@
       spLog(SP.kind === 'asr' ? '沒聽到（免按住時和平台一樣不送）' : '沒聽出指令（免按住時和平台一樣不送）', '', 'muted');
       return;
     }
-    const res = await fetch('/dev/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'say', player: spPlayer, text }) });
+    // 停止時中止還在送的請求（停止之後不再把舊的語音交給遊戲）
+    const res = await fetch('/dev/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'say', player: spPlayer, text }), signal: SP.abort.signal });
     const out = await res.json().catch(() => ({}));
     if (!res.ok) spLog((text || '（沒聽到）') + '：沒有送出', out.error || ('HTTP ' + res.status), 'err');
     else spLog(text ? '送出「' + text + '」' : '送出「沒聽到」（空的候選）', detail);
@@ -290,6 +298,8 @@
     SP.gen++; // 舊引擎之後才到的結果、回呼、還在等待的啟動都不再處理
     SP.starting = false;
     SP.busy = false;
+    SP.abort.abort(); // 還在送的結果也取消
+    SP.abort = new AbortController();
     if (SP.recognizer) SP.recognizer.stop();
     if (SP.engine) SP.engine.dispose();
     SP.recognizer = SP.engine = null;
