@@ -115,7 +115,7 @@
   // ---------- 本機語音辨識 ----------
   // kind：'kws'（語音指令，授權有詞彙表）或 'asr'（語音轉文字，沒有詞彙表）
   // gen：每次啟動換一個；停止後舊引擎晚到的結果（世代不同）不送。sendChain：結果依序送出（長句分段時不會亂序）
-  const SP = { info: null, engine: null, recognizer: null, matcher: null, sequence: null, mode: 'ptt', busy: false, kind: '', gen: 0, sendChain: Promise.resolve() };
+  const SP = { info: null, engine: null, recognizer: null, matcher: null, sequence: null, mode: 'ptt', busy: false, kind: '', gen: 0, starting: false, sendChain: Promise.resolve() };
   const spKind = (info) => (info && info.vocabulary ? 'kws' : 'asr');
   const spPlayer = new URLSearchParams(location.search).get('player') || 'p1';
   $('speech-fab').addEventListener('click', () => {
@@ -138,9 +138,15 @@
     $('sp-log').prepend(li);
     while ($('sp-log').children.length > 30) $('sp-log').lastChild.remove();
   }
+  // 輪詢的回應可能亂序：只採用比已採用的更新的那一次（舊的「已授權」不能蓋掉新的撤銷）
+  let spAsked = 0;
+  let spApplied = 0;
   async function spRefresh() {
+    const my = ++spAsked;
     try {
       const info = await (await fetch('/dev/speech-info?player=' + encodeURIComponent(spPlayer))).json();
+      if (my < spApplied) return;
+      spApplied = my;
       SP.info = info;
       const st = $('sp-status');
       st.className = info.allowed && info.listening ? '' : 'warn';
@@ -158,7 +164,7 @@
         : cached ? '辨識引擎：已下載（' + info.source + '）'
           : '辨識引擎：第一次啟動時從 ' + info.source + ' 下載約 ' + (kind === 'kws' ? '18' : '26') + ' MB 到本機快取。';
       // 授權結束（遊戲伺服器停止、到期、玩家被移出）：停止麥克風與引擎
-      if (SP.engine && !info.allowed) spStop('授權已經結束，停止辨識');
+      if ((SP.engine || SP.starting) && !info.allowed) spStop('授權已經結束，停止辨識');
       // 授權在語音指令與語音轉文字之間換了：引擎不同，要重新啟動
       else if (SP.engine && kind !== SP.kind) spStop('授權換成' + (kind === 'kws' ? '語音指令' : '語音轉文字') + '：請重新啟動麥克風');
       // 遊戲伺服器換了詞彙表：重新準備
@@ -214,36 +220,52 @@
   $('sp-start').addEventListener('click', async () => {
     if (!SP.info || !SP.info.source) return spLog('沒有玩聚網站可以下載辨識引擎', '', 'err');
     if (!SP.info.allowed) return spLog('這位玩家沒有語音辨識的授權', '', 'err');
+    // 這次啟動的世代：等待（載入程式、要麥克風、準備引擎）期間被停止（spStop 換世代，例如授權結束），醒來就收掉自己建立的東西
+    const gen = ++SP.gen;
+    SP.starting = true;
     SP.mode = document.querySelector('input[name=sp-mode]:checked').value;
     SP.kind = spKind(SP.info);
     const cached = SP.kind === 'kws' ? SP.info.engineCached : SP.info.asrCached;
     $('sp-start').disabled = true;
     $('sp-start').textContent = cached ? '啟動中…' : '下載辨識引擎中（約 ' + (SP.kind === 'kws' ? '18' : '26') + ' MB）…';
+    let engine = null;
+    let recognizer = null;
+    const cancelled = () => {
+      if (gen === SP.gen) return false;
+      if (recognizer) recognizer.stop();
+      if (engine) engine.dispose();
+      return true;
+    };
     try {
       await spLoadScript();
+      if (cancelled()) return;
       if (!PTDevSpeech.speechEngineSupported()) throw new Error('這個瀏覽器不支援（要 WebAssembly 與 AudioWorklet）');
-      const gen = ++SP.gen;
       const engineFailed = () => {
-        if (gen === SP.gen) spStop('辨識引擎出錯，已停止' + (SP.engine && SP.engine.lastError ? '（' + SP.engine.lastError + '）' : '') + '：請重新啟動麥克風');
+        if (gen === SP.gen) spStop('辨識引擎出錯，已停止' + (engine && engine.lastError ? '（' + engine.lastError + '）' : '') + '：請重新啟動麥克風');
       };
-      SP.engine = SP.kind === 'kws' ? PTDevSpeech.createSpeechEngine() : PTDevSpeech.createAsrEngine({
+      engine = SP.kind === 'kws' ? PTDevSpeech.createSpeechEngine() : PTDevSpeech.createAsrEngine({
         // 說到一半的文字：只顯示在這裡（本機不送中途結果給遊戲）
         onPartial: (text) => { if (gen !== SP.gen) return; $('sp-live').hidden = false; $('sp-live').textContent = '聽到：' + text; },
         // 一句超過 80 字時先定案的一段：當成一句先送出（這一句剩下的由 end() 送）
         onSegment: (text) => { if (gen === SP.gen && text) spSend([{ text, confidence: null }]); },
         onError: engineFailed,
         onProgress: (loaded, total) => {
-          if (total) $('sp-start').textContent = '下載辨識引擎中 ' + Math.round((loaded / total) * 100) + '%（' + (loaded / 1e6).toFixed(1) + ' / ' + (total / 1e6).toFixed(1) + ' MB）';
+          if (gen === SP.gen && total) $('sp-start').textContent = '下載辨識引擎中 ' + Math.round((loaded / total) * 100) + '%（' + (loaded / 1e6).toFixed(1) + ' / ' + (total / 1e6).toFixed(1) + ' MB）';
         },
       });
-      SP.recognizer = new PTDevSpeech.SpeechRecognizer(SP.engine, SP.mode === 'hands_free');
+      recognizer = new PTDevSpeech.SpeechRecognizer(engine, SP.mode === 'hands_free');
+      SP.engine = engine;
+      SP.recognizer = recognizer;
       // 麥克風要在點擊裡先要；引擎準備（含下載）同時做
       const prepared = spPrepare();
       prepared.catch(() => {});
-      await SP.recognizer.start((alts) => { if (gen === SP.gen) spSend(alts); }, () => { if (gen === SP.gen) spStop('麥克風停止了'); }, engineFailed);
+      await recognizer.start((alts) => { if (gen === SP.gen) spSend(alts); }, () => { if (gen === SP.gen) spStop('麥克風停止了'); }, engineFailed);
+      if (cancelled()) return;
       await prepared;
+      if (cancelled()) return;
+      SP.starting = false;
       if (SP.mode === 'hands_free') {
-        SP.recognizer.setActive(true);
+        recognizer.setActive(true);
         $('sp-live').hidden = false;
         $('sp-live').textContent = '免按住：直接說，停頓約 0.5 秒算一句。';
       } else {
@@ -252,12 +274,14 @@
       $('sp-stop').hidden = false;
       $('sp-start').hidden = true;
     } catch (e) {
+      if (cancelled()) return; // 已經停止了：不再報錯
       spLog('啟動失敗：' + (e && e.code === 'mic_denied' ? '沒有麥克風權限' : (e && e.message) || e), '', 'err');
       spStop();
     }
   });
   function spStop(reason) {
-    SP.gen++; // 舊引擎之後才到的結果、回呼都不再處理
+    SP.gen++; // 舊引擎之後才到的結果、回呼、還在等待的啟動都不再處理
+    SP.starting = false;
     if (SP.recognizer) SP.recognizer.stop();
     if (SP.engine) SP.engine.dispose();
     SP.recognizer = SP.engine = null;
